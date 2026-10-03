@@ -1,0 +1,28 @@
+# Local development stack: API + Postgres.
+# Usage:  docker compose up --build
+services:
+  api:
+    build: .
+    env_file: construction_db/.env
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    env_file: construction_db/.env
+    ports:
+      # 5433 on your machine so it can't clash with a locally installed Postgres.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

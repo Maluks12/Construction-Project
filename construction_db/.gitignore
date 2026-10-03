@@ -1,0 +1,15 @@
+# Secrets - never commit real env files
+.env
+.env.*
+!.env.example
+
+# Build output
+bin/
+tmp/
+*.exe
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

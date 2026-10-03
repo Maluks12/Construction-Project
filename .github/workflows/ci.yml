@@ -17,13 +17,17 @@ jobs:
   test:
     name: Lint, test, build
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        # The Go module lives in construction_db/, not the repo root.
+        working-directory: construction_db
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
-          cache-dependency-path: go.mod
+          go-version-file: construction_db/go.mod
+          cache-dependency-path: construction_db/go.sum
 
       - name: Check formatting (gofmt)
         run: |
@@ -78,7 +82,7 @@ jobs:
       - name: Build (and push on main)
         uses: docker/build-push-action@v7
         with:
-          context: .
+          context: construction_db
           push: ${{ env.PUSH == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

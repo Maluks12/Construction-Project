@@ -22,8 +22,8 @@ func Load() (*Config, error) {
 
 	var config *Config = &Config{
 		DatabaseURL: os.Getenv("DATABASE_URL"),
-		Port: os.Getenv("PORT"),
-		JWTSecret: os.Getenv("JWT_SECRET"),
+		Port:        os.Getenv("PORT"),
+		JWTSecret:   os.Getenv("JWT_SECRET"),
 	}
-	return  config, nil
+	return config, nil
 }

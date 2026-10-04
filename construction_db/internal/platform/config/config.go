@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -20,10 +22,31 @@ func Load() (*Config, error) {
 		log.Println("Warning: . env file not found, using environment variables")
 	}
 
-	var config *Config = &Config{
+	cfg := &Config{
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		Port:        os.Getenv("PORT"),
 		JWTSecret:   os.Getenv("JWT_SECRET"),
 	}
-	return config, nil
+
+	if cfg.Port == ""{
+		cfg.Port = "8080"
+	}
+
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
+func (c *Config) validate() error {
+	var missing [] string
+	if c.DatabaseURL == ""{
+		missing = append(missing, "DATABASE_URL")
+	}
+
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required environment variable: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }

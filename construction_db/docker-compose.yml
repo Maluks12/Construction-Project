@@ -1,9 +1,20 @@
-# Local development stack: API + Postgres.
-# Run from the construction_db folder:  docker compose up --build
+# Everything runs in Docker. Run all commands from the construction_db folder.
+#
+#   docker compose up -d db                  start the database
+#   docker compose run --rm migrate up       apply migrations
+#   docker compose up -d --build api         build and start the API
+#
+# DATABASE_URL is built here from the POSTGRES_* values in .env,
+# so the password only ever lives in one place.
+
+x-database-url: &database-url postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
+
 services:
   api:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: *database-url
     ports:
       - "8080:8080"
     depends_on:
@@ -14,7 +25,7 @@ services:
     image: postgres:16-alpine
     env_file: .env
     ports:
-      # 5433 on your machine so it can't clash with a locally installed Postgres.
+      # Only needed if you want to connect a GUI tool (DBeaver, pgAdmin) from Windows.
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -23,6 +34,18 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # One-off tool, never started by "docker compose up".
+  # Usage: docker compose run --rm migrate <up | down 1 | version | force N>
+  migrate:
+    image: migrate/migrate:v4.20.1
+    profiles: ["tools"]
+    volumes:
+      - ./migrations:/migrations
+    entrypoint: ["migrate", "-path=/migrations", "-database", *database-url]
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   pgdata:

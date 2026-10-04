@@ -28,7 +28,7 @@ func Load() (*Config, error) {
 		JWTSecret:   os.Getenv("JWT_SECRET"),
 	}
 
-	if cfg.Port == ""{
+	if cfg.Port == "" {
 		cfg.Port = "8080"
 	}
 
@@ -40,8 +40,8 @@ func Load() (*Config, error) {
 }
 
 func (c *Config) validate() error {
-	var missing [] string
-	if c.DatabaseURL == ""{
+	var missing []string
+	if c.DatabaseURL == "" {
 		missing = append(missing, "DATABASE_URL")
 	}
 

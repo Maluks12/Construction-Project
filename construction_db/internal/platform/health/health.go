@@ -10,7 +10,7 @@ import (
 )
 
 func Handler(pool *pgxpool.Pool) gin.HandlerFunc {
-	return func(c *gin.Context){
+	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
 		defer cancel()
 		if err := pool.Ping(ctx); err != nil {

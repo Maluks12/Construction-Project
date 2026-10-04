@@ -33,7 +33,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	pool,err := database.Connect(ctx, cfg.DatabaseURL)
+	pool, err := database.Connect(ctx, cfg.DatabaseURL)
 
 	if err != nil {
 		slog.Error("connect database", "err", err)
@@ -47,14 +47,14 @@ func main() {
 	router.GET("/healthz", health.Handler(pool))
 
 	srv := &http.Server{
-		Addr: ":" + cfg.Port, 
-		Handler: router, 
+		Addr:              ":" + cfg.Port,
+		Handler:           router,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
 		slog.Info("server listening", "port", cfg.Port)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed){
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("server failed", "err", err)
 			stop()
 		}
@@ -70,5 +70,5 @@ func main() {
 		slog.Error("shutdown", "err", err)
 	}
 	slog.Info("shutdown complete")
-	
+
 }

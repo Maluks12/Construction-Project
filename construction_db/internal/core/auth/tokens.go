@@ -21,9 +21,9 @@ type Claims struct {
 
 var ErrInvalidToken = errors.New("invalid token")
 
-func HashPassword(password string) (string, error){
-	hash, err := bcrypt.GenerateFromPassword([]byte(password),bcrypt.DefaultCost)
-	if err != nil{
+func HashPassword(password string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
 		return "", fmt.Errorf("hash password: %w", err)
 	}
 	return string(hash), nil
@@ -34,15 +34,15 @@ func CheckPassword(hash, password string) bool {
 	return err == nil
 }
 
-func NewAccessToken(userID, orgID, sessionID, secret string, ttl time.Duration) (string, error){
+func NewAccessToken(userID, orgID, sessionID, secret string, ttl time.Duration) (string, error) {
 	now := time.Now()
 
 	claims := Claims{
-		OrgID: orgID,
+		OrgID:     orgID,
 		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: userID,
-			IssuedAt: jwt.NewNumericDate(now),
+			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
 		},
 	}
@@ -56,13 +56,13 @@ func NewAccessToken(userID, orgID, sessionID, secret string, ttl time.Duration) 
 	return signed, nil
 }
 
-func ParseAccessToken(tokenString, secret string)(*Claims, error){
+func ParseAccessToken(tokenString, secret string) (*Claims, error) {
 	claims := &Claims{}
-	
+
 	_, err := jwt.ParseWithClaims(
 		tokenString,
 		claims,
-		
+
 		func(t *jwt.Token) (any, error) {
 			return []byte(secret), nil
 		},
@@ -78,18 +78,18 @@ func ParseAccessToken(tokenString, secret string)(*Claims, error){
 	return claims, nil
 }
 
-func NewRefreshToken() (plain string, hash string, err error){
+func NewRefreshToken() (plain string, hash string, err error) {
 	b := make([]byte, 32)
 
 	if _, err := rand.Read(b); err != nil {
-return "", "", fmt.Errorf("generate refresh token: %w", err)
+		return "", "", fmt.Errorf("generate refresh token: %w", err)
 	}
 
 	plain = base64.RawURLEncoding.EncodeToString(b)
 	return plain, HashRefreshToken(plain), nil
 }
 
-func HashRefreshToken(plain string) string{
+func HashRefreshToken(plain string) string {
 	sum := sha256.Sum256([]byte(plain))
 	return hex.EncodeToString(sum[:])
 }

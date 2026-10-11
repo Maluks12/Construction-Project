@@ -36,14 +36,14 @@ type SignupRequest struct {
 	CompanyName string `json:"company_name" binding:"required,max=200"`
 	FullName    string `json:"full_name" binding:"required,max=200"`
 	Email       string `json:"email" binding:"required,email,max=254"`
-	Password   string `json:"password" binding:"required,min=10,max=72"`
-	SiteName   string `json:"site_name" binding:"required,max=200"`
-	DeviceName string `json:"device_name" binding:"omitempty,max=100"`
+	Password    string `json:"password" binding:"required,min=10,max=72"`
+	SiteName    string `json:"site_name" binding:"required,max=200"`
+	DeviceName  string `json:"device_name" binding:"omitempty,max=100"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+	Email      string `json:"email" binding:"required,email"`
+	Password   string `json:"password" binding:"required"`
 	OrgID      string `json:"org_id" binding:"omitempty,uuid"`
 	DeviceName string `json:"device_name" binding:"omitempty,max=100"`
 }

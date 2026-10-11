@@ -45,15 +45,15 @@ func (c *Config) validate() error {
 		missing = append(missing, "DATABASE_URL")
 	}
 
+	if c.JWTSecret == "" {
+		missing = append(missing, "JWT_SECRET")
+	}
+
 	if len(missing) > 0 {
 		return fmt.Errorf("missing required environment variable: %s", strings.Join(missing, ", "))
 	}
 
-	if c.JWTSecret == ""{
-		missing = append(missing, "JWT_SECRET")
-	}
-
-	if len(c.JWTSecret)< 32{
+	if len(c.JWTSecret) < 32 {
 		return fmt.Errorf("JWT_SECRET must be at least 32 characters")
 	}
 	return nil

@@ -1,14 +1,8 @@
 package main
 
 import (
-	//"fmt"
-	"construction_db/internal/platform/config"
-	"construction_db/internal/platform/database"
-	"construction_db/internal/platform/health"
 	"context"
 	"errors"
-	//"fmt"
-	//"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,16 +11,20 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"construction_db/internal/core/auth"
+	"construction_db/internal/platform/config"
+	"construction_db/internal/platform/database"
+	"construction_db/internal/platform/health"
 )
 
 func main() {
-
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
 	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("load config", "err", err)
+		slog.Error("load config", "error", err)
 		os.Exit(1)
 	}
 
@@ -34,17 +32,19 @@ func main() {
 	defer stop()
 
 	pool, err := database.Connect(ctx, cfg.DatabaseURL)
-
 	if err != nil {
-		slog.Error("connect database", "err", err)
+		slog.Error("connect database", "error", err)
 		os.Exit(1)
 	}
 	defer pool.Close()
-	slog.Info("database connected")
 
 	router := gin.New()
 	router.Use(gin.Recovery())
+
 	router.GET("/healthz", health.Handler(pool))
+
+	authSvc := auth.NewService(pool, cfg.JWTSecret)
+	auth.Register(router, authSvc)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -53,9 +53,9 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("server listening", "port", cfg.Port)
+		slog.Info("server starting", "port", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			slog.Error("server failed", "err", err)
+			slog.Error("server failed", "error", err)
 			stop()
 		}
 	}()
@@ -67,8 +67,8 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("shutdown", "err", err)
+		slog.Error("server shutdown", "error", err)
 	}
-	slog.Info("shutdown complete")
 
+	slog.Info("server stopped")
 }

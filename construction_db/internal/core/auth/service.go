@@ -25,7 +25,7 @@ func NewService(pool *pgxpool.Pool, secret string) *Service {
 	return &Service{pool: pool, secret: secret}
 }
 
-func (s *Service) issueTokens(ctx context.Context, db DBTX, userID, orgID, deviceName, userAgent string) (*TokenPair, error){
+func (s *Service) issueTokens(ctx context.Context, db DBTX, userID, orgID, deviceName, userAgent string) (*TokenPair, error) {
 	expiresAt := time.Now().Add(refreshTokenTTL)
 
 	sessionID, err := CreateSession(ctx, db, userID, orgID, deviceName, userAgent, expiresAt)
@@ -33,13 +33,12 @@ func (s *Service) issueTokens(ctx context.Context, db DBTX, userID, orgID, devic
 		return nil, fmt.Errorf("issue tokens: %w", err)
 	}
 
-
 	plain, hash, err := NewRefreshToken()
 	if err != nil {
 		return nil, fmt.Errorf("issue tokens: %w", err)
 	}
 
-	if err := InsertRefreshToken(ctx, db, sessionID, hash, expiresAt); err != nil{
+	if err := InsertRefreshToken(ctx, db, sessionID, hash, expiresAt); err != nil {
 		return nil, fmt.Errorf("issue tokens: %w", err)
 	}
 
@@ -49,24 +48,24 @@ func (s *Service) issueTokens(ctx context.Context, db DBTX, userID, orgID, devic
 	}
 
 	return &TokenPair{
-		AccessToken: accessToken,
+		AccessToken:  accessToken,
 		RefreshToken: plain,
-		ExpiresIn: int(accessTokenTTL.Seconds()),
-		TokenType: "Bearer",
+		ExpiresIn:    int(accessTokenTTL.Seconds()),
+		TokenType:    "Bearer",
 	}, nil
 }
 
 func (s *Service) Login(ctx context.Context, req LoginRequest, userAgent string) (*TokenPair, error) {
 	user, err := FindUserByEmail(ctx, s.pool, req.Email)
-	if errors.Is(err, pgx.ErrNoRows){
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrInvalidCredentials
 	}
 
-	if err != nil{
+	if err != nil {
 		return nil, fmt.Errorf("login: %w", err)
 	}
 
-	if user.PasswordHash == nil || !CheckPassword(*user.PasswordHash, req.Password){
+	if user.PasswordHash == nil || !CheckPassword(*user.PasswordHash, req.Password) {
 		return nil, ErrInvalidCredentials
 	}
 
@@ -76,7 +75,7 @@ func (s *Service) Login(ctx context.Context, req LoginRequest, userAgent string)
 
 	memberships, err := ListMemberships(ctx, s.pool, user.ID)
 	if err != nil {
-		return nil, fmt. Errorf("login: %w", err)
+		return nil, fmt.Errorf("login: %w", err)
 	}
 	orgID, err := pickOrg(memberships, req.OrgID)
 	if err != nil {
@@ -86,13 +85,13 @@ func (s *Service) Login(ctx context.Context, req LoginRequest, userAgent string)
 	return s.issueTokens(ctx, s.pool, user.ID, orgID, req.DeviceName, userAgent)
 }
 
-func pickOrg(memberships []Membership, requested string) (string, error){
+func pickOrg(memberships []Membership, requested string) (string, error) {
 	if len(memberships) == 0 {
 		return "", ErrInvalidCredentials
 	}
-	if requested != ""{
-		for _, m := range memberships{
-			if m.OrgID == requested{
+	if requested != "" {
+		for _, m := range memberships {
+			if m.OrgID == requested {
 				return m.OrgID, nil
 			}
 		}
@@ -175,20 +174,17 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*TokenPair,
 	if err != nil {
 		return nil, fmt.Errorf("refresh: %w", err)
 	}
-	if !session.Active(time.Now()){
+	if !session.Active(time.Now()) {
 		return nil, ErrSessionRevoked
 	}
 
 	if rt.UsedAt != nil {
-		if rt.UsedAt != nil {
-			return nil, s.revokeForReuse(ctx, session)
-		}
-		return nil, ErrSessionRevoked
+		return nil, s.revokeForReuse(ctx, session)
 	}
 
 	marked, err := MarkRefreshTokenUsed(ctx, s.pool, rt.ID)
 	if err != nil {
-		return nil, fmt.Errorf("signup: %w", err)
+		return nil, fmt.Errorf("refresh: %w", err)
 	}
 	if !marked {
 		return nil, s.revokeForReuse(ctx, session)
@@ -209,10 +205,10 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*TokenPair,
 	}
 
 	return &TokenPair{
-		AccessToken: accessToken,
+		AccessToken:  accessToken,
 		RefreshToken: plain,
-		ExpiresIn: int(accessTokenTTL.Seconds()),
-		TokenType: "Bearer",
+		ExpiresIn:    int(accessTokenTTL.Seconds()),
+		TokenType:    "Bearer",
 	}, nil
 }
 
@@ -239,9 +235,9 @@ func (s *Service) ListSessions(ctx context.Context, userID, currentSessionID str
 	out := make([]SessionResponse, 0, len(sessions))
 	for _, sess := range sessions {
 		out = append(out, SessionResponse{
-			ID:			sess.ID,
+			ID:         sess.ID,
 			DeviceName: sess.DeviceName,
-			UserAgent: 	sess.UserAgent,
+			UserAgent:  sess.UserAgent,
 			CreatedAt:  sess.CreatedAt,
 			LastUsedAt: sess.LastUsedAt,
 			Current:    sess.ID == currentSessionID,
@@ -258,3 +254,4 @@ func (s *Service) RevokeSession(ctx context.Context, userID, sessionID string) (
 
 	return revoked, nil
 }
+

@@ -22,7 +22,7 @@ func CreateOrganisation(ctx context.Context, db DBTX, name string) (orgID string
 		VALUES($1, $2, $3)
 		RETURNING id
 	`
-	err = db.QueryRow(ctx,query, name, EditionConstruction, []string{EditionConstruction}).Scan(&orgID)
+	err = db.QueryRow(ctx, query, name, EditionConstruction, []string{EditionConstruction}).Scan(&orgID)
 
 	if err != nil {
 		return "", fmt.Errorf("create organisation: %w", err)
@@ -41,7 +41,7 @@ func CreateUser(ctx context.Context, db DBTX, fullName, email, passwordHash stri
 		&userID,
 	)
 
-	if err != nil{
+	if err != nil {
 		return "", fmt.Errorf("create user: %w", err)
 	}
 
@@ -53,7 +53,7 @@ func AddMember(ctx context.Context, db DBTX, orgID, userID, role string) error {
 		INSERT INTO org_members (org_id, user_id, role)
 		VALUES ($1, $2, $3)
 	`
-	_, err := db.Exec(ctx, query,orgID, userID, role )
+	_, err := db.Exec(ctx, query, orgID, userID, role)
 
 	if err != nil {
 		return fmt.Errorf("add member: %w", err)
@@ -78,21 +78,13 @@ func CreateSite(ctx context.Context, db DBTX, orgID, regimeCode, name string) (s
 }
 
 func FindUserByEmail(ctx context.Context, db DBTX, email string) (*User, error) {
-	query := `
-		SELECT email, mobile, full_name, password_hash, archived_at
-		FROM users
-		WHERE lower(email) = lower($1)
-	`
 	var u User
-	err := db.QueryRow(ctx, query, email).Scan(
-		&u.ID,
-		&u.Email,
-		&u.Mobile,
-		&u.FullName,
-		&u.PasswordHash,
-		&u.ArchivedAt,
-	)
-
+	err := db.QueryRow(ctx,
+		`SELECT id, email, mobile, full_name, password_hash, archived_at
+		   FROM users
+		  WHERE lower(email) = lower($1)`,
+		email,
+	).Scan(&u.ID, &u.Email, &u.Mobile, &u.FullName, &u.PasswordHash, &u.ArchivedAt)
 	if err != nil {
 		return nil, fmt.Errorf("find user by email: %w", err)
 	}
@@ -172,7 +164,7 @@ func FindRefreshToken(ctx context.Context, db DBTX, hash string) (*RefreshToken,
 	)
 
 	if err != nil {
-		return nil, fmt.Errorf("find refresh token")
+		return nil, fmt.Errorf("find refresh token: %w", err)
 	}
 
 	return &r, nil
@@ -254,8 +246,8 @@ func RevokeSession(ctx context.Context, db DBTX, userID, sessionID string) (bool
 		UPDATE sessions
 		SET revoked_at = now()
 		WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
-	`  
-	tag, err := db.Exec(ctx, query, userID, sessionID)
+	`
+	tag, err := db.Exec(ctx, query, sessionID, userID)
 	if err != nil {
 		return false, fmt.Errorf("revoke session: %w", err)
 	}

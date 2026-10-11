@@ -30,7 +30,7 @@ func CreateOrganisation(ctx context.Context, db DBTX, name string) (orgID string
 	return orgID, nil
 }
 
-func CreateUSer(ctx context.Context, db DBTX, fullName, email, passwordHash string) (userID string, err error) {
+func CreateUser(ctx context.Context, db DBTX, fullName, email, passwordHash string) (userID string, err error) {
 
 	query := `
 		INSERT INTO users (email, full_name, password_hash)

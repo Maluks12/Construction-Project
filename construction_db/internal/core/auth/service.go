@@ -254,4 +254,3 @@ func (s *Service) RevokeSession(ctx context.Context, userID, sessionID string) (
 
 	return revoked, nil
 }
-

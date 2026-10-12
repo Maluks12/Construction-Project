@@ -51,7 +51,6 @@ func Start(ctx context.Context) (*pgxpool.Pool, func(), error) {
 	return pool, cleanup, nil
 }
 
-
 func migrationFiles() ([]string, error) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {

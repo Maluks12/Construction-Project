@@ -10,12 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
-
-	"construction_db/internal/core/auth"
+	"construction_db/internal/app"
 	"construction_db/internal/platform/config"
 	"construction_db/internal/platform/database"
-	"construction_db/internal/platform/health"
 )
 
 func main() {
@@ -38,13 +35,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	router := gin.New()
-	router.Use(gin.Recovery())
-
-	router.GET("/healthz", health.Handler(pool))
-
-	authSvc := auth.NewService(pool, cfg.JWTSecret)
-	auth.Register(router, authSvc)
+	router := app.NewRouter(pool, cfg.JWTSecret)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

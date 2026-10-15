@@ -253,3 +253,23 @@ func RevokeSession(ctx context.Context, db DBTX, userID, sessionID string) (bool
 	}
 	return tag.RowsAffected() == 1, nil
 }
+
+func GetMembership(ctx context.Context, db DBTX, orgID, userID string) (*Membership, error) {
+	query := `
+		SELECT org_id, user_id, role, status
+		FROM org_members
+		WHERE org_id = $1 AND user_id = $2
+	`
+	var m Membership
+	err := db.QueryRow(ctx, query, orgID, userID).Scan(
+		&m.OrgID,
+		&m.UserID,
+		&m.Role,
+		&m.Status,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get membership: %w", err)
+	}
+
+	return &m, nil
+}

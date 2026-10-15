@@ -1,6 +1,7 @@
 package sites
 
 import (
+	"construction_db/internal/core/auth"
 	"context"
 	"errors"
 	"fmt"
@@ -43,4 +44,41 @@ func isNotFound(err error) bool {
 	}
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "22P02"
+}
+
+func (s *Service) Create(ctx context.Context, orgID string, req CreateSiteRequest) (*Site, error) {
+	site, err := CreateSite(ctx, s.pool, orgID, auth.RegimeConstruction, req.Name, req.Address)
+	if err != nil {
+		return nil, fmt.Errorf("create site: %w", err)
+	}
+	return site, nil
+}
+
+func (s *Service) Update(ctx context.Context, orgID, siteID string, req UpdateSiteRequest) (*Site, error) {
+	site, err := UpdateSite(ctx, s.pool, orgID, siteID, req.Name, req.Address)
+	if isNotFound(err) {
+		return nil, ErrSiteNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("update site: %w", err)
+	}
+
+	return site, nil
+}
+
+func (s *Service) Archive(ctx context.Context, orgID, siteID string) error {
+	archived, err := ArchiveSite(ctx, s.pool, orgID, siteID)
+	if isNotFound(err) {
+		return ErrSiteNotFound
+	}
+
+	if err != nil {
+		return fmt.Errorf("archive site: %w", err)
+	}
+
+	if !archived {
+		return ErrSiteNotFound
+	}
+
+	return nil
 }

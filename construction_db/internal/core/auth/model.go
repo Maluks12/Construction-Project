@@ -6,10 +6,15 @@ import (
 )
 
 const (
-	RoleOwner = "owner" // org_members.role
-
-	EditionConstruction = "construction"         // organisations.primary_edition
-	RegimeConstruction  = "za_construction_2014" // regulatory_regimes.code
+	RoleOwner            = "owner"
+	RoleSHEOfficer       = "she_officer"
+	RoleSupervisor       = "supervisor"
+	RoleClaimsHandler    = "claims_handler"
+	RoleContractsManager = "contracts_manager"
+	RoleBookkeeper       = "bookkeeper"
+	MemberActive         = "active"
+	EditionConstruction  = "construction"         // organisations.primary_edition
+	RegimeConstruction   = "za_construction_2014" // regulatory_regimes.code
 )
 
 var (

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ const (
 	ctxUserID    = "user_id"
 	ctxOrgID     = "org_id"
 	ctxSessionID = "session_id"
+	ctxRole      = "role"
 )
 
 func RequireAuth(svc *Service) gin.HandlerFunc {
@@ -57,6 +59,24 @@ func RequireAuth(svc *Service) gin.HandlerFunc {
 			return
 		}
 
+		m, err := GetMembership(ctx, svc.pool, claims.OrgID, claims.Subject)
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		if err != nil {
+			slog.Error("require auth: get membership", "err", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			return
+		}
+
+		if m.Status != MemberActive {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		c.Set(ctxRole, m.Role)
 		c.Set(ctxUserID, claims.Subject)
 		c.Set(ctxOrgID, claims.OrgID)
 		c.Set(ctxSessionID, claims.SessionID)
@@ -67,3 +87,17 @@ func RequireAuth(svc *Service) gin.HandlerFunc {
 func UserID(c *gin.Context) string    { return c.GetString(ctxUserID) }
 func OrgID(c *gin.Context) string     { return c.GetString(ctxOrgID) }
 func SessionID(c *gin.Context) string { return c.GetString(ctxSessionID) }
+
+func Role(c *gin.Context) string {
+	return c.GetString(ctxRole)
+}
+
+func RequireRole(roles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if slices.Contains(roles, Role(c)) {
+			c.Next()
+			return
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+	}
+}

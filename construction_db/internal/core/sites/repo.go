@@ -65,3 +65,67 @@ func GetSite(ctx context.Context, db DBTX, orgID, siteID string) (*Site, error) 
 	}
 	return &s, nil
 }
+
+func CreateSite(ctx context.Context, db DBTX, orgID, regimeCode, name string, address *string) (*Site, error) {
+	query := `
+		INSERT INTO sites (org_id, regime_id, name, address)
+		SELECT $1, id, $3, $4 FROM regulatory_regimes WHERE code = $2
+		RETURNING id, org_id, name, address, status, created_at
+	`
+	var s Site
+	err := db.QueryRow(ctx, query, orgID, regimeCode, name, address).Scan(
+		&s.ID,
+		&s.OrgID,
+		&s.Name,
+		&s.Address,
+		&s.Status,
+		&s.CreatedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("create site: %w", err)
+	}
+	return &s, nil
+}
+
+func UpdateSite(ctx context.Context, db DBTX, orgID, siteID string, name, address *string) (*Site, error) {
+	query := `
+		UPDATE sites
+		SET name = COALESCE($3, name),
+			address = COALESCE($4, address),
+			updated_at = now()
+		WHERE org_id = $1 AND id = $2 AND archived_at IS NULL
+		RETURNING id, org_id, name, address, status, created_at
+	`
+
+	var s Site
+	err := db.QueryRow(ctx, query, orgID, siteID, name, address).Scan(
+		&s.ID,
+		&s.OrgID,
+		&s.Name,
+		&s.Address,
+		&s.Status,
+		&s.CreatedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("update site: %w", err)
+	}
+
+	return &s, nil
+}
+
+func ArchiveSite(ctx context.Context, db DBTX, orgID, siteID string) (bool, error) {
+	query := `
+		UPDATE sites
+		SET status = 'archived', archived_at = now(), updated_at = now()
+		WHERE org_id = $1 AND id = $2 AND archived_at IS NULL
+	`
+	tag, err := db.Exec(ctx, query, orgID, siteID)
+
+	if err != nil {
+		return false, fmt.Errorf("archive site: %w", err)
+	}
+
+	return tag.RowsAffected() == 1, nil
+}

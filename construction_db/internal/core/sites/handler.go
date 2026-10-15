@@ -50,3 +50,51 @@ func (h *Handler) Get(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, site)
 }
+
+func (h *Handler) Create(c *gin.Context) {
+	var req CreateSiteRequest
+	orgID := auth.OrgID(c)
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	site, err := h.svc.Create(c.Request.Context(), orgID, req)
+
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, site)
+}
+
+func (h *Handler) Update(c *gin.Context) {
+	var req UpdateSiteRequest
+	orgID := auth.OrgID(c)
+	id := c.Param("id")
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	site, err := h.svc.Update(c.Request.Context(), orgID, id, req)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, site)
+}
+
+func (h *Handler) Archive(c *gin.Context) {
+	orgID := auth.OrgID(c)
+	id := c.Param("id")
+
+	err := h.svc.Archive(c.Request.Context(), orgID, id)
+
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}

@@ -22,6 +22,8 @@ func writeError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrSiteNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "site not found"})
+	case errors.Is(err, ErrUserNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 	default:
 		slog.Error("request failed", "path", c.Request.URL.Path, "err", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
@@ -30,8 +32,10 @@ func writeError(c *gin.Context, err error) {
 
 func (h *Handler) List(c *gin.Context) {
 	orgID := auth.OrgID(c)
+	userID := auth.UserID(c)
+	role := auth.Role(c)
 
-	sites, err := h.svc.List(c.Request.Context(), orgID)
+	sites, err := h.svc.List(c.Request.Context(), orgID, userID, role)
 	if err != nil {
 		writeError(c, err)
 		return
@@ -42,8 +46,10 @@ func (h *Handler) List(c *gin.Context) {
 func (h *Handler) Get(c *gin.Context) {
 	orgID := auth.OrgID(c)
 	id := c.Param("id")
+	userID := auth.UserID(c)
+	role := auth.Role(c)
 
-	site, err := h.svc.Get(c.Request.Context(), orgID, id)
+	site, err := h.svc.Get(c.Request.Context(), orgID, userID, role, id)
 	if err != nil {
 		writeError(c, err)
 		return
@@ -90,6 +96,49 @@ func (h *Handler) Archive(c *gin.Context) {
 	id := c.Param("id")
 
 	err := h.svc.Archive(c.Request.Context(), orgID, id)
+
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) ListMembers(c *gin.Context) {
+	orgID := auth.OrgID(c)
+	id := c.Param("id")
+	members, err := h.svc.ListMembers(c.Request.Context(), orgID, id)
+
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"members": members})
+}
+
+func (h *Handler) AddMember(c *gin.Context) {
+	orgID := auth.OrgID(c)
+	id := c.Param("id")
+	userID := c.Param("userId")
+
+	err := h.svc.AddMember(c.Request.Context(), orgID, id, userID)
+
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) RemoveMember(c *gin.Context) {
+	orgID := auth.OrgID(c)
+	id := c.Param("id")
+	userID := c.Param("userId")
+
+	err := h.svc.RemoveMember(c.Request.Context(), orgID, id, userID)
 
 	if err != nil {
 		writeError(c, err)

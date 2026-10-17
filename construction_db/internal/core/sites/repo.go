@@ -129,3 +129,118 @@ func ArchiveSite(ctx context.Context, db DBTX, orgID, siteID string) (bool, erro
 
 	return tag.RowsAffected() == 1, nil
 }
+
+func ListAssignedSites(ctx context.Context, db DBTX, orgID, userID string) ([]Site, error) {
+	query := `
+		SELECT s.id, s.org_id, s.name, s.address, s.status, s.created_at
+		FROM sites s
+		JOIN site_members m ON m.site_id = s.id
+		WHERE s.org_id = $1 AND m.user_id = $2 AND s.archived_at IS NULL
+		ORDER BY s.created_at
+	`
+	rows, err := db.Query(ctx, query, orgID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list assigned sites: %w", err)
+	}
+	defer rows.Close()
+
+	sites := []Site{}
+	for rows.Next() {
+		var s Site
+		if err := rows.Scan(&s.ID, &s.OrgID, &s.Name, &s.Address, &s.Status, &s.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan assigned sites: %w", err)
+		}
+		sites = append(sites, s)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list assigned sites: %w", err)
+	}
+	return sites, nil
+}
+
+func GetAssignedSite(ctx context.Context, db DBTX, orgID, userID, siteID string) (*Site, error) {
+	query := `
+		SELECT s.id, s.org_id, s.name, s.address, s.status, s.created_at
+		FROM sites s
+		JOIN site_members m ON m.site_id = s.id
+		WHERE s.org_id = $1 AND m.user_id = $2 AND s.id = $3
+	`
+	var s Site
+
+	err := db.QueryRow(ctx, query, orgID, userID, siteID).Scan(
+		&s.ID,
+		&s.OrgID,
+		&s.Name,
+		&s.Address,
+		&s.Status,
+		&s.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get assigned site: %w", err)
+	}
+
+	return &s, nil
+}
+
+func ListSiteMembers(ctx context.Context, db DBTX, orgID, siteID string) ([]SiteMember, error) {
+	query := `
+		SELECT u.id, u.full_name, u.email, u.mobile, om.role
+		FROM site_members sm
+		JOIN users u ON u.id = sm.user_id
+		JOIN org_members om ON om.org_id = sm.org_id AND om.user_id = sm.user_id
+		WHERE sm.org_id = $1 AND sm.site_id = $2
+		ORDER BY u.full_name
+	`
+
+	rows, err := db.Query(ctx, query, orgID, siteID)
+	if err != nil {
+		return nil, fmt.Errorf("list site members: %w", err)
+	}
+	defer rows.Close()
+
+	members := []SiteMember{}
+
+	for rows.Next() {
+		var m SiteMember
+		if err := rows.Scan(&m.UserID, &m.FullName, &m.Email, &m.Mobile, &m.Role); err != nil {
+			return nil, fmt.Errorf("scan site members: %w", err)
+		}
+		members = append(members, m)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list site members: %w", err)
+	}
+	return members, nil
+}
+
+func AddSiteMember(ctx context.Context, db DBTX, orgID, siteID, userID string) error {
+	query := `
+		INSERT INTO site_members (org_id, site_id, user_id)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (site_id, user_id) DO NOTHING
+	`
+
+	_, err := db.Exec(ctx, query, orgID, siteID, userID)
+
+	if err != nil {
+		return fmt.Errorf("add site member: %w", err)
+	}
+
+	return nil
+}
+
+func RemoveSiteMember(ctx context.Context, db DBTX, orgID, siteID, userID string) (bool, error) {
+	query := `
+		DELETE FROM site_members
+		WHERE org_id = $1 AND site_id = $2 AND user_id = $3
+	`
+	tag, err := db.Exec(ctx, query, orgID, siteID, userID)
+
+	if err != nil {
+		return false, fmt.Errorf("remove site member: %w", err)
+	}
+
+	return tag.RowsAffected() == 1, nil
+}

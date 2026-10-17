@@ -12,9 +12,14 @@ func Register(r *gin.Engine, svc *Service, authSvc *auth.Service) {
 
 	protected := r.Group("/v1/sites")
 	protected.Use(auth.RequireAuth(authSvc))
+
 	protected.GET("", h.List)
 	protected.GET("/:id", h.Get)
 	protected.POST("", writers, h.Create)
 	protected.PATCH("/:id", writers, h.Update)
 	protected.DELETE("/:id", writers, h.Archive)
+
+	protected.GET("/:id/members", writers, h.ListMembers)
+	protected.PUT("/:id/members/:userId", writers, h.AddMember)
+	protected.DELETE("/:id/members/:userId", writers, h.RemoveMember)
 }

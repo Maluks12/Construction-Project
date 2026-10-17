@@ -19,16 +19,32 @@ func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{pool: pool}
 }
 
-func (s *Service) List(ctx context.Context, orgID string) ([]Site, error) {
-	sites, err := ListSites(ctx, s.pool, orgID)
+func (s *Service) List(ctx context.Context, orgID string, userID, role string) ([]Site, error) {
+	var sites []Site
+	var err error
+
+	if role == auth.RoleSupervisor {
+		sites, err = ListAssignedSites(ctx, s.pool, orgID, userID)
+	} else {
+		sites, err = ListSites(ctx, s.pool, orgID)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("list sites: %w", err)
 	}
 	return sites, nil
 }
 
-func (s *Service) Get(ctx context.Context, orgID, siteID string) (*Site, error) {
-	site, err := GetSite(ctx, s.pool, orgID, siteID)
+func (s *Service) Get(ctx context.Context, orgID, userID, role, siteID string) (*Site, error) {
+	var site *Site
+	var err error
+
+	if role == auth.RoleSupervisor {
+		site, err = GetAssignedSite(ctx, s.pool, orgID, userID, siteID)
+	} else {
+		site, err = GetSite(ctx, s.pool, orgID, siteID)
+	}
+
 	if isNotFound(err) {
 		return nil, ErrSiteNotFound
 	}
@@ -81,4 +97,67 @@ func (s *Service) Archive(ctx context.Context, orgID, siteID string) error {
 	}
 
 	return nil
+}
+
+func (s *Service) ListMembers(ctx context.Context, orgID, siteID string) ([]SiteMember, error) {
+
+	_, err := GetSite(ctx, s.pool, orgID, siteID)
+	if isNotFound(err) {
+		return nil, ErrSiteNotFound
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("list site members: %w", err)
+	}
+
+	members, err := ListSiteMembers(ctx, s.pool, orgID, siteID)
+
+	if err != nil {
+		return nil, fmt.Errorf("list site members: %w", err)
+	}
+
+	return members, nil
+}
+
+func (s *Service) AddMember(ctx context.Context, orgID, siteID, userID string) error {
+	_, err := GetSite(ctx, s.pool, orgID, siteID)
+	if isNotFound(err) {
+		return ErrSiteNotFound
+	}
+
+	if err != nil {
+		return fmt.Errorf("add site members: %w", err)
+	}
+
+	err = AddSiteMember(ctx, s.pool, orgID, siteID, userID)
+	if isForeignKeyViolation(err) || isNotFound(err) {
+		return ErrUserNotFound
+	}
+
+	if err != nil {
+		return fmt.Errorf("add site members: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) RemoveMember(ctx context.Context, orgID, siteID, userID string) error {
+	removed, err := RemoveSiteMember(ctx, s.pool, orgID, siteID, userID)
+	if isNotFound(err) {
+		return ErrSiteNotFound
+	}
+
+	if err != nil {
+		return fmt.Errorf("remove site member: %w", err)
+	}
+
+	if !removed {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }

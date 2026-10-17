@@ -6,6 +6,15 @@ import (
 )
 
 var ErrSiteNotFound = errors.New("site not found")
+var ErrUserNotFound = errors.New("user not found")
+
+type SiteMember struct {
+	UserID   string  `json:"user_id"`
+	FullName string  `json:"full_name"`
+	Email    *string `json:"email"`
+	Mobile   *string `json:"mobile"`
+	Role     string  `json:"role"`
+}
 
 type Site struct {
 	ID        string    `json:"id"`

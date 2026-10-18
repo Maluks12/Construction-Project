@@ -22,4 +22,9 @@ func Register(r *gin.Engine, svc *Service, authSvc *auth.Service) {
 	protected.GET("/:id/members", writers, h.ListMembers)
 	protected.PUT("/:id/members/:userId", writers, h.AddMember)
 	protected.DELETE("/:id/members/:userId", writers, h.RemoveMember)
+
+	protected.GET("/:id/locations", h.ListLocations)
+	protected.POST("/:id/locations", writers, h.CreateLocation)
+	protected.PATCH("/:id/locations/:locationId", writers, h.RenameLocation)
+	protected.DELETE("/:id/locations/:locationId", writers, h.ArchiveLocation)
 }

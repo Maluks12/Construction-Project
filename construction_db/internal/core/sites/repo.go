@@ -244,3 +244,113 @@ func RemoveSiteMember(ctx context.Context, db DBTX, orgID, siteID, userID string
 
 	return tag.RowsAffected() == 1, nil
 }
+
+func ListLocations(ctx context.Context, db DBTX, orgID, siteID string) ([]Location, error) {
+	query := `
+		SELECT id, site_id, parent_id, kind, name, created_at
+		FROM site_locations
+		WHERE org_id = $1 AND site_id = $2 AND archived_at IS NULL
+		ORDER BY created_at
+	`
+	rows, err := db.Query(ctx, query, orgID, siteID)
+	if err != nil {
+		return nil, fmt.Errorf("list locations: %w", err)
+	}
+	defer rows.Close()
+
+	locations := []Location{}
+	for rows.Next() {
+		var l Location
+		if err := rows.Scan(&l.ID, &l.SiteID, &l.ParentID, &l.Kind, &l.Name, &l.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan locations: %w", err)
+		}
+		locations = append(locations, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list locations: %w", err)
+	}
+
+	return locations, nil
+}
+
+func CreateLocation(ctx context.Context, db DBTX, orgID, siteID string, parentID *string, kind, name string) (*Location, error) {
+	query := `
+		INSERT INTO site_locations (org_id, site_id, parent_id, kind, name)
+		SELECT $1, $2, $3, $4, $5
+		WHERE $3::uuid IS NULL OR EXISTS (
+			SELECT 1 FROM site_locations p
+			WHERE p.org_id = $1 AND p.site_id = $2 AND p.id = $3 AND p.archived_at IS NULL
+		)
+		RETURNING id, site_id, parent_id, kind, name, created_at
+	`
+	var l Location
+	err := db.QueryRow(ctx, query, orgID, siteID, parentID, kind, name).Scan(
+		&l.ID,
+		&l.SiteID,
+		&l.ParentID,
+		&l.Kind,
+		&l.Name,
+		&l.CreatedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("create location: %w", err)
+	}
+
+	return &l, nil
+}
+
+func RenameLocation(ctx context.Context, db DBTX, orgID, siteID, locationID, name string) (*Location, error) {
+	query := `
+		UPDATE site_locations
+		SET name = $4, updated_at = now()
+		WHERE org_id = $1 AND site_id = $2 AND id = $3 AND archived_at IS NULL
+		RETURNING id, site_id, parent_id, kind, name, created_at
+	`
+	var l Location
+	err := db.QueryRow(ctx, query, orgID, siteID, locationID, name).Scan(
+		&l.ID,
+		&l.SiteID,
+		&l.ParentID,
+		&l.Kind,
+		&l.Name,
+		&l.CreatedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("rename location: %w", err)
+	}
+
+	return &l, nil
+}
+
+func HasActiveChildren(ctx context.Context, db DBTX, orgID, siteID, locationID string) (bool, error) {
+	query := `
+		SELECT EXISTS (
+			SELECT 1 FROM site_locations
+			WHERE org_id =$1 AND site_id = $2 AND parent_id = $3 AND archived_at IS NULL
+		)
+	`
+	var exists bool
+	if err := db.QueryRow(ctx, query, orgID, siteID, locationID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("has active children: %w", err)
+	}
+
+	return exists, nil
+}
+
+func ArchiveLocation(ctx context.Context, db DBTX, orgID, siteID, locationID string) (bool, error) {
+	query := `
+		UPDATE site_locations
+		SET archived_at = now(), updated_at = now()
+		WHERE org_id = $1 AND site_id = $2 AND id = $3 AND archived_at IS NULL
+	`
+
+	tag, err := db.Exec(ctx, query, orgID, siteID, locationID)
+
+	if err != nil {
+		return false, fmt.Errorf("archive location: %w", err)
+	}
+
+	return tag.RowsAffected() == 1, nil
+}

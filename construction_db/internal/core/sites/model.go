@@ -5,8 +5,15 @@ import (
 	"time"
 )
 
-var ErrSiteNotFound = errors.New("site not found")
-var ErrUserNotFound = errors.New("user not found")
+var (
+	ErrBlankName           = errors.New("name is required")
+	ErrSiteNotFound        = errors.New("site not found")
+	ErrUserNotFound        = errors.New("user not found")
+	ErrLocationNotFound    = errors.New("location not found")
+	ErrParentNotFound      = errors.New("parent location not found")
+	ErrLocationNameTaken   = errors.New("a location with that name already exists here")
+	ErrLocationHasChildren = errors.New("location has active child locations")
+)
 
 type SiteMember struct {
 	UserID   string  `json:"user_id"`
@@ -33,4 +40,23 @@ type CreateSiteRequest struct {
 type UpdateSiteRequest struct {
 	Name    *string `json:"name" binding:"omitempty,min=1,max=200"`
 	Address *string `json:"address" binding:"omitempty,max=500"`
+}
+
+type Location struct {
+	ID        string    `json:"id"`
+	SiteID    string    `json:"site_id"`
+	ParentID  *string   `json:"parent_id"`
+	Kind      string    `json:"kind"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type CreateLocationRequest struct {
+	Kind     string  `json:"kind" binding:"required,oneof=zone floor"`
+	Name     string  `json:"name" binding:"required,max=100"`
+	ParentID *string `json:"parent_id" binding:"omitempty,uuid"`
+}
+
+type UpdateLocationRequest struct {
+	Name string `json:"name" binding:"required,max=100"`
 }

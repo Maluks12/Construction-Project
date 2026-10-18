@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -60,6 +61,13 @@ func isNotFound(err error) bool {
 	}
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "22P02"
+}
+
+func isUniqueViolation(err error, constraint string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) &&
+		pgErr.Code == "23505" &&
+		pgErr.ConstraintName == constraint
 }
 
 func (s *Service) Create(ctx context.Context, orgID string, req CreateSiteRequest) (*Site, error) {
@@ -160,4 +168,94 @@ func (s *Service) RemoveMember(ctx context.Context, orgID, siteID, userID string
 func isForeignKeyViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23503"
+}
+
+func (s *Service) ListLocations(ctx context.Context, orgID, userID, role, siteID string) ([]Location, error) {
+	if _, err := s.Get(ctx, orgID, userID, role, siteID); err != nil {
+		return nil, err
+	}
+
+	locations, err := ListLocations(ctx, s.pool, orgID, siteID)
+
+	if err != nil {
+		return nil, fmt.Errorf("list locations: %w", err)
+	}
+	return locations, nil
+
+}
+
+func (s *Service) CreateLocation(ctx context.Context, orgID, siteID string, req CreateLocationRequest) (*Location, error) {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return nil, ErrBlankName
+	}
+
+	_, err := GetSite(ctx, s.pool, orgID, siteID)
+	if isNotFound(err) {
+		return nil, ErrSiteNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("create location: %w", err)
+	}
+
+	location, err := CreateLocation(ctx, s.pool, orgID, siteID, req.ParentID, req.Kind, name)
+	if isNotFound(err) {
+		return nil, ErrParentNotFound
+	}
+	if isUniqueViolation(err, "site_locations_sibling_name_unique") {
+		return nil, ErrLocationNameTaken
+	}
+	if err != nil {
+		return nil, fmt.Errorf("create location: %w", err)
+	}
+	return location, nil
+}
+
+func (s *Service) RenameLocation(ctx context.Context, orgID, siteID, locationID string, req UpdateLocationRequest) (*Location, error) {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return nil, ErrBlankName
+	}
+
+	location, err := RenameLocation(ctx, s.pool, orgID, siteID, locationID, name)
+
+	if isNotFound(err) {
+		return nil, ErrLocationNotFound
+	}
+
+	if isUniqueViolation(err, "site_locations_sibling_name_unique") {
+		return nil, ErrLocationNameTaken
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("rename location: %w", err)
+	}
+
+	return location, nil
+}
+
+func (s *Service) ArchiveLocation(ctx context.Context, orgID, siteID, locationID string) error {
+	hasChildren, err := HasActiveChildren(ctx, s.pool, orgID, siteID, locationID)
+	if isNotFound(err) {
+		return ErrLocationNotFound
+	}
+
+	if err != nil {
+		return fmt.Errorf("archive location: %w", err)
+	}
+
+	if hasChildren {
+		return ErrLocationHasChildren
+	}
+
+	archived, err := ArchiveLocation(ctx, s.pool, orgID, siteID, locationID)
+	if err != nil {
+		return fmt.Errorf("archive location: %w", err)
+	}
+
+	if !archived {
+		return ErrLocationNotFound
+	}
+
+	return nil
 }

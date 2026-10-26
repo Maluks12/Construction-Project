@@ -5,6 +5,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"construction_db/internal/core/auth"
+	"construction_db/internal/core/invites"
 	"construction_db/internal/core/sites"
 	"construction_db/internal/platform/health"
 )
@@ -20,6 +21,9 @@ func NewRouter(pool *pgxpool.Pool, jwtSecret string) *gin.Engine {
 
 	sitesSvc := sites.NewService(pool)
 	sites.Register(router, sitesSvc, authSvc)
+
+	invitesSvc := invites.NewService(pool)
+	invites.Register(router, invitesSvc, authSvc)
 
 	return router
 }

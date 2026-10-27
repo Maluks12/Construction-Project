@@ -9,8 +9,9 @@ Two areas, two people:
   in `web/CLAUDE.md`.
 
 Source of truth for the product: SiteProof spec **Rev 4** (22 Sep 2026), in
-`docs/spec/`. Rev 3 has the detailed injury-on-duty (COIDA W.Cl.2–6) lifecycle;
-Rev 1 has construction domain knowledge (JBCC, stakeholders, vocabulary).
+`docs/spec/`. Rev 3 (SiteProof_Rev3_Safety_Led_...) has the detailed injury-on-duty (COIDA W.Cl.2–6)
+lifecycle. The Implementation & Domain Reference (Rev 1) explains the construction
+industry (JBCC, stakeholders, vocabulary); ignore its build order.
 Read the relevant spec section before starting a milestone. The milestone plan
 is `docs/BUILD_PLAN.md`. Everything is due **Sat 5 Dec 2026**.
 

@@ -2,7 +2,7 @@ package app
 
 import (
 	"bytes"
-	"context"
+	"construction_db/internal/core/invites"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -19,14 +19,13 @@ func TestSiteScoping(t *testing.T) {
 	ownerToken := signup(t, router, "Scope Co", "owner@scoping.test")
 	otherToken := signup(t, router, "Other Co", "owner@other-scoping.test")
 
-	org := me(t, router, ownerToken)
 	other := me(t, router, otherToken)
 
 	siteA := listSites(t, router, ownerToken)[0].ID
 	siteB := createSite(t, router, ownerToken, "Unassigned Site")
 	otherSite := listSites(t, router, otherToken)[0].ID
 
-	supervisorID := addMember(t, org.OrgID, "foreman@scoping.test", auth.RoleSupervisor)
+	supervisorID := inviteMember(t, router, ownerToken, "foreman@scoping.test", auth.RoleSupervisor)
 	supToken := login(t, router, "foreman@scoping.test")
 
 	if rec := do(t, router, http.MethodPut, "/v1/sites/"+siteA+"/members/"+supervisorID, ownerToken, nil); rec.Code != http.StatusNoContent {
@@ -151,34 +150,34 @@ func createSite(t *testing.T, router http.Handler, token, name string) string {
 	return site.ID
 }
 
-// addMember puts a user straight into the database, because invites
-// don't exist yet. Step 4e replaces this with the real invite flow.
-func addMember(t *testing.T, orgID, email, role string) string {
+// inviteMember adds someone to the owner's organisation the real way:
+// invite them by email, then accept with the shared test password.
+// login(t, router, email) works for them afterwards.
+func inviteMember(t *testing.T, router http.Handler, ownerToken, email, role string) string {
 	t.Helper()
-	ctx := context.Background()
 
-	hash, err := auth.HashPassword("correcthorse1")
-	if err != nil {
-		t.Fatalf("hash password: %v", err)
+	rec := do(t, router, http.MethodPost, "/v1/invites", ownerToken, map[string]string{
+		"email":     email,
+		"full_name": "Test " + role,
+		"role":      role,
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("invite %s: got %d (body: %s)", email, rec.Code, rec.Body.String())
+	}
+	var invite invites.InviteResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &invite); err != nil {
+		t.Fatalf("decode invite: %v", err)
 	}
 
-	var userID string
-	err = testPool.QueryRow(ctx,
-		`INSERT INTO users (email, full_name, password_hash) VALUES ($1, $2, $3) RETURNING id`,
-		email, "Test "+role, hash,
-	).Scan(&userID)
-	if err != nil {
-		t.Fatalf("insert user: %v", err)
+	rec = do(t, router, http.MethodPost, "/v1/invites/accept", "", map[string]string{
+		"token":       invite.Token,
+		"password":    "correcthorse1",
+		"device_name": "test",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("accept invite %s: got %d (body: %s)", email, rec.Code, rec.Body.String())
 	}
-
-	_, err = testPool.Exec(ctx,
-		`INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, $3)`,
-		orgID, userID, role,
-	)
-	if err != nil {
-		t.Fatalf("insert member: %v", err)
-	}
-	return userID
+	return invite.UserID
 }
 
 func login(t *testing.T, router http.Handler, email string) string {

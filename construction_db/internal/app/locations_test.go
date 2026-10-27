@@ -14,12 +14,11 @@ func TestLocations(t *testing.T) {
 
 	ownerToken := signup(t, router, "Loc Co", "owner@locations.test")
 	otherToken := signup(t, router, "Loc Other Co", "owner@locations-other.test")
-	org := me(t, router, ownerToken)
 
 	site := listSites(t, router, ownerToken)[0].ID
 	site2 := createSite(t, router, ownerToken, "Second Site")
 
-	supID := addMember(t, org.OrgID, "foreman@locations.test", auth.RoleSupervisor)
+	supID := inviteMember(t, router, ownerToken, "foreman@locations.test", auth.RoleSupervisor)
 	supToken := login(t, router, "foreman@locations.test")
 	if rec := do(t, router, http.MethodPut, "/v1/sites/"+site+"/members/"+supID, ownerToken, nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("assign supervisor: got %d (body: %s)", rec.Code, rec.Body.String())

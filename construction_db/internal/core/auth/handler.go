@@ -24,7 +24,9 @@ func writeError(c *gin.Context, err error) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrEmailTaken):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-	case errors.Is(err, ErrOrgRequired), errors.Is(err, ErrNotMember):
+	case errors.Is(err, ErrOrgRequired),
+		errors.Is(err, ErrNotMember),
+		errors.Is(err, ErrLoginIDRequired):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
 		slog.Error("request failed", "path", c.Request.URL.Path, "err", err)

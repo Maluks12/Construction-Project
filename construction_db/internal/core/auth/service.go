@@ -25,7 +25,7 @@ func NewService(pool *pgxpool.Pool, secret string) *Service {
 	return &Service{pool: pool, secret: secret}
 }
 
-func (s *Service) issueTokens(ctx context.Context, db DBTX, userID, orgID, deviceName, userAgent string) (*TokenPair, error) {
+func (s *Service) IssueTokens(ctx context.Context, db DBTX, userID, orgID, deviceName, userAgent string) (*TokenPair, error) {
 	expiresAt := time.Now().Add(refreshTokenTTL)
 
 	sessionID, err := CreateSession(ctx, db, userID, orgID, deviceName, userAgent, expiresAt)
@@ -56,7 +56,19 @@ func (s *Service) issueTokens(ctx context.Context, db DBTX, userID, orgID, devic
 }
 
 func (s *Service) Login(ctx context.Context, req LoginRequest, userAgent string) (*TokenPair, error) {
-	user, err := FindUserByEmail(ctx, s.pool, req.Email)
+	if (req.Email == "") == (req.Mobile == "") {
+		return nil, ErrLoginIDRequired
+	}
+
+	var user *User
+	var err error
+
+	if req.Email != "" {
+		user, err = FindUserByEmail(ctx, s.pool, req.Email)
+	} else {
+		user, err = FindUserByMobile(ctx, s.pool, req.Mobile)
+	}
+
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrInvalidCredentials
 	}
@@ -82,7 +94,7 @@ func (s *Service) Login(ctx context.Context, req LoginRequest, userAgent string)
 		return nil, err
 	}
 
-	return s.issueTokens(ctx, s.pool, user.ID, orgID, req.DeviceName, userAgent)
+	return s.IssueTokens(ctx, s.pool, user.ID, orgID, req.DeviceName, userAgent)
 }
 
 func pickOrg(memberships []Membership, requested string) (string, error) {
@@ -139,7 +151,7 @@ func (s *Service) Signup(ctx context.Context, req SignupRequest, userAgent strin
 		return nil, fmt.Errorf("signup: %w", err)
 	}
 
-	tokens, err := s.issueTokens(ctx, tx, userID, orgID, req.DeviceName, userAgent)
+	tokens, err := s.IssueTokens(ctx, tx, userID, orgID, req.DeviceName, userAgent)
 	if err != nil {
 		return nil, fmt.Errorf("signup: %w", err)
 	}

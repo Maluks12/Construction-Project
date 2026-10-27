@@ -21,8 +21,11 @@ func NewHandler(svc *Service) *Handler {
 func writeError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrBlankName),
-		errors.Is(err, ErrContactRequired):
+		errors.Is(err, ErrContactRequired),
+		errors.Is(err, ErrInvalidInvite):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case errors.Is(err, ErrWrongPassword):
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrCannotInviteOwner):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrAlreadyMember),
@@ -78,4 +81,38 @@ func (h *Handler) Revoke(c *gin.Context) {
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) Preview(c *gin.Context) {
+	var req PreviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	preview, err := h.svc.Preview(c.Request.Context(), req.Token)
+
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, preview)
+}
+
+func (h *Handler) Accept(c *gin.Context) {
+	var req AcceptRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tokens, err := h.svc.Accept(c.Request.Context(), req, c.Request.UserAgent())
+
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, tokens)
 }

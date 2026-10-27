@@ -17,10 +17,11 @@ const inviteTTL = 7 * 24 * time.Hour
 
 type Service struct {
 	pool *pgxpool.Pool
+	auth *auth.Service
 }
 
-func NewService(pool *pgxpool.Pool) *Service {
-	return &Service{pool: pool}
+func NewService(pool *pgxpool.Pool, authSvc *auth.Service) *Service {
+	return &Service{pool: pool, auth: authSvc}
 }
 
 func (s *Service) Invite(ctx context.Context, orgID, inviterID, inviterRole string, req InviteRequest) (*InviteResponse, error) {
@@ -160,4 +161,77 @@ func isUniqueViolation(err error, constraint string) bool {
 	return errors.As(err, &pgErr) &&
 		pgErr.Code == "23505" &&
 		pgErr.ConstraintName == constraint
+}
+
+func (s *Service) Preview(ctx context.Context, token string) (*InvitePreview, error) {
+	p, err := GetInvitePreview(ctx, s.pool, auth.HashRefreshToken(token))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrInvalidInvite
+	}
+	if err != nil {
+		return nil, fmt.Errorf("preview invite: %w", err)
+	}
+	return p, nil
+}
+
+func (s *Service) Accept(ctx context.Context, req AcceptRequest, userAgent string) (*auth.TokenPair, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("accept invite: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	a, err := FindInviteForAccept(ctx, tx, auth.HashRefreshToken(req.Token))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrInvalidInvite
+	}
+	if err != nil {
+		return nil, fmt.Errorf("accept invite: %w", err)
+	}
+
+	if a.AcceptedAt != nil || a.RevokedAt != nil || a.ArchivedAt != nil || time.Now().After(a.ExpiresAt) {
+		return nil, ErrInvalidInvite
+	}
+
+	if a.PasswordHash == nil {
+		hash, err := auth.HashPassword(req.Password)
+		if err != nil {
+			return nil, fmt.Errorf("accept invite: %w", err)
+		}
+		ok, err := SetPassword(ctx, tx, a.UserID, hash)
+		if err != nil {
+			return nil, fmt.Errorf("accept invite: %w", err)
+		}
+		if !ok {
+			return nil, ErrInvalidInvite
+		}
+	} else if !auth.CheckPassword(*a.PasswordHash, req.Password) {
+		return nil, ErrWrongPassword
+	}
+
+	ok, err := MarkInviteAccepted(ctx, tx, a.ID)
+	if err != nil {
+		return nil, fmt.Errorf("accept invite: %w", err)
+	}
+	if !ok {
+		return nil, ErrInvalidInvite
+	}
+
+	ok, err = ActivateMember(ctx, tx, a.OrgID, a.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("accept invite: %w", err)
+	}
+	if !ok {
+		return nil, ErrInvalidInvite
+	}
+
+	tokens, err := s.auth.IssueTokens(ctx, tx, a.UserID, a.OrgID, req.DeviceName, userAgent)
+	if err != nil {
+		return nil, fmt.Errorf("accept invite: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("accept invite: %w", err)
+	}
+	return tokens, nil
 }

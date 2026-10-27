@@ -22,7 +22,7 @@ func NewRouter(pool *pgxpool.Pool, jwtSecret string) *gin.Engine {
 	sitesSvc := sites.NewService(pool)
 	sites.Register(router, sitesSvc, authSvc)
 
-	invitesSvc := invites.NewService(pool)
+	invitesSvc := invites.NewService(pool, authSvc)
 	invites.Register(router, invitesSvc, authSvc)
 
 	return router

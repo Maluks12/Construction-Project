@@ -273,3 +273,17 @@ func GetMembership(ctx context.Context, db DBTX, orgID, userID string) (*Members
 
 	return &m, nil
 }
+
+func FindUserByMobile(ctx context.Context, db DBTX, mobile string) (*User, error) {
+	var u User
+	err := db.QueryRow(ctx,
+		`SELECT id, email, mobile, full_name, password_hash, archived_at
+		   FROM users
+		  WHERE mobile = $1`,
+		mobile,
+	).Scan(&u.ID, &u.Email, &u.Mobile, &u.FullName, &u.PasswordHash, &u.ArchivedAt)
+	if err != nil {
+		return nil, fmt.Errorf("find user by mobile: %w", err)
+	}
+	return &u, nil
+}

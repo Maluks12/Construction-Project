@@ -18,9 +18,10 @@ const (
 )
 
 var (
-	// Wrong email OR wrong password. Deliberately the same error for both.
-	ErrInvalidCredentials = errors.New("invalid email or password")
+	// Wrong email/mobile OR wrong password. Deliberately the same error for both.
+	ErrInvalidCredentials = errors.New("invalid login or password")
 
+	ErrLoginIDRequired = errors.New("provide either email or mobile")
 	// Signup with an email that already exists (any letter case).
 	ErrEmailTaken = errors.New("email already registered")
 
@@ -47,7 +48,8 @@ type SignupRequest struct {
 }
 
 type LoginRequest struct {
-	Email      string `json:"email" binding:"required,email"`
+	Email      string `json:"email" binding:"omitempty,email"`
+	Mobile     string `json:"mobile" binding:"omitempty,e164"`
 	Password   string `json:"password" binding:"required"`
 	OrgID      string `json:"org_id" binding:"omitempty,uuid"`
 	DeviceName string `json:"device_name" binding:"omitempty,max=100"`

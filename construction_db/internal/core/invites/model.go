@@ -6,6 +6,8 @@ import (
 )
 
 var (
+	ErrInvalidInvite     = errors.New("this invite is invalid or has expired")
+	ErrWrongPassword     = errors.New("incorrect password for this account")
 	ErrBlankName         = errors.New("name is required")
 	ErrContactRequired   = errors.New("email or mobile is required")
 	ErrAlreadyMember     = errors.New("this person is already a member")
@@ -37,4 +39,33 @@ type PendingInvite struct {
 	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 	ExpiresAt time.Time `json:"expires_at"`
+}
+
+type PreviewRequest struct {
+	Token string `json:"token" binding:"required"`
+}
+
+type InvitePreview struct {
+	OrgName     string    `json:"org_name"`
+	FullName    string    `json:"full_name"`
+	Role        string    `json:"role"`
+	HasPassword bool      `json:"has_password"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+type AcceptRequest struct {
+	Token      string `json:"token" binding:"required"`
+	Password   string `json:"password" binding:"required,min=10,max=72"`
+	DeviceName string `json:"device_name" binding:"omitempty,max=100"`
+}
+
+type AcceptTarget struct {
+	ID           string
+	OrgID        string
+	UserID       string
+	ExpiresAt    time.Time
+	AcceptedAt   *time.Time
+	RevokedAt    *time.Time
+	PasswordHash *string
+	ArchivedAt   *time.Time
 }

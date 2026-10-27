@@ -160,3 +160,96 @@ func RevokeInvite(ctx context.Context, db DBTX, orgID, inviteID string) (bool, e
 
 	return tag.RowsAffected() == 1, nil
 }
+
+func GetInvitePreview(ctx context.Context, db DBTX, tokenHash string) (*InvitePreview, error) {
+	query := `
+		SELECT o.trading_name, u.full_name, om.role, (u.password_hash IS NOT NULL), i.expires_at
+		FROM invitations i
+		JOIN users u ON u.id = i.user_id
+		JOIN org_members om ON om.org_id = i.org_id AND om.user_id = i.user_id
+		JOIN organisations o ON o.id = i.org_id
+		WHERE i.token_hash = $1
+		AND i.accepted_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > now()
+		AND u.archived_at IS NULL
+	`
+	var p InvitePreview
+	err := db.QueryRow(ctx, query, tokenHash).Scan(&p.OrgName, &p.FullName, &p.Role, &p.HasPassword, &p.ExpiresAt)
+
+	if err != nil {
+		return nil, fmt.Errorf("get invite preview: %w", err)
+	}
+	return &p, nil
+}
+
+func FindInviteForAccept(ctx context.Context, db DBTX, tokenHash string) (*AcceptTarget, error) {
+	query := `
+		SELECT i.id, i.org_id, i.user_id, i.expires_at, i.accepted_at, i.revoked_at,
+        	u.password_hash, u.archived_at
+		FROM invitations i
+		JOIN users u ON u.id = i.user_id
+		WHERE i.token_hash = $1
+		FOR UPDATE OF i
+	`
+	var a AcceptTarget
+	err := db.QueryRow(ctx, query, tokenHash).Scan(
+		&a.ID,
+		&a.OrgID,
+		&a.UserID,
+		&a.ExpiresAt,
+		&a.AcceptedAt,
+		&a.RevokedAt,
+		&a.PasswordHash,
+		&a.ArchivedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("find invite for accept: %w", err)
+	}
+
+	return &a, nil
+}
+
+func SetPassword(ctx context.Context, db DBTX, userID, passwordHash string) (bool, error) {
+	query := `
+		UPDATE users SET password_hash = $2, updated_at = now()
+		WHERE id = $1 AND password_hash IS NULL
+	`
+
+	tag, err := db.Exec(ctx, query, userID, passwordHash)
+
+	if err != nil {
+		return false, fmt.Errorf("set password: %w", err)
+	}
+
+	return tag.RowsAffected() == 1, nil
+}
+
+func MarkInviteAccepted(ctx context.Context, db DBTX, inviteID string) (bool, error) {
+	query := `
+		UPDATE invitations SET accepted_at = now()
+		WHERE id = $1 AND accepted_at IS NULL AND revoked_at IS NULL
+	`
+
+	tag, err := db.Exec(ctx, query, inviteID)
+
+	if err != nil {
+		return false, fmt.Errorf("mark invite accepted: %w", err)
+	}
+
+	return tag.RowsAffected() == 1, nil
+}
+
+func ActivateMember(ctx context.Context, db DBTX, orgID, userID string) (bool, error) {
+	query := `
+		UPDATE org_members SET status = 'active', updated_at = now()
+		WHERE org_id = $1 AND user_id = $2 AND status = 'invited'
+	`
+
+	tag, err := db.Exec(ctx, query, orgID, userID)
+
+	if err != nil {
+		return false, fmt.Errorf("activate member: %w", err)
+	}
+
+	return tag.RowsAffected() == 1, nil
+}

@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+/*
+  SiteProof tokens. Plain, high-contrast surfaces for people reading this on
+  a site-office laptop; hi-vis amber is kept for the brand mark and focus.
+*/
+:root {
+  --bg: #f5f4f0;
+  --surface: #ffffff;
+  --surface-2: #f0eee9;
+  --ink: #1b1a17;
+  --muted: #67635b;
+  --line: #e2dfd8;
+  --primary: #1b1a17;
+  --primary-ink: #ffffff;
+  --accent: #f2a900;
+  --accent-ink: #8a5a00;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --ok: #067647;
+  --ok-soft: #e7f6ee;
+  --focus: #f2a900;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121110;
+    --surface: #1b1a18;
+    --surface-2: #242320;
+    --ink: #edebe6;
+    --muted: #a39f97;
+    --line: #2f2d29;
+    --primary: #edebe6;
+    --primary-ink: #121110;
+    --accent: #f2b31a;
+    --accent-ink: #f6c44d;
+    --danger: #f97066;
+    --danger-soft: #3a1714;
+    --ok: #47cd89;
+    --ok-soft: #10291d;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-primary: var(--primary);
+  --color-primary-ink: var(--primary-ink);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Hazard-tape stripe used by the brand mark. */
+.hazard {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--accent) 0 6px,
+    var(--ink) 6px 12px
+  );
+}

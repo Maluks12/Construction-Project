@@ -21,7 +21,7 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 - [x] Resolve the regime through the site in one place (sites.regime_id, never the org) (due Thu 29 Oct)
 - [x] editions/construction skeleton; core reaches it only through interfaces (due Fri 30 Oct)
 - [x] CI import-boundary check: fail if core imports editions (due Fri 30 Oct)
-- [ ] RLS on tenant tables; set org/site settings per transaction (set_config(..., true) inside the tx, safe with pgx pool reuse) (due Sat 31 Oct)
+- [x] RLS on tenant tables; set org/site settings per transaction (set_config(..., true) inside the tx, safe with pgx pool reuse) (due Sat 31 Oct)
 - [ ] Test that RLS blocks cross-org reads even from a buggy query (due Sun 1 Nov)
 
 ## Safety core (due Sun 22 Nov (checkpoint))
@@ -87,6 +87,8 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 
 ### DEPLOY: Deploy (due Sat 28 Nov)
 
+- [ ] RLS on users: visible if it's you or shares an org with the tenant; login and invite lookups by email/mobile via SECURITY DEFINER functions (before the production deploy)
+- [ ] Create a LOGIN role for siteproof_app with its own password; the production API connects with it, never superuser credentials. The migration owner must be a superuser or have BYPASSRLS (the token lookups are SECURITY DEFINER) (before the production deploy)
 - [ ] Production deploy: GHCR image, secrets, migrate step, health checks, backups (due Sat 28 Nov)
 - [ ] Smoke test the deployed API (due Sat 28 Nov)
 

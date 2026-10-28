@@ -4,6 +4,13 @@ Read `../CLAUDE.md` first (shared rules and the API contract with `web/`).
 Run everything from `construction_db/`; the Go module lives here, not at the
 repo root.
 
+Known risks (each has a DEPLOY task in `docs/BUILD_PLAN.md`):
+- The API connects with the `POSTGRES_USER` superuser and drops privilege
+  with `SET ROLE siteproof_app` on each connection. SQL running in the app
+  could `RESET ROLE`. Production must use a LOGIN role instead.
+- `users` has no RLS (it has no `org_id`). A buggy query could list every
+  user's name, email and mobile across orgs.
+
 Known spec issues:
 - Rev 4 §2.1 says the hash chain is per project; everywhere else says per
   site. Use **per site**.
@@ -74,10 +81,24 @@ timestamps; per-site chain
 
 ## Conventions (learned the hard way)
 
-- **Transactions:** when several writes must all happen or none, use
-  `tx, err := s.pool.Begin(ctx)`, `defer tx.Rollback(ctx)`, pass `tx` to every
-  repo call, then `tx.Commit(ctx)`. After `Begin`, `s.pool` must not appear
-  again in that function. Single statements and reads use the pool.
+- **Tenant transactions (RLS):** every query on a tenant table runs inside
+  `database.WithTenant(ctx, s.pool, database.Tenant{OrgID, UserID}, func(tx)
+  …)`, with `tx` passed to every repo call. No single statements on the pool
+  touch tenant tables: under RLS they see nothing. Inside `fn`, `s.pool` must
+  not appear. Change the tenant mid-transaction with `database.SetTenant`
+  (login, signup, invite accept). Only the token lookups
+  (`RefreshTokenTenant`, `InvitationOrg`) run on the pool, before the tenant
+  is known. Edition code follows the same rule; `Deps.Pool` alone sees
+  nothing.
+- `WithTenant` commits only if `fn` returns nil. To persist a write and still
+  report an error (refresh reuse revokes the session), return nil from `fn`
+  and return the error after it.
+- Sentinels sent with `err.Error()` must reach the handler unwrapped; wrap
+  only other errors (`invites.wrap` does this).
+- Test fixtures that write raw SQL use `execAsTenant` (tenant tables) or
+  `testAdmin` (`regulatory_regimes`, which the app role can only read) and
+  assert the rows changed. Under RLS a mis-scoped write changes 0 rows
+  silently.
 - Repo functions take `db DBTX` so they work with the pool or a tx.
 - `Scan` takes pointers (`&x.ID`), in exactly the same order as the SELECT
   list. `go vet` does not catch a missing `&`.
@@ -134,8 +155,11 @@ timestamps; per-site chain
     `cmd/`, `internal/app` and `internal/editions` depends on an edition
     (transitively, test code included), or one edition depends on another.
     Runs in `go test ./...` and as its own CI step.
-  - 5f (Sat 31): RLS on tenant tables, `set_config(..., true)` inside each
-    transaction.
+  - 5f (Sat 31), **done**: migration 000008 (`siteproof_app` role,
+    `app_org_id()`/`app_user_id()`, SECURITY DEFINER token lookups) and
+    000009 (RLS forced on organisations, org_members, sessions,
+    refresh_tokens, sites, site_members, site_locations, invitations). Tenant
+    set per transaction by `database.WithTenant` with `set_config(..., true)`.
   - 5g (Sun 1 Nov): tests that RLS blocks cross-org reads even from a buggy
     query.
 

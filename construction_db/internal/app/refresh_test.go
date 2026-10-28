@@ -31,9 +31,17 @@ func TestRefreshRotationAndReuse(t *testing.T) {
 
 func loginTokens(t *testing.T, router http.Handler, email string) auth.TokenPair {
 	t.Helper()
-	rec := do(t, router, http.MethodPost, "/v1/auth/login", "", map[string]string{
-		"email": email, "password": "correcthorse1", "device_name": "test",
-	})
+	return loginTokensFor(t, router, email, "")
+}
+
+// loginTokensFor logs in to orgID, which a user in several orgs must name.
+func loginTokensFor(t *testing.T, router http.Handler, email, orgID string) auth.TokenPair {
+	t.Helper()
+	body := map[string]string{"email": email, "password": "correcthorse1", "device_name": "test"}
+	if orgID != "" {
+		body["org_id"] = orgID
+	}
+	rec := do(t, router, http.MethodPost, "/v1/auth/login", "", body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("login: got %d (body: %s)", rec.Code, rec.Body.String())
 	}

@@ -85,6 +85,16 @@ item's `source_ref`, and each template's `source_ref` is the inspection duty.
 Event-triggered inspections (after blasting, after rain, before and after a
 pour) start the same templates ad hoc. M7 handles scheduling.
 
+## Vocabulary (`vocabulary.json`)
+
+From Rev 4 §3.11: "Site diary (not daily log) · contract instruction (not
+change order) · principal agent · principal contractor · employer (JBCC) /
+client (Construction Regulations) · practical completion · snag list ·
+preliminaries and generals · bill of quantities." Keys are the generic term and
+labels are the construction term. `client` and `employer` are the same party
+in the two documents, so the UI picks one by context. Vocabulary keys aren't
+locked.
+
 ## Gaps (known and deliberate)
 
 - **Scaffolding:** CR 2014 reg 16(2) says "A contractor using access

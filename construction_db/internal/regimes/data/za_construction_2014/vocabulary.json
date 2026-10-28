@@ -1,1 +1,12 @@
-[]
+[
+  {"key": "daily_log", "label": "Site diary"},
+  {"key": "change_order", "label": "Contract instruction"},
+  {"key": "principal_agent", "label": "Principal agent"},
+  {"key": "principal_contractor", "label": "Principal contractor"},
+  {"key": "client", "label": "Client"},
+  {"key": "employer", "label": "Employer"},
+  {"key": "practical_completion", "label": "Practical completion"},
+  {"key": "punch_list", "label": "Snag list"},
+  {"key": "preliminaries", "label": "Preliminaries and generals"},
+  {"key": "bill_of_quantities", "label": "Bill of quantities"}
+]

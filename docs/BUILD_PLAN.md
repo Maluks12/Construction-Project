@@ -17,7 +17,7 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 ### M5: Regimes & the edition boundary (due Sun 1 Nov)
 
 - [x] Load regime data: checklists, deadline rules, taxonomies, vocabulary (internal/regimes, embedded JSON, versioned) (due Wed 28 Oct)
-- [ ] Construction regime data set: Construction Regulations 2014 checklists, incident taxonomy, deadline rules (due Thu 29 Oct)
+- [x] Construction regime data set: Construction Regulations 2014 checklists, incident taxonomy, deadline rules (due Thu 29 Oct)
 - [ ] Resolve the regime through the site in one place (sites.regime_id, never the org) (due Thu 29 Oct)
 - [ ] editions/construction skeleton; core reaches it only through interfaces (due Fri 30 Oct)
 - [ ] CI import-boundary check: fail if core imports editions (due Fri 30 Oct)

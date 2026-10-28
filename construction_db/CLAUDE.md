@@ -107,9 +107,10 @@ timestamps; per-site chain
   - 5a (Wed 28 Oct), **done**: `internal/regimes` package (see Layout).
     Added `vocabulary.json` as a fifth file, and the keys-only lock in
     `testdata/shipped.json`. Rule: a shipped key never changes meaning.
-  - 5b (Thu 29): Construction data set (Construction Regulations 2014
-    checklists, incident taxonomy, deadline rules). Verify legal content
-    against sources.
+  - 5b (Thu 29), **done**: `za_construction_2014` has 7 deadline rules, 14
+    incident types, 5 checklists and 10 vocabulary terms, each quoted in
+    `internal/regimes/SOURCES_za_construction_2014.md`. No scaffolding
+    checklist yet (see Gaps there).
   - 5c (Thu 29): resolve the regime through the site, in one place.
   - 5d (Fri 30): `editions/construction` skeleton; core reaches it only via
     interfaces.

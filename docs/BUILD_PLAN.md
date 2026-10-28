@@ -22,7 +22,7 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 - [x] editions/construction skeleton; core reaches it only through interfaces (due Fri 30 Oct)
 - [x] CI import-boundary check: fail if core imports editions (due Fri 30 Oct)
 - [x] RLS on tenant tables; set org/site settings per transaction (set_config(..., true) inside the tx, safe with pgx pool reuse) (due Sat 31 Oct)
-- [ ] Test that RLS blocks cross-org reads even from a buggy query (due Sun 1 Nov)
+- [x] Test that RLS blocks cross-org reads even from a buggy query (due Sun 1 Nov)
 
 ## Safety core (due Sun 22 Nov (checkpoint))
 

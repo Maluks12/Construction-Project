@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"construction_db/internal/platform/database"
-	"construction_db/internal/platform/dbtest"
 )
 
 const (
@@ -20,11 +19,6 @@ const (
 
 func TestTenant(t *testing.T) {
 	ctx := context.Background()
-	pool, _, cleanup, err := dbtest.Start(ctx)
-	if err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer cleanup()
 
 	t.Run("connections run as the app role", func(t *testing.T) {
 		var role string

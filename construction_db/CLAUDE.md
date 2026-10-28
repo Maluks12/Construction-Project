@@ -132,7 +132,7 @@ timestamps; per-site chain
   rotation with reuse detection, sessions); sites, site members, supervisor
   scoping, locations; invites (send, list, revoke, preview, accept);
   integration tests use real invites.
-- **Now: Milestone 5, Regimes and the edition boundary** (due Sun 1 Nov)
+- **Milestone 5, Regimes and the edition boundary** (due Sun 1 Nov): **done**.
   - 5a (Wed 28 Oct), **done**: `internal/regimes` package (see Layout).
     Added `vocabulary.json` as a fifth file, and the keys-only lock in
     `testdata/shipped.json`. Rule: a shipped key never changes meaning.
@@ -160,8 +160,12 @@ timestamps; per-site chain
     000009 (RLS forced on organisations, org_members, sessions,
     refresh_tokens, sites, site_members, site_locations, invitations). Tenant
     set per transaction by `database.WithTenant` with `set_config(..., true)`.
-  - 5g (Sun 1 Nov): tests that RLS blocks cross-org reads even from a buggy
-    query.
+  - 5g (Sun 1 Nov), **done**: `internal/platform/database/rls_test.go`
+    runs unfiltered SELECT/INSERT/UPDATE/DELETE on all 8 RLS tables and
+    checks that only the tenant's rows are reached. `TestRLSCoverage` fails
+    the build if a table with `org_id`, or any public table not on its
+    allowlist, lacks forced RLS and a policy. A new tenant table needs a
+    policy in a migration, or an allowlist entry with a reason.
 
 ## Requested by the frontend
 

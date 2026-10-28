@@ -1,0 +1,144 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+	"testing"
+	"testing/fstest"
+
+	"construction_db/internal/core/auth"
+	"construction_db/internal/core/sites"
+	"construction_db/internal/regimes"
+)
+
+func TestSiteRegime(t *testing.T) {
+	ctx := context.Background()
+	router := newRouter(t)
+	svc := sites.NewService(testPool, testRegistry, testDefaults.Regime)
+
+	ownerToken := signup(t, router, "Regime Co", "owner@regime.test")
+	otherToken := signup(t, router, "Other Regime Co", "owner@other-regime.test")
+	owner := me(t, router, ownerToken)
+
+	signupSite := listSites(t, router, ownerToken)[0].ID
+	createdSite := createSite(t, router, ownerToken, "Second Site")
+	otherSite := listSites(t, router, otherToken)[0].ID
+
+	supervisorID := inviteMember(t, router, ownerToken, "foreman@regime.test", auth.RoleSupervisor)
+	if rec := do(t, router, http.MethodPut, "/v1/sites/"+signupSite+"/members/"+supervisorID, ownerToken, nil); rec.Code != http.StatusNoContent {
+		t.Fatalf("assign supervisor: got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	t.Run("new sites get the default regime", func(t *testing.T) {
+		for _, siteID := range []string{signupSite, createdSite} {
+			ds, err := svc.Regime(ctx, owner.OrgID, owner.UserID, auth.RoleOwner, siteID)
+			if err != nil {
+				t.Fatalf("Regime(%s): %v", siteID, err)
+			}
+			if ds.Regime.Code != testDefaults.Regime {
+				t.Errorf("site %s: regime %q, want %q", siteID, ds.Regime.Code, testDefaults.Regime)
+			}
+		}
+	})
+
+	t.Run("assigned supervisor", func(t *testing.T) {
+		if _, err := svc.Regime(ctx, owner.OrgID, supervisorID, auth.RoleSupervisor, signupSite); err != nil {
+			t.Fatalf("Regime: %v", err)
+		}
+	})
+
+	notFound := map[string]struct{ userID, role, siteID string }{
+		"unassigned supervisor": {supervisorID, auth.RoleSupervisor, createdSite},
+		"other org's site":      {owner.UserID, auth.RoleOwner, otherSite},
+		"malformed id":          {owner.UserID, auth.RoleOwner, "not-a-uuid"},
+	}
+	for name, tc := range notFound {
+		t.Run(name, func(t *testing.T) {
+			_, err := svc.Regime(ctx, owner.OrgID, tc.userID, tc.role, tc.siteID)
+			if !errors.Is(err, sites.ErrSiteNotFound) {
+				t.Fatalf("got %v, want ErrSiteNotFound", err)
+			}
+		})
+	}
+
+	t.Run("per site, not per org", func(t *testing.T) {
+		siteA, siteB := twoRegimeSites(t, owner.OrgID)
+
+		reg, err := regimes.LoadFS(regimeFS("test_regime_a", "test_regime_b"))
+		if err != nil {
+			t.Fatalf("LoadFS: %v", err)
+		}
+		twoSvc := sites.NewService(testPool, reg, "test_regime_a")
+
+		for siteID, want := range map[string]string{siteA: "test_regime_a", siteB: "test_regime_b"} {
+			ds, err := twoSvc.Regime(ctx, owner.OrgID, owner.UserID, auth.RoleOwner, siteID)
+			if err != nil {
+				t.Fatalf("Regime(%s): %v", siteID, err)
+			}
+			if ds.Regime.Code != want {
+				t.Errorf("site %s: regime %q, want %q", siteID, ds.Regime.Code, want)
+			}
+		}
+
+		// The signup site's regime isn't in this registry: an internal error, not a 404.
+		_, err = twoSvc.Regime(ctx, owner.OrgID, owner.UserID, auth.RoleOwner, signupSite)
+		if err == nil || errors.Is(err, sites.ErrSiteNotFound) {
+			t.Fatalf("got %v, want an internal error", err)
+		}
+	})
+}
+
+func TestNewRouterRejectsDefaultWithoutRow(t *testing.T) {
+	reg, err := regimes.LoadFS(regimeFS("test_regime_unseeded"))
+	if err != nil {
+		t.Fatalf("LoadFS: %v", err)
+	}
+	d := Defaults{Edition: "construction", Regime: "test_regime_unseeded"}
+
+	_, err = NewRouter(context.Background(), testPool, testSecret, reg, d)
+	want := `default regime "test_regime_unseeded" has no regulatory_regimes row`
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("error %v does not mention %q", err, want)
+	}
+}
+
+// twoRegimeSites adds two regimes and one site under each, in the same org.
+func twoRegimeSites(t *testing.T, orgID string) (siteA, siteB string) {
+	t.Helper()
+	ctx := context.Background()
+
+	if _, err := testPool.Exec(ctx, `
+		INSERT INTO regulatory_regimes (code, name, edition, version, effective_from)
+		VALUES ('test_regime_a', 'Test A', 'construction', '1', '2020-01-01'),
+		       ('test_regime_b', 'Test B', 'construction', '1', '2020-01-01')
+	`); err != nil {
+		t.Fatalf("insert regimes: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(ctx, `DELETE FROM sites WHERE regime_id IN (SELECT id FROM regulatory_regimes WHERE code LIKE 'test_regime_%')`)
+		_, _ = testPool.Exec(ctx, `DELETE FROM regulatory_regimes WHERE code LIKE 'test_regime_%'`)
+	})
+
+	insert := `INSERT INTO sites (org_id, regime_id, name) SELECT $1, id, $2 FROM regulatory_regimes WHERE code = $3 RETURNING id`
+	if err := testPool.QueryRow(ctx, insert, orgID, "Site A", "test_regime_a").Scan(&siteA); err != nil {
+		t.Fatalf("insert site A: %v", err)
+	}
+	if err := testPool.QueryRow(ctx, insert, orgID, "Site B", "test_regime_b").Scan(&siteB); err != nil {
+		t.Fatalf("insert site B: %v", err)
+	}
+	return siteA, siteB
+}
+
+func regimeFS(codes ...string) fstest.MapFS {
+	fsys := fstest.MapFS{}
+	for _, code := range codes {
+		fsys[code+"/regime.json"] = &fstest.MapFile{Data: []byte(`{"code": "` + code + `", "name": "Test",
+			"edition": "construction", "jurisdiction": "ZA", "version": "1", "effective_from": "2020-01-01"}`)}
+		for _, f := range []string{"checklists.json", "deadlines.json", "taxonomies.json", "vocabulary.json"} {
+			fsys[code+"/"+f] = &fstest.MapFile{Data: []byte("[]")}
+		}
+	}
+	return fsys
+}

@@ -14,7 +14,7 @@ import (
 )
 
 func TestSiteScoping(t *testing.T) {
-	router := NewRouter(testPool, testSecret)
+	router := newRouter(t)
 
 	ownerToken := signup(t, router, "Scope Co", "owner@scoping.test")
 	otherToken := signup(t, router, "Other Co", "owner@other-scoping.test")

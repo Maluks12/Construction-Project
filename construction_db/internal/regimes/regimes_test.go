@@ -107,6 +107,29 @@ func TestLoadFSValid(t *testing.T) {
 	}
 }
 
+func TestCheckDefault(t *testing.T) {
+	reg, err := LoadFS(validFS())
+	if err != nil {
+		t.Fatalf("LoadFS: %v", err)
+	}
+	if err := reg.CheckDefault("test_regime", "construction"); err != nil {
+		t.Errorf("matching default: %v", err)
+	}
+
+	tests := map[string]struct{ regime, edition, want string }{
+		"unknown regime":   {"no_such_regime", "construction", `default regime "no_such_regime" has no data set`},
+		"edition mismatch": {"test_regime", "mining", `default regime "test_regime" is edition "construction", not default edition "mining"`},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := reg.CheckDefault(tc.regime, tc.edition)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error %v does not mention %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestLoadFSNullListIsEmpty(t *testing.T) {
 	reg, err := LoadFS(with(validFS(), "test_regime/vocabulary.json", "null"))
 	if err != nil {

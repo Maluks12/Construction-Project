@@ -17,12 +17,16 @@ const (
 )
 
 type Service struct {
-	pool   *pgxpool.Pool
-	secret string
+	pool           *pgxpool.Pool
+	secret         string
+	defaultEdition string
+	defaultRegime  string
 }
 
-func NewService(pool *pgxpool.Pool, secret string) *Service {
-	return &Service{pool: pool, secret: secret}
+// defaultEdition and defaultRegime are used for the organisation and first
+// site created at signup.
+func NewService(pool *pgxpool.Pool, secret, defaultEdition, defaultRegime string) *Service {
+	return &Service{pool: pool, secret: secret, defaultEdition: defaultEdition, defaultRegime: defaultRegime}
 }
 
 func (s *Service) IssueTokens(ctx context.Context, db DBTX, userID, orgID, deviceName, userAgent string) (*TokenPair, error) {
@@ -129,7 +133,7 @@ func (s *Service) Signup(ctx context.Context, req SignupRequest, userAgent strin
 	}
 	defer tx.Rollback(ctx)
 
-	orgID, err := CreateOrganisation(ctx, tx, req.CompanyName)
+	orgID, err := CreateOrganisation(ctx, tx, req.CompanyName, s.defaultEdition)
 	if err != nil {
 		return nil, fmt.Errorf("signup: %w", err)
 	}
@@ -147,7 +151,7 @@ func (s *Service) Signup(ctx context.Context, req SignupRequest, userAgent strin
 		return nil, fmt.Errorf("signup: %w", err)
 	}
 
-	if _, err := CreateSite(ctx, tx, orgID, RegimeConstruction, req.SiteName); err != nil {
+	if _, err := CreateSite(ctx, tx, orgID, s.defaultRegime, req.SiteName); err != nil {
 		return nil, fmt.Errorf("signup: %w", err)
 	}
 

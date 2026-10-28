@@ -57,3 +57,17 @@ func CheckDatabase(ctx context.Context, db DBTX, reg *Registry) error {
 	}
 	return nil
 }
+
+// CheckDefaultRow fails unless the default regime has a regulatory_regimes row;
+// without one, creating a site inserts nothing.
+func CheckDefaultRow(ctx context.Context, db DBTX, regime string) error {
+	var exists bool
+	err := db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM regulatory_regimes WHERE code = $1)`, regime).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("check default regime row: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("default regime %q has no regulatory_regimes row", regime)
+	}
+	return nil
+}

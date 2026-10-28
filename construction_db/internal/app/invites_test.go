@@ -11,7 +11,7 @@ import (
 )
 
 func TestInvites(t *testing.T) {
-	router := NewRouter(testPool, testSecret)
+	router := newRouter(t)
 
 	ownerToken := signup(t, router, "Invite Co", "owner@invites.test")
 	otherToken := signup(t, router, "Invite Other Co", "owner@invites-other.test")

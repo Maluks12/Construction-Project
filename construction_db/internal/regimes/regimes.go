@@ -119,6 +119,18 @@ func (r *Registry) Get(code string) (*DataSet, bool) {
 	return ds, ok
 }
 
+// CheckDefault fails unless regime is loaded and belongs to edition.
+func (r *Registry) CheckDefault(regime, edition string) error {
+	ds, ok := r.byCode[regime]
+	if !ok {
+		return fmt.Errorf("default regime %q has no data set", regime)
+	}
+	if ds.Regime.Edition != edition {
+		return fmt.Errorf("default regime %q is edition %q, not default edition %q", regime, ds.Regime.Edition, edition)
+	}
+	return nil
+}
+
 // Codes returns the regime codes in sorted order.
 func (r *Registry) Codes() []string {
 	return slices.Sorted(maps.Keys(r.byCode))

@@ -2,6 +2,7 @@ package sites
 
 import (
 	"construction_db/internal/core/auth"
+	"construction_db/internal/regimes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,11 +14,14 @@ import (
 )
 
 type Service struct {
-	pool *pgxpool.Pool
+	pool          *pgxpool.Pool
+	regimes       *regimes.Registry
+	defaultRegime string
 }
 
-func NewService(pool *pgxpool.Pool) *Service {
-	return &Service{pool: pool}
+// defaultRegime is used for sites created with POST /v1/sites.
+func NewService(pool *pgxpool.Pool, reg *regimes.Registry, defaultRegime string) *Service {
+	return &Service{pool: pool, regimes: reg, defaultRegime: defaultRegime}
 }
 
 func (s *Service) List(ctx context.Context, orgID string, userID, role string) ([]Site, error) {
@@ -55,6 +59,28 @@ func (s *Service) Get(ctx context.Context, orgID, userID, role, siteID string) (
 	return site, nil
 }
 
+// Regime is the one place that resolves a site's regime data. It reads
+// sites.regime_id, never the organisation, and applies the same scoping as Get.
+func (s *Service) Regime(ctx context.Context, orgID, userID, role, siteID string) (*regimes.DataSet, error) {
+	if _, err := s.Get(ctx, orgID, userID, role, siteID); err != nil {
+		return nil, err
+	}
+
+	code, err := GetSiteRegimeCode(ctx, s.pool, orgID, siteID)
+	if isNotFound(err) {
+		return nil, ErrSiteNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("site regime: %w", err)
+	}
+
+	ds, ok := s.regimes.Get(code)
+	if !ok {
+		return nil, fmt.Errorf("site regime: no data set for %q", code)
+	}
+	return ds, nil
+}
+
 func isNotFound(err error) bool {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return true
@@ -71,7 +97,7 @@ func isUniqueViolation(err error, constraint string) bool {
 }
 
 func (s *Service) Create(ctx context.Context, orgID string, req CreateSiteRequest) (*Site, error) {
-	site, err := CreateSite(ctx, s.pool, orgID, auth.RegimeConstruction, req.Name, req.Address)
+	site, err := CreateSite(ctx, s.pool, orgID, s.defaultRegime, req.Name, req.Address)
 	if err != nil {
 		return nil, fmt.Errorf("create site: %w", err)
 	}

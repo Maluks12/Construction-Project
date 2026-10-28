@@ -16,13 +16,13 @@ type DBTX interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-func CreateOrganisation(ctx context.Context, db DBTX, name string) (orgID string, err error) {
+func CreateOrganisation(ctx context.Context, db DBTX, name, edition string) (orgID string, err error) {
 	query := `
 		INSERT INTO organisations (trading_name, primary_edition, enabled_editions)
 		VALUES($1, $2, $3)
 		RETURNING id
 	`
-	err = db.QueryRow(ctx, query, name, EditionConstruction, []string{EditionConstruction}).Scan(&orgID)
+	err = db.QueryRow(ctx, query, name, edition, []string{edition}).Scan(&orgID)
 
 	if err != nil {
 		return "", fmt.Errorf("create organisation: %w", err)

@@ -111,7 +111,13 @@ timestamps; per-site chain
     incident types, 5 checklists and 10 vocabulary terms, each quoted in
     `internal/regimes/SOURCES_za_construction_2014.md`. No scaffolding
     checklist yet (see Gaps there).
-  - 5c (Thu 29): resolve the regime through the site, in one place.
+  - 5c (Thu 29), **done**: `sites.Service.Regime` is the only way to get a
+    site's regime data (via `sites.regime_id`, same scoping as `GET
+    /v1/sites/:id`). The default edition and regime for new orgs and sites
+    come from `app.Defaults`, set in `cmd/api/main.go`. At startup,
+    `Registry.CheckDefault` checks the data set and edition, and
+    `regimes.CheckDefaultRow` checks the `regulatory_regimes` row. 5d moves those two values into
+    `editions/construction`.
   - 5d (Fri 30): `editions/construction` skeleton; core reaches it only via
     interfaces.
   - 5e (Fri 30): CI import-boundary check (fail if core imports editions).

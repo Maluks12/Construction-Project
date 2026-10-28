@@ -10,7 +10,7 @@ import (
 )
 
 func TestLocations(t *testing.T) {
-	router := NewRouter(testPool, testSecret)
+	router := newRouter(t)
 
 	ownerToken := signup(t, router, "Loc Co", "owner@locations.test")
 	otherToken := signup(t, router, "Loc Other Co", "owner@locations-other.test")

@@ -61,6 +61,20 @@ func TestCheckDatabase(t *testing.T) {
 		}
 	})
 
+	t.Run("default regime row exists", func(t *testing.T) {
+		if err := CheckDefaultRow(ctx, pool, "za_construction_2014"); err != nil {
+			t.Fatalf("CheckDefaultRow: %v", err)
+		}
+	})
+
+	t.Run("default regime row missing", func(t *testing.T) {
+		err := CheckDefaultRow(ctx, pool, "test_regime")
+		want := `default regime "test_regime" has no regulatory_regimes row`
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %v does not mention %q", err, want)
+		}
+	})
+
 	t.Run("data set without a row is allowed", func(t *testing.T) {
 		extra, err := LoadFS(validFS())
 		if err != nil {

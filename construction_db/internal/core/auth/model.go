@@ -13,8 +13,6 @@ const (
 	RoleContractsManager = "contracts_manager"
 	RoleBookkeeper       = "bookkeeper"
 	MemberActive         = "active"
-	EditionConstruction  = "construction"         // organisations.primary_edition
-	RegimeConstruction   = "za_construction_2014" // regulatory_regimes.code
 )
 
 var (

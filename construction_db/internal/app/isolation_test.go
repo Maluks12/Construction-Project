@@ -15,14 +15,27 @@ import (
 
 	"construction_db/internal/core/sites"
 	"construction_db/internal/platform/dbtest"
+	"construction_db/internal/regimes"
 )
 
 const testSecret = "test-secret-that-is-at-least-32-characters-long"
 
-var testPool *pgxpool.Pool
+var testDefaults = Defaults{Edition: "construction", Regime: "za_construction_2014"}
+
+var (
+	testPool     *pgxpool.Pool
+	testRegistry *regimes.Registry
+)
 
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
+
+	reg, err := regimes.Load()
+	if err != nil {
+		log.Printf("load regimes: %v", err)
+		os.Exit(1)
+	}
+	testRegistry = reg
 
 	pool, cleanup, err := dbtest.Start(context.Background())
 	if err != nil {
@@ -36,8 +49,17 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func newRouter(t *testing.T) *gin.Engine {
+	t.Helper()
+	router, err := NewRouter(context.Background(), testPool, testSecret, testRegistry, testDefaults)
+	if err != nil {
+		t.Fatalf("new router: %v", err)
+	}
+	return router
+}
+
 func TestSiteIsolation(t *testing.T) {
-	router := NewRouter(testPool, testSecret)
+	router := newRouter(t)
 
 	tokenA := signup(t, router, "Org A", "owner-a@isolation.test")
 	tokenB := signup(t, router, "Org B", "owner-b@isolation.test")

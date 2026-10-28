@@ -16,18 +16,32 @@ type DBTX interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-func CreateOrganisation(ctx context.Context, db DBTX, name, edition string) (orgID string, err error) {
-	query := `
-		INSERT INTO organisations (trading_name, primary_edition, enabled_editions)
-		VALUES($1, $2, $3)
-		RETURNING id
-	`
-	err = db.QueryRow(ctx, query, name, edition, []string{edition}).Scan(&orgID)
-
-	if err != nil {
-		return "", fmt.Errorf("create organisation: %w", err)
+func NewID(ctx context.Context, db DBTX) (id string, err error) {
+	if err := db.QueryRow(ctx, `SELECT gen_random_uuid()`).Scan(&id); err != nil {
+		return "", fmt.Errorf("new id: %w", err)
 	}
-	return orgID, nil
+	return id, nil
+}
+
+func CreateOrganisation(ctx context.Context, db DBTX, orgID, name, edition string) error {
+	query := `
+		INSERT INTO organisations (id, trading_name, primary_edition, enabled_editions)
+		VALUES ($1, $2, $3, $4)
+	`
+	if _, err := db.Exec(ctx, query, orgID, name, edition, []string{edition}); err != nil {
+		return fmt.Errorf("create organisation: %w", err)
+	}
+	return nil
+}
+
+// RefreshTokenTenant finds a refresh token's org and user before the tenant is
+// known, via the SECURITY DEFINER function from migration 000008.
+func RefreshTokenTenant(ctx context.Context, db DBTX, tokenHash string) (orgID, userID string, err error) {
+	err = db.QueryRow(ctx, `SELECT org_id, user_id FROM refresh_token_tenant($1)`, tokenHash).Scan(&orgID, &userID)
+	if err != nil {
+		return "", "", fmt.Errorf("refresh token tenant: %w", err)
+	}
+	return orgID, userID, nil
 }
 
 func CreateUser(ctx context.Context, db DBTX, fullName, email, passwordHash string) (userID string, err error) {

@@ -8,7 +8,7 @@ import (
 func TestStart(t *testing.T) {
 	ctx := context.Background()
 
-	pool, cleanup, err := Start(ctx)
+	pool, _, cleanup, err := Start(ctx)
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}

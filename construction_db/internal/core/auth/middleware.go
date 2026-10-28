@@ -11,6 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+
+	"construction_db/internal/platform/database"
 )
 
 const (
@@ -43,35 +45,28 @@ func RequireAuth(svc *Service) gin.HandlerFunc {
 			return
 		}
 
-		session, err := GetSession(ctx, svc.pool, claims.SessionID)
+		var session *Session
+		var m *Membership
+		tenant := database.Tenant{OrgID: claims.OrgID, UserID: claims.Subject}
+		err = database.WithTenant(ctx, svc.pool, tenant, func(tx pgx.Tx) error {
+			var err error
+			if session, err = GetSession(ctx, tx, claims.SessionID); err != nil {
+				return err
+			}
+			m, err = GetMembership(ctx, tx, claims.OrgID, claims.Subject)
+			return err
+		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 		if err != nil {
-			slog.Error("require auth: get session", "err", err)
+			slog.Error("require auth: load session and membership", "err", err)
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 			return
 		}
 
-		if !session.Active(time.Now()) {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			return
-		}
-
-		m, err := GetMembership(ctx, svc.pool, claims.OrgID, claims.Subject)
-		if errors.Is(err, pgx.ErrNoRows) {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			return
-		}
-
-		if err != nil {
-			slog.Error("require auth: get membership", "err", err)
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
-			return
-		}
-
-		if m.Status != MemberActive {
+		if !session.Active(time.Now()) || m.Status != MemberActive {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}

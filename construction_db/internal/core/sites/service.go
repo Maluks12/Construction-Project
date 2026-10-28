@@ -2,6 +2,7 @@ package sites
 
 import (
 	"construction_db/internal/core/auth"
+	"construction_db/internal/platform/database"
 	"construction_db/internal/regimes"
 	"context"
 	"errors"
@@ -24,16 +25,21 @@ func NewService(pool *pgxpool.Pool, reg *regimes.Registry, defaultRegime string)
 	return &Service{pool: pool, regimes: reg, defaultRegime: defaultRegime}
 }
 
+func (s *Service) inTenant(ctx context.Context, orgID, userID string, fn func(pgx.Tx) error) error {
+	return database.WithTenant(ctx, s.pool, database.Tenant{OrgID: orgID, UserID: userID}, fn)
+}
+
 func (s *Service) List(ctx context.Context, orgID string, userID, role string) ([]Site, error) {
 	var sites []Site
-	var err error
-
-	if role == auth.RoleSupervisor {
-		sites, err = ListAssignedSites(ctx, s.pool, orgID, userID)
-	} else {
-		sites, err = ListSites(ctx, s.pool, orgID)
-	}
-
+	err := s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
+		var err error
+		if role == auth.RoleSupervisor {
+			sites, err = ListAssignedSites(ctx, tx, orgID, userID)
+		} else {
+			sites, err = ListSites(ctx, tx, orgID)
+		}
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list sites: %w", err)
 	}
@@ -42,12 +48,25 @@ func (s *Service) List(ctx context.Context, orgID string, userID, role string) (
 
 func (s *Service) Get(ctx context.Context, orgID, userID, role, siteID string) (*Site, error) {
 	var site *Site
-	var err error
+	err := s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
+		var err error
+		site, err = s.get(ctx, tx, orgID, userID, role, siteID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return site, nil
+}
 
+// get applies supervisor scoping inside an existing tenant transaction.
+func (s *Service) get(ctx context.Context, tx pgx.Tx, orgID, userID, role, siteID string) (*Site, error) {
+	var site *Site
+	var err error
 	if role == auth.RoleSupervisor {
-		site, err = GetAssignedSite(ctx, s.pool, orgID, userID, siteID)
+		site, err = GetAssignedSite(ctx, tx, orgID, userID, siteID)
 	} else {
-		site, err = GetSite(ctx, s.pool, orgID, siteID)
+		site, err = GetSite(ctx, tx, orgID, siteID)
 	}
 
 	if isNotFound(err) {
@@ -62,13 +81,20 @@ func (s *Service) Get(ctx context.Context, orgID, userID, role, siteID string) (
 // Regime is the one place that resolves a site's regime data. It reads
 // sites.regime_id, never the organisation, and applies the same scoping as Get.
 func (s *Service) Regime(ctx context.Context, orgID, userID, role, siteID string) (*regimes.DataSet, error) {
-	if _, err := s.Get(ctx, orgID, userID, role, siteID); err != nil {
+	var code string
+	err := s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
+		if _, err := s.get(ctx, tx, orgID, userID, role, siteID); err != nil {
+			return err
+		}
+		var err error
+		code, err = GetSiteRegimeCode(ctx, tx, orgID, siteID)
+		if isNotFound(err) {
+			return ErrSiteNotFound
+		}
+		return err
+	})
+	if errors.Is(err, ErrSiteNotFound) {
 		return nil, err
-	}
-
-	code, err := GetSiteRegimeCode(ctx, s.pool, orgID, siteID)
-	if isNotFound(err) {
-		return nil, ErrSiteNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("site regime: %w", err)
@@ -97,7 +123,12 @@ func isUniqueViolation(err error, constraint string) bool {
 }
 
 func (s *Service) Create(ctx context.Context, orgID string, req CreateSiteRequest) (*Site, error) {
-	site, err := CreateSite(ctx, s.pool, orgID, s.defaultRegime, req.Name, req.Address)
+	var site *Site
+	err := s.inTenant(ctx, orgID, "", func(tx pgx.Tx) error {
+		var err error
+		site, err = CreateSite(ctx, tx, orgID, s.defaultRegime, req.Name, req.Address)
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create site: %w", err)
 	}
@@ -105,7 +136,12 @@ func (s *Service) Create(ctx context.Context, orgID string, req CreateSiteReques
 }
 
 func (s *Service) Update(ctx context.Context, orgID, siteID string, req UpdateSiteRequest) (*Site, error) {
-	site, err := UpdateSite(ctx, s.pool, orgID, siteID, req.Name, req.Address)
+	var site *Site
+	err := s.inTenant(ctx, orgID, "", func(tx pgx.Tx) error {
+		var err error
+		site, err = UpdateSite(ctx, tx, orgID, siteID, req.Name, req.Address)
+		return err
+	})
 	if isNotFound(err) {
 		return nil, ErrSiteNotFound
 	}
@@ -117,7 +153,12 @@ func (s *Service) Update(ctx context.Context, orgID, siteID string, req UpdateSi
 }
 
 func (s *Service) Archive(ctx context.Context, orgID, siteID string) error {
-	archived, err := ArchiveSite(ctx, s.pool, orgID, siteID)
+	var archived bool
+	err := s.inTenant(ctx, orgID, "", func(tx pgx.Tx) error {
+		var err error
+		archived, err = ArchiveSite(ctx, tx, orgID, siteID)
+		return err
+	})
 	if isNotFound(err) {
 		return ErrSiteNotFound
 	}
@@ -134,18 +175,22 @@ func (s *Service) Archive(ctx context.Context, orgID, siteID string) error {
 }
 
 func (s *Service) ListMembers(ctx context.Context, orgID, siteID string) ([]SiteMember, error) {
+	var members []SiteMember
+	err := s.inTenant(ctx, orgID, "", func(tx pgx.Tx) error {
+		_, err := GetSite(ctx, tx, orgID, siteID)
+		if isNotFound(err) {
+			return ErrSiteNotFound
+		}
+		if err != nil {
+			return err
+		}
 
-	_, err := GetSite(ctx, s.pool, orgID, siteID)
-	if isNotFound(err) {
-		return nil, ErrSiteNotFound
+		members, err = ListSiteMembers(ctx, tx, orgID, siteID)
+		return err
+	})
+	if errors.Is(err, ErrSiteNotFound) {
+		return nil, err
 	}
-
-	if err != nil {
-		return nil, fmt.Errorf("list site members: %w", err)
-	}
-
-	members, err := ListSiteMembers(ctx, s.pool, orgID, siteID)
-
 	if err != nil {
 		return nil, fmt.Errorf("list site members: %w", err)
 	}
@@ -154,20 +199,24 @@ func (s *Service) ListMembers(ctx context.Context, orgID, siteID string) ([]Site
 }
 
 func (s *Service) AddMember(ctx context.Context, orgID, siteID, userID string) error {
-	_, err := GetSite(ctx, s.pool, orgID, siteID)
-	if isNotFound(err) {
-		return ErrSiteNotFound
-	}
+	err := s.inTenant(ctx, orgID, "", func(tx pgx.Tx) error {
+		_, err := GetSite(ctx, tx, orgID, siteID)
+		if isNotFound(err) {
+			return ErrSiteNotFound
+		}
+		if err != nil {
+			return err
+		}
 
-	if err != nil {
-		return fmt.Errorf("add site members: %w", err)
+		err = AddSiteMember(ctx, tx, orgID, siteID, userID)
+		if isForeignKeyViolation(err) || isNotFound(err) {
+			return ErrUserNotFound
+		}
+		return err
+	})
+	if errors.Is(err, ErrSiteNotFound) || errors.Is(err, ErrUserNotFound) {
+		return err
 	}
-
-	err = AddSiteMember(ctx, s.pool, orgID, siteID, userID)
-	if isForeignKeyViolation(err) || isNotFound(err) {
-		return ErrUserNotFound
-	}
-
 	if err != nil {
 		return fmt.Errorf("add site members: %w", err)
 	}
@@ -176,7 +225,12 @@ func (s *Service) AddMember(ctx context.Context, orgID, siteID, userID string) e
 }
 
 func (s *Service) RemoveMember(ctx context.Context, orgID, siteID, userID string) error {
-	removed, err := RemoveSiteMember(ctx, s.pool, orgID, siteID, userID)
+	var removed bool
+	err := s.inTenant(ctx, orgID, "", func(tx pgx.Tx) error {
+		var err error
+		removed, err = RemoveSiteMember(ctx, tx, orgID, siteID, userID)
+		return err
+	})
 	if isNotFound(err) {
 		return ErrSiteNotFound
 	}
@@ -197,17 +251,22 @@ func isForeignKeyViolation(err error) bool {
 }
 
 func (s *Service) ListLocations(ctx context.Context, orgID, userID, role, siteID string) ([]Location, error) {
-	if _, err := s.Get(ctx, orgID, userID, role, siteID); err != nil {
+	var locations []Location
+	err := s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
+		if _, err := s.get(ctx, tx, orgID, userID, role, siteID); err != nil {
+			return err
+		}
+		var err error
+		locations, err = ListLocations(ctx, tx, orgID, siteID)
+		return err
+	})
+	if errors.Is(err, ErrSiteNotFound) {
 		return nil, err
 	}
-
-	locations, err := ListLocations(ctx, s.pool, orgID, siteID)
-
 	if err != nil {
 		return nil, fmt.Errorf("list locations: %w", err)
 	}
 	return locations, nil
-
 }
 
 func (s *Service) CreateLocation(ctx context.Context, orgID, siteID string, req CreateLocationRequest) (*Location, error) {
@@ -216,20 +275,27 @@ func (s *Service) CreateLocation(ctx context.Context, orgID, siteID string, req 
 		return nil, ErrBlankName
 	}
 
-	_, err := GetSite(ctx, s.pool, orgID, siteID)
-	if isNotFound(err) {
-		return nil, ErrSiteNotFound
-	}
-	if err != nil {
-		return nil, fmt.Errorf("create location: %w", err)
-	}
+	var location *Location
+	err := s.inTenant(ctx, orgID, "", func(tx pgx.Tx) error {
+		_, err := GetSite(ctx, tx, orgID, siteID)
+		if isNotFound(err) {
+			return ErrSiteNotFound
+		}
+		if err != nil {
+			return err
+		}
 
-	location, err := CreateLocation(ctx, s.pool, orgID, siteID, req.ParentID, req.Kind, name)
-	if isNotFound(err) {
-		return nil, ErrParentNotFound
-	}
-	if isUniqueViolation(err, "site_locations_sibling_name_unique") {
-		return nil, ErrLocationNameTaken
+		location, err = CreateLocation(ctx, tx, orgID, siteID, req.ParentID, req.Kind, name)
+		if isNotFound(err) {
+			return ErrParentNotFound
+		}
+		if isUniqueViolation(err, "site_locations_sibling_name_unique") {
+			return ErrLocationNameTaken
+		}
+		return err
+	})
+	if errors.Is(err, ErrSiteNotFound) || errors.Is(err, ErrParentNotFound) || errors.Is(err, ErrLocationNameTaken) {
+		return nil, err
 	}
 	if err != nil {
 		return nil, fmt.Errorf("create location: %w", err)
@@ -243,7 +309,12 @@ func (s *Service) RenameLocation(ctx context.Context, orgID, siteID, locationID 
 		return nil, ErrBlankName
 	}
 
-	location, err := RenameLocation(ctx, s.pool, orgID, siteID, locationID, name)
+	var location *Location
+	err := s.inTenant(ctx, orgID, "", func(tx pgx.Tx) error {
+		var err error
+		location, err = RenameLocation(ctx, tx, orgID, siteID, locationID, name)
+		return err
+	})
 
 	if isNotFound(err) {
 		return nil, ErrLocationNotFound
@@ -261,26 +332,33 @@ func (s *Service) RenameLocation(ctx context.Context, orgID, siteID, locationID 
 }
 
 func (s *Service) ArchiveLocation(ctx context.Context, orgID, siteID, locationID string) error {
-	hasChildren, err := HasActiveChildren(ctx, s.pool, orgID, siteID, locationID)
-	if isNotFound(err) {
-		return ErrLocationNotFound
-	}
+	err := s.inTenant(ctx, orgID, "", func(tx pgx.Tx) error {
+		hasChildren, err := HasActiveChildren(ctx, tx, orgID, siteID, locationID)
+		if isNotFound(err) {
+			return ErrLocationNotFound
+		}
+		if err != nil {
+			return err
+		}
 
+		if hasChildren {
+			return ErrLocationHasChildren
+		}
+
+		archived, err := ArchiveLocation(ctx, tx, orgID, siteID, locationID)
+		if err != nil {
+			return err
+		}
+		if !archived {
+			return ErrLocationNotFound
+		}
+		return nil
+	})
+	if errors.Is(err, ErrLocationNotFound) || errors.Is(err, ErrLocationHasChildren) {
+		return err
+	}
 	if err != nil {
 		return fmt.Errorf("archive location: %w", err)
-	}
-
-	if hasChildren {
-		return ErrLocationHasChildren
-	}
-
-	archived, err := ArchiveLocation(ctx, s.pool, orgID, siteID, locationID)
-	if err != nil {
-		return fmt.Errorf("archive location: %w", err)
-	}
-
-	if !archived {
-		return ErrLocationNotFound
 	}
 
 	return nil

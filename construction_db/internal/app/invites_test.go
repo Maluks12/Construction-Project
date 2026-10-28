@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -26,10 +25,8 @@ func TestInvites(t *testing.T) {
 	expired := sendInvite(t, router, ownerToken, map[string]any{"full_name": "Late", "mobile": "+27820000003", "role": auth.RoleBookkeeper})
 	existing := sendInvite(t, router, ownerToken, map[string]any{"full_name": "ignored", "email": "owner@invites-other.test", "role": auth.RoleSHEOfficer})
 
-	if _, err := testPool.Exec(context.Background(),
-		`UPDATE invitations SET expires_at = now() - interval '1 minute' WHERE id = $1`, expired.ID); err != nil {
-		t.Fatalf("expire invite: %v", err)
-	}
+	execAsTenant(t, me(t, router, ownerToken).OrgID, 1,
+		`UPDATE invitations SET expires_at = now() - interval '1 minute' WHERE id = $1`, expired.ID)
 
 	t.Run("owner sees pending invites, other org sees none", func(t *testing.T) {
 		if n := len(listInvites(t, router, ownerToken)); n != 3 { // sipho, revoked, existing (expired is hidden)
@@ -76,6 +73,32 @@ func TestInvites(t *testing.T) {
 			rec := do(t, router, tc.method, tc.path, tc.token, tc.body)
 			if rec.Code != tc.want {
 				t.Fatalf("got %d, want %d (body: %s)", rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+
+	// Client-facing errors are sent as err.Error(), so they must reach the handler unwrapped.
+	exact := []struct {
+		name, token, path string
+		body              any
+		want              int
+		msg               error
+	}{
+		{"already a member", ownerToken, "/v1/invites", map[string]any{"full_name": "X", "email": "sup@invites.test", "role": "bookkeeper"}, http.StatusConflict, invites.ErrAlreadyMember},
+		{"contact conflict", ownerToken, "/v1/invites", map[string]any{"full_name": "X", "email": "sup@invites.test", "mobile": "+27820000001", "role": "bookkeeper"}, http.StatusConflict, invites.ErrContactConflict},
+		{"wrong password", "", "/v1/invites/accept", map[string]any{"token": existing.Token, "password": "not-their-password"}, http.StatusUnauthorized, invites.ErrWrongPassword},
+		{"expired invite", "", "/v1/invites/accept", map[string]any{"token": expired.Token, "password": "correcthorse1"}, http.StatusBadRequest, invites.ErrInvalidInvite},
+		{"login wrong password", "", "/v1/auth/login", map[string]any{"email": "owner@invites.test", "password": "not-their-password"}, http.StatusUnauthorized, auth.ErrInvalidCredentials},
+	}
+	for _, tc := range exact {
+		t.Run("exact error: "+tc.name, func(t *testing.T) {
+			rec := do(t, router, http.MethodPost, tc.path, tc.token, tc.body)
+			var got map[string]string
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("decode: %v (body: %s)", err, rec.Body.String())
+			}
+			if rec.Code != tc.want || got["error"] != tc.msg.Error() {
+				t.Fatalf("got %d %q, want %d %q", rec.Code, got["error"], tc.want, tc.msg.Error())
 			}
 		})
 	}

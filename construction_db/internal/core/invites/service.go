@@ -2,6 +2,7 @@ package invites
 
 import (
 	"construction_db/internal/core/auth"
+	"construction_db/internal/platform/database"
 	"context"
 	"errors"
 	"fmt"
@@ -24,6 +25,21 @@ func NewService(pool *pgxpool.Pool, authSvc *auth.Service) *Service {
 	return &Service{pool: pool, auth: authSvc}
 }
 
+// clientErrors are sent to the client as err.Error(), so they must not be wrapped.
+var clientErrors = []error{
+	ErrInvalidInvite, ErrWrongPassword, ErrBlankName, ErrContactRequired,
+	ErrAlreadyMember, ErrCannotInviteOwner, ErrInviteNotFound, ErrContactConflict,
+}
+
+func wrap(prefix string, err error) error {
+	for _, ce := range clientErrors {
+		if errors.Is(err, ce) {
+			return err
+		}
+	}
+	return fmt.Errorf("%s: %w", prefix, err)
+}
+
 func (s *Service) Invite(ctx context.Context, orgID, inviterID, inviterRole string, req InviteRequest) (*InviteResponse, error) {
 	name := strings.TrimSpace(req.FullName)
 	if name == "" {
@@ -38,58 +54,57 @@ func (s *Service) Invite(ctx context.Context, orgID, inviterID, inviterRole stri
 		return nil, ErrCannotInviteOwner
 	}
 
-	tx, err := s.pool.Begin(ctx)
+	var resp *InviteResponse
+	err := database.WithTenant(ctx, s.pool, database.Tenant{OrgID: orgID, UserID: inviterID}, func(tx pgx.Tx) error {
+		userID, err := findOrCreateUser(ctx, tx, req.Email, req.Mobile, name)
+		if err != nil {
+			return err
+		}
+
+		upserted, err := UpsertInvitedMember(ctx, tx, orgID, userID, req.Role)
+		if err != nil {
+			return err
+		}
+		if !upserted {
+			return ErrAlreadyMember
+		}
+
+		if err := RevokePendingInvites(ctx, tx, orgID, userID); err != nil {
+			return err
+		}
+
+		plain, hash, err := auth.NewRefreshToken()
+		if err != nil {
+			return err
+		}
+		expiresAt := time.Now().Add(inviteTTL)
+
+		inviteID, err := CreateInvitation(ctx, tx, orgID, userID, hash, inviterID, expiresAt)
+		if err != nil {
+			return err
+		}
+
+		resp = &InviteResponse{
+			ID:        inviteID,
+			UserID:    userID,
+			Token:     plain,
+			ExpiresAt: expiresAt,
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("invite: %w", err)
+		return nil, wrap("invite", err)
 	}
-	defer tx.Rollback(ctx)
-
-	userID, err := findOrCreateUser(ctx, s.pool, req.Email, req.Mobile, name)
-
-	if err != nil {
-		return nil, fmt.Errorf("invite: %w", err)
-	}
-
-	upserted, err := UpsertInvitedMember(ctx, s.pool, orgID, userID, req.Role)
-	if err != nil {
-		return nil, fmt.Errorf("invite: %w", err)
-	}
-
-	if !upserted {
-		return nil, ErrAlreadyMember
-	}
-
-	if err := RevokePendingInvites(ctx, s.pool, orgID, userID); err != nil {
-		return nil, fmt.Errorf("invite: %w", err)
-	}
-
-	plain, hash, err := auth.NewRefreshToken()
-	if err != nil {
-		return nil, fmt.Errorf("invite: %w", err)
-	}
-
-	expiresAt := time.Now().Add(inviteTTL)
-
-	inviteID, err := CreateInvitation(ctx, s.pool, orgID, userID, hash, inviterID, expiresAt)
-	if err != nil {
-		return nil, fmt.Errorf("invite: %w", err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("create invite: %w", err)
-	}
-
-	return &InviteResponse{
-		ID:        inviteID,
-		UserID:    userID,
-		Token:     plain,
-		ExpiresAt: expiresAt,
-	}, nil
-
+	return resp, nil
 }
 
 func (s *Service) ListPending(ctx context.Context, orgID string) ([]PendingInvite, error) {
-	invites, err := ListPendingInvites(ctx, s.pool, orgID)
+	var invites []PendingInvite
+	err := database.WithTenant(ctx, s.pool, database.Tenant{OrgID: orgID}, func(tx pgx.Tx) error {
+		var err error
+		invites, err = ListPendingInvites(ctx, tx, orgID)
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list pending invites: %w", err)
 	}
@@ -97,7 +112,12 @@ func (s *Service) ListPending(ctx context.Context, orgID string) ([]PendingInvit
 }
 
 func (s *Service) Revoke(ctx context.Context, orgID, inviteID string) error {
-	revoked, err := RevokeInvite(ctx, s.pool, orgID, inviteID)
+	var revoked bool
+	err := database.WithTenant(ctx, s.pool, database.Tenant{OrgID: orgID}, func(tx pgx.Tx) error {
+		var err error
+		revoked, err = RevokeInvite(ctx, tx, orgID, inviteID)
+		return err
+	})
 	if isNotFound(err) {
 		return ErrInviteNotFound
 	}
@@ -164,7 +184,21 @@ func isUniqueViolation(err error, constraint string) bool {
 }
 
 func (s *Service) Preview(ctx context.Context, token string) (*InvitePreview, error) {
-	p, err := GetInvitePreview(ctx, s.pool, auth.HashRefreshToken(token))
+	hash := auth.HashRefreshToken(token)
+	orgID, err := InvitationOrg(ctx, s.pool, hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrInvalidInvite
+	}
+	if err != nil {
+		return nil, fmt.Errorf("preview invite: %w", err)
+	}
+
+	var p *InvitePreview
+	err = database.WithTenant(ctx, s.pool, database.Tenant{OrgID: orgID}, func(tx pgx.Tx) error {
+		var err error
+		p, err = GetInvitePreview(ctx, tx, hash)
+		return err
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrInvalidInvite
 	}
@@ -175,13 +209,8 @@ func (s *Service) Preview(ctx context.Context, token string) (*InvitePreview, er
 }
 
 func (s *Service) Accept(ctx context.Context, req AcceptRequest, userAgent string) (*auth.TokenPair, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("accept invite: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	a, err := FindInviteForAccept(ctx, tx, auth.HashRefreshToken(req.Token))
+	hash := auth.HashRefreshToken(req.Token)
+	orgID, err := InvitationOrg(ctx, s.pool, hash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrInvalidInvite
 	}
@@ -189,49 +218,60 @@ func (s *Service) Accept(ctx context.Context, req AcceptRequest, userAgent strin
 		return nil, fmt.Errorf("accept invite: %w", err)
 	}
 
-	if a.AcceptedAt != nil || a.RevokedAt != nil || a.ArchivedAt != nil || time.Now().After(a.ExpiresAt) {
-		return nil, ErrInvalidInvite
-	}
-
-	if a.PasswordHash == nil {
-		hash, err := auth.HashPassword(req.Password)
-		if err != nil {
-			return nil, fmt.Errorf("accept invite: %w", err)
+	var tokens *auth.TokenPair
+	err = database.WithTenant(ctx, s.pool, database.Tenant{OrgID: orgID}, func(tx pgx.Tx) error {
+		a, err := FindInviteForAccept(ctx, tx, hash)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrInvalidInvite
 		}
-		ok, err := SetPassword(ctx, tx, a.UserID, hash)
 		if err != nil {
-			return nil, fmt.Errorf("accept invite: %w", err)
+			return err
+		}
+
+		if a.AcceptedAt != nil || a.RevokedAt != nil || a.ArchivedAt != nil || time.Now().After(a.ExpiresAt) {
+			return ErrInvalidInvite
+		}
+
+		if a.PasswordHash == nil {
+			hash, err := auth.HashPassword(req.Password)
+			if err != nil {
+				return err
+			}
+			ok, err := SetPassword(ctx, tx, a.UserID, hash)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return ErrInvalidInvite
+			}
+		} else if !auth.CheckPassword(*a.PasswordHash, req.Password) {
+			return ErrWrongPassword
+		}
+
+		ok, err := MarkInviteAccepted(ctx, tx, a.ID)
+		if err != nil {
+			return err
 		}
 		if !ok {
-			return nil, ErrInvalidInvite
+			return ErrInvalidInvite
 		}
-	} else if !auth.CheckPassword(*a.PasswordHash, req.Password) {
-		return nil, ErrWrongPassword
-	}
 
-	ok, err := MarkInviteAccepted(ctx, tx, a.ID)
+		ok, err = ActivateMember(ctx, tx, a.OrgID, a.UserID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrInvalidInvite
+		}
+
+		if err := database.SetTenant(ctx, tx, database.Tenant{OrgID: a.OrgID, UserID: a.UserID}); err != nil {
+			return err
+		}
+		tokens, err = s.auth.IssueTokens(ctx, tx, a.UserID, a.OrgID, req.DeviceName, userAgent)
+		return err
+	})
 	if err != nil {
-		return nil, fmt.Errorf("accept invite: %w", err)
-	}
-	if !ok {
-		return nil, ErrInvalidInvite
-	}
-
-	ok, err = ActivateMember(ctx, tx, a.OrgID, a.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("accept invite: %w", err)
-	}
-	if !ok {
-		return nil, ErrInvalidInvite
-	}
-
-	tokens, err := s.auth.IssueTokens(ctx, tx, a.UserID, a.OrgID, req.DeviceName, userAgent)
-	if err != nil {
-		return nil, fmt.Errorf("accept invite: %w", err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("accept invite: %w", err)
+		return nil, wrap("accept invite", err)
 	}
 	return tokens, nil
 }

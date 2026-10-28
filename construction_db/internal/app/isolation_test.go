@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -11,10 +12,12 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"construction_db/internal/core/sites"
 	"construction_db/internal/editions/construction"
+	"construction_db/internal/platform/database"
 	"construction_db/internal/platform/dbtest"
 	"construction_db/internal/regimes"
 )
@@ -24,7 +27,8 @@ const testSecret = "test-secret-that-is-at-least-32-characters-long"
 var testEdition = construction.New()
 
 var (
-	testPool     *pgxpool.Pool
+	testPool     *pgxpool.Pool // as siteproof_app, like the API
+	testAdmin    *pgxpool.Pool // superuser, only for regulatory_regimes fixtures
 	testRegistry *regimes.Registry
 )
 
@@ -38,16 +42,36 @@ func TestMain(m *testing.M) {
 	}
 	testRegistry = reg
 
-	pool, cleanup, err := dbtest.Start(context.Background())
+	pool, admin, cleanup, err := dbtest.Start(context.Background())
 	if err != nil {
 		log.Printf("start test database: %v", err)
 		os.Exit(1)
 	}
 	testPool = pool
+	testAdmin = admin
 
 	code := m.Run()
 	cleanup()
 	os.Exit(code)
+}
+
+// execAsTenant runs a fixture statement under orgID's RLS context and fails
+// unless it changed exactly want rows, so a policy-filtered no-op can't pass.
+func execAsTenant(t *testing.T, orgID string, want int64, sql string, args ...any) {
+	t.Helper()
+	err := database.WithTenant(context.Background(), testPool, database.Tenant{OrgID: orgID}, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(context.Background(), sql, args...)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != want {
+			return fmt.Errorf("changed %d rows, want %d", tag.RowsAffected(), want)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("exec as tenant %q: %v", sql, err)
+	}
 }
 
 func newRouter(t *testing.T) *gin.Engine {

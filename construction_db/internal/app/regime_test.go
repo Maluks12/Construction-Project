@@ -8,8 +8,11 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/jackc/pgx/v5"
+
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/sites"
+	"construction_db/internal/platform/database"
 	"construction_db/internal/regimes"
 )
 
@@ -109,24 +112,31 @@ func twoRegimeSites(t *testing.T, orgID string) (siteA, siteB string) {
 	t.Helper()
 	ctx := context.Background()
 
-	if _, err := testPool.Exec(ctx, `
+	// Regime rows need the admin pool; the app role can only read them.
+	tag, err := testAdmin.Exec(ctx, `
 		INSERT INTO regulatory_regimes (code, name, edition, version, effective_from)
 		VALUES ('test_regime_a', 'Test A', 'construction', '1', '2020-01-01'),
 		       ('test_regime_b', 'Test B', 'construction', '1', '2020-01-01')
-	`); err != nil {
-		t.Fatalf("insert regimes: %v", err)
+	`)
+	if err != nil || tag.RowsAffected() != 2 {
+		t.Fatalf("insert regimes: %v (%d rows)", err, tag.RowsAffected())
 	}
 	t.Cleanup(func() {
-		_, _ = testPool.Exec(ctx, `DELETE FROM sites WHERE regime_id IN (SELECT id FROM regulatory_regimes WHERE code LIKE 'test_regime_%')`)
-		_, _ = testPool.Exec(ctx, `DELETE FROM regulatory_regimes WHERE code LIKE 'test_regime_%'`)
+		execAsTenant(t, orgID, 2, `DELETE FROM sites WHERE org_id = $1 AND regime_id IN (SELECT id FROM regulatory_regimes WHERE code LIKE 'test_regime_%')`, orgID)
+		if tag, err := testAdmin.Exec(ctx, `DELETE FROM regulatory_regimes WHERE code LIKE 'test_regime_%'`); err != nil || tag.RowsAffected() != 2 {
+			t.Errorf("delete regimes: %v (%d rows)", err, tag.RowsAffected())
+		}
 	})
 
 	insert := `INSERT INTO sites (org_id, regime_id, name) SELECT $1, id, $2 FROM regulatory_regimes WHERE code = $3 RETURNING id`
-	if err := testPool.QueryRow(ctx, insert, orgID, "Site A", "test_regime_a").Scan(&siteA); err != nil {
-		t.Fatalf("insert site A: %v", err)
-	}
-	if err := testPool.QueryRow(ctx, insert, orgID, "Site B", "test_regime_b").Scan(&siteB); err != nil {
-		t.Fatalf("insert site B: %v", err)
+	err = database.WithTenant(ctx, testPool, database.Tenant{OrgID: orgID}, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, insert, orgID, "Site A", "test_regime_a").Scan(&siteA); err != nil {
+			return err
+		}
+		return tx.QueryRow(ctx, insert, orgID, "Site B", "test_regime_b").Scan(&siteB)
+	})
+	if err != nil {
+		t.Fatalf("insert sites: %v", err)
 	}
 	return siteA, siteB
 }

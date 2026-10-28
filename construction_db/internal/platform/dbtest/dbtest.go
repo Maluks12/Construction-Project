@@ -14,10 +14,13 @@ import (
 	"construction_db/internal/platform/database"
 )
 
-func Start(ctx context.Context) (*pgxpool.Pool, func(), error) {
+// Start runs Postgres with every migration applied. app connects like the API
+// (as siteproof_app, under RLS); admin is the superuser, for fixtures the app
+// may not write.
+func Start(ctx context.Context) (app, admin *pgxpool.Pool, cleanup func(), err error) {
 	files, err := migrationFiles()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	ctr, err := postgres.Run(ctx, "postgres:16-alpine",
@@ -29,26 +32,34 @@ func Start(ctx context.Context) (*pgxpool.Pool, func(), error) {
 	)
 	if err != nil {
 		_ = testcontainers.TerminateContainer(ctr)
-		return nil, nil, fmt.Errorf("start postgres: %w", err)
+		return nil, nil, nil, fmt.Errorf("start postgres: %w", err)
 	}
 
 	url, err := ctr.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		_ = testcontainers.TerminateContainer(ctr)
-		return nil, nil, fmt.Errorf("connection string: %w", err)
+		return nil, nil, nil, fmt.Errorf("connection string: %w", err)
 	}
 
-	pool, err := database.Connect(ctx, url)
+	app, err = database.Connect(ctx, url)
 	if err != nil {
 		_ = testcontainers.TerminateContainer(ctr)
-		return nil, nil, fmt.Errorf("connect: %w", err)
+		return nil, nil, nil, fmt.Errorf("connect: %w", err)
 	}
 
-	cleanup := func() {
-		pool.Close()
+	admin, err = pgxpool.New(ctx, url)
+	if err != nil {
+		app.Close()
+		_ = testcontainers.TerminateContainer(ctr)
+		return nil, nil, nil, fmt.Errorf("connect admin: %w", err)
+	}
+
+	cleanup = func() {
+		app.Close()
+		admin.Close()
 		_ = testcontainers.TerminateContainer(ctr)
 	}
-	return pool, cleanup, nil
+	return app, admin, cleanup, nil
 }
 
 func migrationFiles() ([]string, error) {

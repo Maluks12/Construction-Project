@@ -13,7 +13,7 @@ import (
 func TestCheckDatabase(t *testing.T) {
 	ctx := context.Background()
 
-	pool, cleanup, err := dbtest.Start(ctx)
+	pool, admin, cleanup, err := dbtest.Start(ctx)
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -33,14 +33,19 @@ func TestCheckDatabase(t *testing.T) {
 	// The UPDATE runs inside a transaction that is rolled back, so later
 	// subtests still see the seeded row.
 	t.Run("version mismatch", func(t *testing.T) {
-		tx, err := pool.Begin(ctx)
+		// admin: the app role can only read regulatory_regimes.
+		tx, err := admin.Begin(ctx)
 		if err != nil {
 			t.Fatalf("begin: %v", err)
 		}
 		defer tx.Rollback(ctx)
 
-		if _, err := tx.Exec(ctx, `UPDATE regulatory_regimes SET version = '2099' WHERE code = 'za_construction_2014'`); err != nil {
+		tag, err := tx.Exec(ctx, `UPDATE regulatory_regimes SET version = '2099' WHERE code = 'za_construction_2014'`)
+		if err != nil {
 			t.Fatalf("update: %v", err)
+		}
+		if tag.RowsAffected() != 1 {
+			t.Fatalf("update changed %d rows, want 1", tag.RowsAffected())
 		}
 		err = CheckDatabase(ctx, tx, embedded)
 		want := `za_construction_2014: database version "2099" but data set version "2014"`

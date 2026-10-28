@@ -161,6 +161,19 @@ func RevokeInvite(ctx context.Context, db DBTX, orgID, inviteID string) (bool, e
 	return tag.RowsAffected() == 1, nil
 }
 
+// InvitationOrg finds an invitation's org before the tenant is known, via the
+// SECURITY DEFINER function from migration 000008.
+func InvitationOrg(ctx context.Context, db DBTX, tokenHash string) (string, error) {
+	var orgID *string
+	if err := db.QueryRow(ctx, `SELECT invitation_org($1)`, tokenHash).Scan(&orgID); err != nil {
+		return "", fmt.Errorf("invitation org: %w", err)
+	}
+	if orgID == nil {
+		return "", fmt.Errorf("invitation org: %w", pgx.ErrNoRows)
+	}
+	return *orgID, nil
+}
+
 func GetInvitePreview(ctx context.Context, db DBTX, tokenHash string) (*InvitePreview, error) {
 	query := `
 		SELECT o.trading_name, u.full_name, om.role, (u.password_hash IS NOT NULL), i.expires_at

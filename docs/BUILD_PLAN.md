@@ -20,7 +20,7 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 - [x] Construction regime data set: Construction Regulations 2014 checklists, incident taxonomy, deadline rules (due Thu 29 Oct)
 - [x] Resolve the regime through the site in one place (sites.regime_id, never the org) (due Thu 29 Oct)
 - [x] editions/construction skeleton; core reaches it only through interfaces (due Fri 30 Oct)
-- [ ] CI import-boundary check: fail if core imports editions (due Fri 30 Oct)
+- [x] CI import-boundary check: fail if core imports editions (due Fri 30 Oct)
 - [ ] RLS on tenant tables; set org/site settings per transaction (set_config(..., true) inside the tx, safe with pgx pool reuse) (due Sat 31 Oct)
 - [ ] Test that RLS blocks cross-org reads even from a buggy query (due Sun 1 Nov)
 

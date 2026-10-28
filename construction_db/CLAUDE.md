@@ -46,6 +46,8 @@ go test ./...                           # needs Docker Desktop running (testcont
 - `internal/core/{auth,sites,invites}`: features. Each has model.go, repo.go,
   service.go, handler.go, routes.go.
 - `internal/platform/{config,database,dbtest,health}`.
+- `internal/archtest`: layer rules checked against the real import graph
+  (core must not depend on editions; editions not on each other).
 - `internal/core/edition`: the `Edition` interface, the only thing core and
   app know about an edition. `internal/editions/construction` implements it;
   core never imports `internal/editions`.
@@ -128,7 +130,10 @@ timestamps; per-site chain
     `cmd/api/main.go`. Edition routes mount under an authenticated
     `/v1/<edition>` group and get `edition.Deps` (the pool and
     `*sites.Service`); construction registers none yet.
-  - 5e (Fri 30): CI import-boundary check (fail if core imports editions).
+  - 5e (Fri 30), **done**: `internal/archtest` fails if anything outside
+    `cmd/`, `internal/app` and `internal/editions` depends on an edition
+    (transitively, test code included), or one edition depends on another.
+    Runs in `go test ./...` and as its own CI step.
   - 5f (Sat 31): RLS on tenant tables, `set_config(..., true)` inside each
     transaction.
   - 5g (Sun 1 Nov): tests that RLS blocks cross-org reads even from a buggy

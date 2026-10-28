@@ -41,6 +41,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Import boundary (core must not import editions)
+        run: go test -run 'TestImportBoundary|TestViolations' ./internal/archtest/
+
       - name: Test
         run: go test -race ./...
 

@@ -56,24 +56,33 @@ type ChecklistItem struct {
 	SourceRef    string `json:"source_ref"`
 }
 
-// DeadlineRule is "Period Units after Basis". Holidays are not here: the
-// calendar is a database table (Rev 4, section 2.3).
+// DeadlineRule is "Period Units Direction Basis", e.g. 7 calendar_days after
+// incident_occurred_at, or 7 calendar_days before work_starts_at.
+//
+// Unit "immediately" (period 0) is for "forthwith" duties. It is not a
+// countdown, so the engine shows it as something to do now rather than a due
+// date (Rev 4, section 4).
+//
+// Holidays are not here: the calendar is a database table (Rev 4, section 2.3).
 type DeadlineRule struct {
 	Key       string `json:"key"`
 	Label     string `json:"label"`
 	Period    int    `json:"period"`
 	Unit      string `json:"unit"`
+	Direction string `json:"direction"`
 	Basis     string `json:"basis"`
 	SourceRef string `json:"source_ref"`
 }
 
-// IncidentType is one entry in the incident taxonomy. ReportRule is the key
-// of the DeadlineRule that starts when an incident of this type is reportable.
+// IncidentType is one entry in the incident taxonomy. ReportRules are the keys
+// of every DeadlineRule an incident of this type starts. It is a list because
+// one incident can owe several reports: a death needs written notice within 7
+// days and a telephone report forthwith (GAR 2003 reg 8(1)).
 type IncidentType struct {
-	Key        string `json:"key"`
-	Label      string `json:"label"`
-	Reportable bool   `json:"reportable"`
-	ReportRule string `json:"report_rule"`
+	Key         string   `json:"key"`
+	Label       string   `json:"label"`
+	Reportable  bool     `json:"reportable"`
+	ReportRules []string `json:"report_rules"`
 }
 
 type Term struct {
@@ -172,6 +181,11 @@ func loadDataSet(fsys fs.FS, dir string) (*DataSet, error) {
 	}
 	if ds.Taxonomy == nil {
 		ds.Taxonomy = []IncidentType{}
+	}
+	for i := range ds.Taxonomy {
+		if ds.Taxonomy[i].ReportRules == nil {
+			ds.Taxonomy[i].ReportRules = []string{}
+		}
 	}
 	if ds.Vocabulary == nil {
 		ds.Vocabulary = []Term{}

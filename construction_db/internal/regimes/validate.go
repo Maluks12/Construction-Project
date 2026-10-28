@@ -25,7 +25,12 @@ var (
 	responseTypes = set("pass_fail_na", "scale", "numeric", "count", "text")
 )
 
-var units = set("calendar_days", "working_days", "hours")
+var (
+	units      = set("calendar_days", "working_days", "hours", unitImmediately)
+	directions = set("after", "before")
+)
+
+const unitImmediately = "immediately"
 
 func set(values ...string) map[string]bool {
 	m := make(map[string]bool, len(values))
@@ -106,10 +111,14 @@ func (ds *DataSet) validate(dir string) error {
 		where := fmt.Sprintf("deadlines[%d]", i)
 		key(fileDeadlines, where, d.Key, seenDeadlines)
 		need(fileDeadlines, where, "label", d.Label)
-		if d.Period < 1 {
+		switch {
+		case d.Unit == unitImmediately && d.Period != 0:
+			add(fileDeadlines, "%s: period must be 0 when unit is %q", where, unitImmediately)
+		case d.Unit != unitImmediately && d.Period < 1:
 			add(fileDeadlines, "%s: period must be 1 or more", where)
 		}
 		oneOf(fileDeadlines, where, "unit", d.Unit, units)
+		oneOf(fileDeadlines, where, "direction", d.Direction, directions)
 		if !keyPattern.MatchString(d.Basis) {
 			add(fileDeadlines, "%s: basis %q must be lower snake case", where, d.Basis)
 		}
@@ -123,12 +132,20 @@ func (ds *DataSet) validate(dir string) error {
 		key(fileTaxonomy, where, t.Key, seenTaxonomy)
 		need(fileTaxonomy, where, "label", t.Label)
 		switch {
-		case t.Reportable && t.ReportRule == "":
-			add(fileTaxonomy, "%s: reportable types need a report_rule", where)
-		case t.Reportable && !seenDeadlines[t.ReportRule]:
-			add(fileTaxonomy, "%s: report_rule %q is not a deadline rule in %s", where, t.ReportRule, fileDeadlines)
-		case !t.Reportable && t.ReportRule != "":
-			add(fileTaxonomy, "%s: report_rule is set but reportable is false", where)
+		case t.Reportable && len(t.ReportRules) == 0:
+			add(fileTaxonomy, "%s: reportable types need at least one report_rules entry", where)
+		case !t.Reportable && len(t.ReportRules) > 0:
+			add(fileTaxonomy, "%s: report_rules is set but reportable is false", where)
+		}
+		seenRules := map[string]bool{}
+		for _, r := range t.ReportRules {
+			switch {
+			case seenRules[r]:
+				add(fileTaxonomy, "%s: report_rules lists %q twice", where, r)
+			case !seenDeadlines[r]:
+				add(fileTaxonomy, "%s: report_rules entry %q is not a deadline rule in %s", where, r, fileDeadlines)
+			}
+			seenRules[r] = true
 		}
 	}
 

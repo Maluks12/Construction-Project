@@ -16,7 +16,7 @@ import (
 func TestSiteRegime(t *testing.T) {
 	ctx := context.Background()
 	router := newRouter(t)
-	svc := sites.NewService(testPool, testRegistry, testDefaults.Regime)
+	svc := sites.NewService(testPool, testRegistry, testEdition.DefaultRegime())
 
 	ownerToken := signup(t, router, "Regime Co", "owner@regime.test")
 	otherToken := signup(t, router, "Other Regime Co", "owner@other-regime.test")
@@ -37,8 +37,8 @@ func TestSiteRegime(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Regime(%s): %v", siteID, err)
 			}
-			if ds.Regime.Code != testDefaults.Regime {
-				t.Errorf("site %s: regime %q, want %q", siteID, ds.Regime.Code, testDefaults.Regime)
+			if ds.Regime.Code != testEdition.DefaultRegime() {
+				t.Errorf("site %s: regime %q, want %q", siteID, ds.Regime.Code, testEdition.DefaultRegime())
 			}
 		}
 	})
@@ -95,9 +95,9 @@ func TestNewRouterRejectsDefaultWithoutRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadFS: %v", err)
 	}
-	d := Defaults{Edition: "construction", Regime: "test_regime_unseeded"}
+	ed := fakeEdition{name: "construction", regime: "test_regime_unseeded"}
 
-	_, err = NewRouter(context.Background(), testPool, testSecret, reg, d)
+	_, err = NewRouter(context.Background(), testPool, testSecret, reg, ed)
 	want := `default regime "test_regime_unseeded" has no regulatory_regimes row`
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("error %v does not mention %q", err, want)

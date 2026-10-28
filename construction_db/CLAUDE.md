@@ -46,6 +46,9 @@ go test ./...                           # needs Docker Desktop running (testcont
 - `internal/core/{auth,sites,invites}`: features. Each has model.go, repo.go,
   service.go, handler.go, routes.go.
 - `internal/platform/{config,database,dbtest,health}`.
+- `internal/core/edition`: the `Edition` interface, the only thing core and
+  app know about an edition. `internal/editions/construction` implements it;
+  core never imports `internal/editions`.
 - `internal/regimes`: regime data sets embedded from
   `data/<regime code>/{regime,checklists,deadlines,taxonomies,vocabulary}.json`.
   `Load()` validates them; `CheckDatabase` runs at startup and the API exits
@@ -87,6 +90,9 @@ timestamps; per-site chain
   `23505`.
 - "Did it change a row" updates return `(bool, error)` via
   `tag.RowsAffected() == 1`.
+- An edition route that takes a site must confirm the site's regime belongs
+  to that edition (via `sites.Service.Regime`) and return 404 if not.
+  Mounting under `/v1/construction` doesn't guarantee that by itself.
 - Org, user and role always come from the token (`auth.OrgID(c)` etc.), never
   the body.
 - Emails compare with `lower()`.
@@ -114,12 +120,14 @@ timestamps; per-site chain
   - 5c (Thu 29), **done**: `sites.Service.Regime` is the only way to get a
     site's regime data (via `sites.regime_id`, same scoping as `GET
     /v1/sites/:id`). The default edition and regime for new orgs and sites
-    come from `app.Defaults`, set in `cmd/api/main.go`. At startup,
-    `Registry.CheckDefault` checks the data set and edition, and
-    `regimes.CheckDefaultRow` checks the `regulatory_regimes` row. 5d moves those two values into
-    `editions/construction`.
-  - 5d (Fri 30): `editions/construction` skeleton; core reaches it only via
-    interfaces.
+    come from the edition (see 5d). At startup, `Registry.CheckDefault`
+    checks the data set and edition, and `regimes.CheckDefaultRow` checks the
+    `regulatory_regimes` row.
+  - 5d (Fri 30), **done**: `core/edition.Edition` (name, default regime,
+    route hook) is implemented by `editions/construction` and passed in by
+    `cmd/api/main.go`. Edition routes mount under an authenticated
+    `/v1/<edition>` group and get `edition.Deps` (the pool and
+    `*sites.Service`); construction registers none yet.
   - 5e (Fri 30): CI import-boundary check (fail if core imports editions).
   - 5f (Sat 31): RLS on tenant tables, `set_config(..., true)` inside each
     transaction.

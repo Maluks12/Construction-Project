@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"construction_db/internal/app"
+	"construction_db/internal/editions/construction"
 	"construction_db/internal/platform/config"
 	"construction_db/internal/platform/database"
 	"construction_db/internal/regimes"
@@ -48,9 +49,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// The only construction-specific values outside the regime data; 5d moves them to editions/construction.
-	defaults := app.Defaults{Edition: "construction", Regime: "za_construction_2014"}
-	router, err := app.NewRouter(ctx, pool, cfg.JWTSecret, reg, defaults)
+	router, err := app.NewRouter(ctx, pool, cfg.JWTSecret, reg, construction.New())
 	if err != nil {
 		slog.Error("build router", "error", err)
 		os.Exit(1)

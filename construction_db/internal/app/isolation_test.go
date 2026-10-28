@@ -14,13 +14,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"construction_db/internal/core/sites"
+	"construction_db/internal/editions/construction"
 	"construction_db/internal/platform/dbtest"
 	"construction_db/internal/regimes"
 )
 
 const testSecret = "test-secret-that-is-at-least-32-characters-long"
 
-var testDefaults = Defaults{Edition: "construction", Regime: "za_construction_2014"}
+var testEdition = construction.New()
 
 var (
 	testPool     *pgxpool.Pool
@@ -51,7 +52,7 @@ func TestMain(m *testing.M) {
 
 func newRouter(t *testing.T) *gin.Engine {
 	t.Helper()
-	router, err := NewRouter(context.Background(), testPool, testSecret, testRegistry, testDefaults)
+	router, err := NewRouter(context.Background(), testPool, testSecret, testRegistry, testEdition)
 	if err != nil {
 		t.Fatalf("new router: %v", err)
 	}

@@ -11,6 +11,14 @@ Known spec issues:
   per-site chain-head lock or the chain forks.
 - Phase 1 is about 105 features; section 6.D's "if it must shrink" list is the
   realistic scope.
+- Rev 4 §1.4 keeps regime content in `regime_*` database tables. We embed
+  JSON in the binary instead (`internal/regimes/data/`): it is reviewed in
+  git and validated by tests, but a regulatory change needs a redeploy.
+- The column lists in Rev 4 §1.4 are shifted down one row (deadline columns
+  are printed against `regime_document_types`, and so on). Read correctly:
+  deadline rule = `rule_code, period, unit, basis, source_ref`; vocabulary =
+  `term_key, label`; incident taxonomy = `code, label, reportable,
+  report_rule_code`.
 
 ## Commands
 
@@ -29,6 +37,12 @@ go test ./...                           # needs Docker Desktop running (testcont
 - `internal/core/{auth,sites,invites}`: features. Each has model.go, repo.go,
   service.go, handler.go, routes.go.
 - `internal/platform/{config,database,dbtest,health}`.
+- `internal/regimes`: regime data sets embedded from
+  `data/<regime code>/{regime,checklists,deadlines,taxonomies,vocabulary}.json`.
+  `Load()` validates them; `CheckDatabase` runs at startup and the API exits
+  if a `regulatory_regimes` row has no data set with the same version and
+  edition. `testdata/shipped.json` locks shipped keys: a test fails if one
+  disappears. Add new keys to it when they ship.
 - `internal/app/router.go` wires everything; `internal/app/*_test.go` are the
   HTTP integration tests (testcontainers Postgres, migrations applied
   automatically).
@@ -81,13 +95,9 @@ timestamps; per-site chain
   scoping, locations; invites (send, list, revoke, preview, accept);
   integration tests use real invites.
 - **Now: Milestone 5, Regimes and the edition boundary** (due Sun 1 Nov)
-  - 5a (Wed 28 Oct): `internal/regimes` package. JSON data embedded with
-    `go:embed` under `internal/regimes/data/<regime code>/` (regime.json,
-    checklists.json, deadlines.json, taxonomies.json). `Load()`,
-    `LoadFS(fs.FS)` for tests, `validate()` with `errors.Join`,
-    `DisallowUnknownFields`, plus `CheckDatabase` at startup (every
-    `regulatory_regimes` row needs a data set with the same version).
-    Rule: a shipped key never changes meaning.
+  - 5a (Wed 28 Oct), **done**: `internal/regimes` package (see Layout).
+    Added `vocabulary.json` as a fifth file, and the keys-only lock in
+    `testdata/shipped.json`. Rule: a shipped key never changes meaning.
   - 5b (Thu 29): Construction data set (Construction Regulations 2014
     checklists, incident taxonomy, deadline rules). Verify legal content
     against sources.

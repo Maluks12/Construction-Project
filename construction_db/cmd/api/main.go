@@ -13,6 +13,7 @@ import (
 	"construction_db/internal/app"
 	"construction_db/internal/platform/config"
 	"construction_db/internal/platform/database"
+	"construction_db/internal/regimes"
 )
 
 func main() {
@@ -25,6 +26,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Before connecting, so broken regime data fails fast even without a database.
+	reg, err := regimes.Load()
+	if err != nil {
+		slog.Error("load regimes", "error", err)
+		os.Exit(1)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -34,6 +42,11 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
+
+	if err := regimes.CheckDatabase(ctx, pool, reg); err != nil {
+		slog.Error("check regimes", "error", err)
+		os.Exit(1)
+	}
 
 	router := app.NewRouter(pool, cfg.JWTSecret)
 

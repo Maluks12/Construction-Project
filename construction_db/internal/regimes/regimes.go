@@ -63,10 +63,15 @@ type ChecklistItem struct {
 // countdown, so the engine shows it as something to do now rather than a due
 // date (Rev 4, section 4).
 //
+// Kind says what the clock is for: "report" (something sent to an authority
+// after an event), "investigation" (an internal duty) or "notification"
+// (something due before work starts).
+//
 // Holidays are not here: the calendar is a database table (Rev 4, section 2.3).
 type DeadlineRule struct {
 	Key       string `json:"key"`
 	Label     string `json:"label"`
+	Kind      string `json:"kind"`
 	Period    int    `json:"period"`
 	Unit      string `json:"unit"`
 	Direction string `json:"direction"`
@@ -74,15 +79,20 @@ type DeadlineRule struct {
 	SourceRef string `json:"source_ref"`
 }
 
-// IncidentType is one entry in the incident taxonomy. ReportRules are the keys
-// of every DeadlineRule an incident of this type starts. It is a list because
-// one incident can owe several reports: a death needs written notice within 7
-// days and a telephone report forthwith (GAR 2003 reg 8(1)).
+// IncidentType is one entry in the incident taxonomy. DeadlineRules are the
+// keys of every DeadlineRule an incident of this type starts. A death starts
+// three: written notice within 7 days, a telephone report forthwith (GAR 2003
+// reg 8(1)) and an investigation within 7 days (reg 9(2)). A non-reportable
+// type can still start clocks: medical treatment beyond first aid must be
+// investigated even though it is not reported.
+//
+// Reportable is true exactly when at least one of the rules is a "report";
+// validate enforces it in both directions.
 type IncidentType struct {
-	Key         string   `json:"key"`
-	Label       string   `json:"label"`
-	Reportable  bool     `json:"reportable"`
-	ReportRules []string `json:"report_rules"`
+	Key           string   `json:"key"`
+	Label         string   `json:"label"`
+	Reportable    bool     `json:"reportable"`
+	DeadlineRules []string `json:"deadline_rules"`
 }
 
 type Term struct {
@@ -183,8 +193,8 @@ func loadDataSet(fsys fs.FS, dir string) (*DataSet, error) {
 		ds.Taxonomy = []IncidentType{}
 	}
 	for i := range ds.Taxonomy {
-		if ds.Taxonomy[i].ReportRules == nil {
-			ds.Taxonomy[i].ReportRules = []string{}
+		if ds.Taxonomy[i].DeadlineRules == nil {
+			ds.Taxonomy[i].DeadlineRules = []string{}
 		}
 	}
 	if ds.Vocabulary == nil {

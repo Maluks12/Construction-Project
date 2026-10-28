@@ -1,1 +1,89 @@
-[]
+[
+  {
+    "key": "excavation_inspection",
+    "version": 1,
+    "title": "Excavation inspection",
+    "cadence": "per_shift",
+    "source_ref": "Construction Regulations, 2014, reg 13(2)(h)",
+    "items": [
+      {"key": "shoring_or_sloping", "prompt": "Is the excavation shored or braced, sloped to the angle of repose, or in stable material with the competent person's written permission?", "response_type": "pass_fail_na", "source_ref": "reg 13(2)(b)"},
+      {"key": "shoring_adequate", "prompt": "Is the shoring or bracing strong enough to support the sides of the excavation?", "response_type": "pass_fail_na", "source_ref": "reg 13(2)(c)"},
+      {"key": "edge_loads_clear", "prompt": "Are loads, material, plant and equipment kept away from the edge, or the sides supported against them?", "response_type": "pass_fail_na", "source_ref": "reg 13(2)(d)"},
+      {"key": "adjoining_structures_stable", "prompt": "Where the excavation could affect an adjoining building, structure or road, has it been made stable?", "response_type": "pass_fail_na", "source_ref": "reg 13(2)(e)"},
+      {"key": "safe_access_within_6m", "prompt": "Is there a safe means of access within six metres of everyone working in the excavation?", "response_type": "pass_fail_na", "source_ref": "reg 13(2)(f)"},
+      {"key": "services_located", "prompt": "Have electricity, water, gas and similar services been located and made safe?", "response_type": "pass_fail_na", "source_ref": "reg 13(2)(g)"},
+      {"key": "public_barrier", "prompt": "Where the public or a road is near, is there a barrier or fence at least one metre high, with warning lights or markers at night or in poor visibility?", "response_type": "pass_fail_na", "source_ref": "reg 13(2)(i)"},
+      {"key": "confined_space_precautions", "prompt": "Are the confined-space precautions of the General Safety Regulations followed by everyone entering?", "response_type": "pass_fail_na", "source_ref": "reg 13(2)(j)"},
+      {"key": "warning_signs", "prompt": "Are warning signs placed next to the excavation where people are working or doing inspections or tests?", "response_type": "pass_fail_na", "source_ref": "reg 13(2)(l)"}
+    ]
+  },
+  {
+    "key": "mobile_plant_pre_use",
+    "version": 1,
+    "title": "Construction vehicle and mobile plant pre-use inspection",
+    "cadence": "daily",
+    "source_ref": "Construction Regulations, 2014, reg 23(1)(k)",
+    "items": [
+      {"key": "good_working_order", "prompt": "Is the vehicle or plant in good working order?", "response_type": "pass_fail_na", "source_ref": "reg 23(1)(b)"},
+      {"key": "operator_authorised", "prompt": "Is the operator trained, certified competent, carrying proof of competency and authorised in writing?", "response_type": "pass_fail_na", "source_ref": "reg 23(1)(d)(i)"},
+      {"key": "operator_medical_certificate", "prompt": "Does the operator have a medical certificate of fitness for this vehicle or plant (Annexure 3)?", "response_type": "pass_fail_na", "source_ref": "reg 23(1)(d)(ii)"},
+      {"key": "access_egress", "prompt": "Is there a safe and suitable way to get on and off?", "response_type": "pass_fail_na", "source_ref": "reg 23(1)(e)"},
+      {"key": "edge_protection", "prompt": "Is edge protection in place where it could fall into an excavation, water or a lower area?", "response_type": "pass_fail_na", "source_ref": "reg 23(1)(g)"},
+      {"key": "operator_protection", "prompt": "Is the operator protected from falling material and from being crushed if it overturns?", "response_type": "pass_fail_na", "source_ref": "reg 23(1)(h)"},
+      {"key": "acoustic_warning_device", "prompt": "Does the operator's warning hooter work?", "response_type": "pass_fail_na", "source_ref": "reg 23(1)(i)"},
+      {"key": "reversing_alarm", "prompt": "Does the automatic reversing alarm work?", "response_type": "pass_fail_na", "source_ref": "reg 23(1)(j)"},
+      {"key": "lights", "prompt": "Where visibility needs extra lighting, are at least two headlights and two taillights working?", "response_type": "pass_fail_na", "source_ref": "reg 23(2)(g)"}
+    ]
+  },
+  {
+    "key": "temporary_works_inspection",
+    "version": 1,
+    "title": "Temporary works inspection",
+    "cadence": "daily",
+    "source_ref": "Construction Regulations, 2014, reg 12(3)(f)",
+    "items": [
+      {"key": "competent_supervision", "prompt": "Are temporary works operations supervised by a competent person appointed in writing?", "response_type": "pass_fail_na", "source_ref": "reg 12(2)"},
+      {"key": "erected_braced_not_overloaded", "prompt": "Is the structure properly erected, supported and braced, with no loads beyond its design?", "response_type": "pass_fail_na", "source_ref": "reg 12(3)(a)"},
+      {"key": "built_to_drawings", "prompt": "Is the structure built to the structural design drawings?", "response_type": "pass_fail_na", "source_ref": "reg 12(3)(b)"},
+      {"key": "drawings_on_site", "prompt": "Are the activity-specific temporary works drawings kept on site?", "response_type": "pass_fail_na", "source_ref": "reg 12(3)(c)"},
+      {"key": "equipment_checked", "prompt": "Was the equipment examined and checked for suitability by a competent person before use?", "response_type": "pass_fail_na", "source_ref": "reg 12(3)(e)"},
+      {"key": "casting_authorised", "prompt": "Has the competent person given written authorisation before any concrete is cast?", "response_type": "pass_fail_na", "source_ref": "reg 12(3)(g)"},
+      {"key": "damage_addressed", "prompt": "Has any damaged or weakened part been removed or reinforced?", "response_type": "pass_fail_na", "source_ref": "reg 12(3)(h)"},
+      {"key": "deck_panels_secured", "prompt": "Are deck panels secured against displacement?", "response_type": "pass_fail_na", "source_ref": "reg 12(3)(i)(i)"},
+      {"key": "release_agent_slip", "prompt": "Are measures in place to stop people slipping where release agents have been applied?", "response_type": "pass_fail_na", "source_ref": "reg 12(3)(i)(ii)"},
+      {"key": "striking_authorised", "prompt": "Is the structure staying in place until the concrete is strong enough and the competent person has authorised removal in writing?", "response_type": "pass_fail_na", "source_ref": "reg 12(3)(k)"},
+      {"key": "foundation_suitable", "prompt": "Are the foundation conditions suitable for the loads in the temporary works design?", "response_type": "pass_fail_na", "source_ref": "reg 12(3)(l)"}
+    ]
+  },
+  {
+    "key": "temporary_electrical_weekly",
+    "version": 1,
+    "title": "Temporary electrical installations inspection",
+    "cadence": "weekly",
+    "source_ref": "Construction Regulations, 2014, reg 24(d)",
+    "items": [
+      {"key": "cables_apparatus_identified", "prompt": "Have electrical cables and apparatus under, over or on the site been identified and guarded against?", "response_type": "pass_fail_na", "source_ref": "reg 24(a)"},
+      {"key": "adequate_strength", "prompt": "Are the electrical installations and machinery strong enough for site conditions?", "response_type": "pass_fail_na", "source_ref": "reg 24(b)"},
+      {"key": "control_designated", "prompt": "Is control of the temporary electrical installations given to a competent person appointed in writing?", "response_type": "pass_fail_na", "source_ref": "reg 24(c)"}
+    ]
+  },
+  {
+    "key": "housekeeping_walk",
+    "version": 1,
+    "title": "Housekeeping walk",
+    "cadence": "daily",
+    "source_ref": "Construction Regulations, 2014, reg 27 and 28",
+    "items": [
+      {"key": "materials_stored", "prompt": "Are materials and equipment properly stored?", "response_type": "pass_fail_na", "source_ref": "reg 27(a)"},
+      {"key": "scrap_removed", "prompt": "Are scrap, waste and debris being removed?", "response_type": "pass_fail_na", "source_ref": "reg 27(b)"},
+      {"key": "access_clear", "prompt": "Are access routes, exits and passageways clear of materials?", "response_type": "pass_fail_na", "source_ref": "reg 27(c)"},
+      {"key": "surplus_removed", "prompt": "Are materials no longer needed being removed instead of piling up?", "response_type": "pass_fail_na", "source_ref": "reg 27(d)"},
+      {"key": "no_unsafe_chute", "prompt": "Is waste only dropped from height through a chute that meets reg 14(6)?", "response_type": "pass_fail_na", "source_ref": "reg 27(e)"},
+      {"key": "public_fencing", "prompt": "In a built-up area next to a public way, is the site fenced with controlled access points?", "response_type": "pass_fail_na", "source_ref": "reg 27(f)"},
+      {"key": "overhead_protection", "prompt": "Where work is overhead, is there a catch platform or net, or is the danger area fenced off?", "response_type": "pass_fail_na", "source_ref": "reg 27(g)"},
+      {"key": "storage_areas_provided", "prompt": "Are adequate storage areas provided?", "response_type": "pass_fail_na", "source_ref": "reg 28(b)"},
+      {"key": "storage_demarcated", "prompt": "Are storage areas demarcated?", "response_type": "pass_fail_na", "source_ref": "reg 28(c)"},
+      {"key": "storage_neat", "prompt": "Are storage areas neat and under control?", "response_type": "pass_fail_na", "source_ref": "reg 28(d)"}
+    ]
+  }
+]

@@ -1,1 +1,72 @@
-[]
+[
+  {
+    "key": "ohsa_gar8_1a_written_notice",
+    "label": "Written notice of the incident to the provincial director (WCL1 or WCL2)",
+    "kind": "report",
+    "period": 7,
+    "unit": "calendar_days",
+    "direction": "after",
+    "basis": "incident_occurred_at",
+    "source_ref": "General Administrative Regulations, 2003, reg 8(1)(a); OHSA s24(1)(a)"
+  },
+  {
+    "key": "ohsa_gar8_1b_immediate_notice",
+    "label": "Report the incident to the provincial director forthwith by telephone or similar",
+    "kind": "report",
+    "period": 0,
+    "unit": "immediately",
+    "direction": "after",
+    "basis": "incident_occurred_at",
+    "source_ref": "General Administrative Regulations, 2003, reg 8(1)(b); OHSA s24(1)"
+  },
+  {
+    "key": "ohsa_gar8_2_death_after_notice",
+    "label": "Notify the provincial director forthwith that a reported injured person has died",
+    "kind": "report",
+    "period": 0,
+    "unit": "immediately",
+    "direction": "after",
+    "basis": "person_died_at",
+    "source_ref": "General Administrative Regulations, 2003, reg 8(2)"
+  },
+  {
+    "key": "ohsa_gar9_2_investigation",
+    "label": "Start the incident investigation",
+    "kind": "investigation",
+    "period": 7,
+    "unit": "calendar_days",
+    "direction": "after",
+    "basis": "incident_occurred_at",
+    "source_ref": "General Administrative Regulations, 2003, reg 9(2)"
+  },
+  {
+    "key": "coida_s39_employer_report",
+    "label": "Employer's report of the accident (W.Cl.2)",
+    "kind": "report",
+    "period": 7,
+    "unit": "calendar_days",
+    "direction": "after",
+    "basis": "employer_notified_at",
+    "source_ref": "COIDA s39(1)"
+  },
+  {
+    "key": "cr2014_reg4_notification",
+    "label": "Notify the provincial director of the construction work (Annexure 2)",
+    "kind": "notification",
+    "period": 7,
+    "unit": "calendar_days",
+    "direction": "before",
+    "basis": "work_starts_at",
+    "source_ref": "Construction Regulations, 2014, reg 4(1) and 4(2)"
+  },
+  {
+    "key": "cr2014_reg3_permit_application",
+    "label": "Client applies to the provincial director for a construction work permit",
+    "kind": "notification",
+    "period": 30,
+    "unit": "calendar_days",
+    "direction": "before",
+    "basis": "work_starts_at",
+    "source_ref": "Construction Regulations, 2014, reg 3(1)"
+  }
+]

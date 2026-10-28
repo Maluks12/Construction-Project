@@ -1,1 +1,83 @@
-[]
+[
+  {
+    "key": "fatality",
+    "label": "Death",
+    "reportable": true,
+    "deadline_rules": ["ohsa_gar8_1a_written_notice", "ohsa_gar8_1b_immediate_notice", "ohsa_gar9_2_investigation"]
+  },
+  {
+    "key": "unconsciousness",
+    "label": "Person became unconscious",
+    "reportable": true,
+    "deadline_rules": ["ohsa_gar8_1a_written_notice", "ohsa_gar8_1b_immediate_notice", "ohsa_gar9_2_investigation"]
+  },
+  {
+    "key": "loss_of_limb",
+    "label": "Loss of a limb or part of a limb",
+    "reportable": true,
+    "deadline_rules": ["ohsa_gar8_1a_written_notice", "ohsa_gar8_1b_immediate_notice", "ohsa_gar9_2_investigation"]
+  },
+  {
+    "key": "injury_likely_fatal_or_permanent",
+    "label": "Injury or illness likely to cause death or a permanent physical defect",
+    "reportable": true,
+    "deadline_rules": ["ohsa_gar8_1a_written_notice", "ohsa_gar8_1b_immediate_notice", "ohsa_gar9_2_investigation"]
+  },
+  {
+    "key": "injury_14_days_unable_to_work",
+    "label": "Injury or illness likely to keep the person off work for at least 14 days",
+    "reportable": true,
+    "deadline_rules": ["ohsa_gar8_1a_written_notice", "ohsa_gar9_2_investigation"]
+  },
+  {
+    "key": "major_incident",
+    "label": "Major incident",
+    "reportable": true,
+    "deadline_rules": ["ohsa_gar8_1b_immediate_notice", "ohsa_gar9_2_investigation"]
+  },
+  {
+    "key": "dangerous_substance_spill",
+    "label": "Dangerous substance spilled, endangering health or safety",
+    "reportable": true,
+    "deadline_rules": ["ohsa_gar8_1b_immediate_notice", "ohsa_gar9_2_investigation"]
+  },
+  {
+    "key": "pressure_release",
+    "label": "Uncontrolled release of a substance under pressure, endangering health or safety",
+    "reportable": true,
+    "deadline_rules": ["ohsa_gar8_1b_immediate_notice", "ohsa_gar9_2_investigation"]
+  },
+  {
+    "key": "machinery_failure_flying_objects",
+    "label": "Machinery fractured or failed, causing flying, falling or uncontrolled moving objects",
+    "reportable": true,
+    "deadline_rules": ["ohsa_gar8_1b_immediate_notice", "ohsa_gar9_2_investigation"]
+  },
+  {
+    "key": "machinery_out_of_control",
+    "label": "Machinery ran out of control",
+    "reportable": true,
+    "deadline_rules": ["ohsa_gar8_1b_immediate_notice", "ohsa_gar9_2_investigation"]
+  },
+  {
+    "key": "medical_treatment",
+    "label": "Injury needing medical treatment beyond first aid",
+    "reportable": false,
+    "deadline_rules": ["ohsa_gar9_2_investigation"]
+  },
+  {
+    "key": "first_aid",
+    "label": "First aid only",
+    "reportable": false
+  },
+  {
+    "key": "near_miss",
+    "label": "Near miss",
+    "reportable": false
+  },
+  {
+    "key": "property_damage",
+    "label": "Property or equipment damage only",
+    "reportable": false
+  }
+]

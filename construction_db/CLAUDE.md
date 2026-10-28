@@ -19,6 +19,15 @@ Known spec issues:
   deadline rule = `rule_code, period, unit, basis, source_ref`; vocabulary =
   `term_key, label`; incident taxonomy = `code, label, reportable,
   report_rule_code`.
+- Three statements in Rev 4 contradict the law. The quotes and sources are in
+  `internal/regimes/SOURCES_za_construction_2014.md`:
+  - §3.2: Reg 4 is not "for all other work". It applies only to excavation,
+    work at height, demolition, explosives, or a single-storey dwelling for
+    the client.
+  - §3.5: the s24 notice goes on WCL1/WCL2 (GAR 8(1)(a)), not "Annexure 1".
+    Annexure 1 is the GAR 9 incident record.
+  - §3.5: late COIDA reporting is no longer "an offence". Since 1 Apr 2026,
+    s39(6) and (8) impose administrative penalties instead.
 
 ## Commands
 

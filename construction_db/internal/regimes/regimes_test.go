@@ -16,11 +16,15 @@ const (
 	checklistsJSON = `[{"key": "scaffold_daily", "version": 1, "title": "Scaffold daily check",
 		"cadence": "daily", "source_ref": "test ref",
 		"items": [{"key": "base_plates", "prompt": "Base plates sound?", "response_type": "pass_fail_na"}]}]`
-	deadlinesJSON = `[{"key": "test_rule", "label": "Report it", "period": 7, "unit": "calendar_days",
+	deadlinesJSON = `[{"key": "test_rule", "label": "Report it", "kind": "report", "period": 7, "unit": "calendar_days",
 		"direction": "after", "basis": "incident_occurred_at", "source_ref": "test ref"},
-		{"key": "test_now", "label": "Phone it in", "period": 0, "unit": "immediately",
+		{"key": "test_now", "label": "Phone it in", "kind": "report", "period": 0, "unit": "immediately",
+		"direction": "after", "basis": "incident_occurred_at", "source_ref": "test ref"},
+		{"key": "test_investigate", "label": "Investigate it", "kind": "investigation", "period": 7, "unit": "calendar_days",
 		"direction": "after", "basis": "incident_occurred_at", "source_ref": "test ref"}]`
-	taxonomyJSON = `[{"key": "injury", "label": "Injury", "reportable": true, "report_rules": ["test_rule", "test_now"]},
+	taxonomyJSON = `[{"key": "injury", "label": "Injury", "reportable": true,
+		"deadline_rules": ["test_rule", "test_now", "test_investigate"]},
+		{"key": "medical_treatment", "label": "Medical treatment", "reportable": false, "deadline_rules": ["test_investigate"]},
 		{"key": "near_miss", "label": "Near miss", "reportable": false}]`
 	vocabularyJSON = `[{"key": "site_diary", "label": "Site diary"}]`
 )
@@ -86,14 +90,19 @@ func TestLoadFSValid(t *testing.T) {
 	if len(ds.Checklists) != 1 || len(ds.Checklists[0].Items) != 1 {
 		t.Errorf("checklists = %+v", ds.Checklists)
 	}
-	if len(ds.Taxonomy) != 2 || !slices.Equal(ds.Taxonomy[0].ReportRules, []string{"test_rule", "test_now"}) {
+	if len(ds.Taxonomy) != 3 ||
+		!slices.Equal(ds.Taxonomy[0].DeadlineRules, []string{"test_rule", "test_now", "test_investigate"}) {
 		t.Errorf("taxonomy = %+v", ds.Taxonomy)
 	}
-	// Omitted report_rules must come back as [], not nil, so JSON shows [].
-	if ds.Taxonomy[1].ReportRules == nil {
-		t.Error("near_miss report_rules should be an empty list, not nil")
+	// A non-reportable type may start a non-report clock (GAR 9(2) investigation).
+	if ds.Taxonomy[1].Reportable || !slices.Equal(ds.Taxonomy[1].DeadlineRules, []string{"test_investigate"}) {
+		t.Errorf("medical_treatment = %+v", ds.Taxonomy[1])
 	}
-	if len(ds.Deadlines) != 2 || ds.Deadlines[1].Unit != "immediately" || ds.Deadlines[1].Period != 0 {
+	// Omitted deadline_rules must come back as [], not nil, so JSON shows [].
+	if ds.Taxonomy[2].DeadlineRules == nil {
+		t.Error("near_miss deadline_rules should be an empty list, not nil")
+	}
+	if len(ds.Deadlines) != 3 || ds.Deadlines[1].Unit != "immediately" || ds.Deadlines[1].Period != 0 {
 		t.Errorf("deadlines = %+v", ds.Deadlines)
 	}
 }
@@ -176,6 +185,13 @@ func TestLoadFSRejects(t *testing.T) {
 			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, `"period": 0`, `"period": 1`, 1)),
 			`deadlines[1]: period must be 0 when unit is "immediately"`,
 		},
+		"immediately before": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON,
+				`"unit": "immediately",
+		"direction": "after"`, `"unit": "immediately",
+		"direction": "before"`, 1)),
+			`deadlines[1]: direction must be "after" when unit is "immediately"`,
+		},
 		"bad direction": {
 			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, `"direction": "after"`, `"direction": "during"`, 1)),
 			`deadlines[0]: direction "during" is not one of after, before`,
@@ -184,21 +200,39 @@ func TestLoadFSRejects(t *testing.T) {
 			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, `"direction": "after", `, "", 1)),
 			`deadlines[0]: direction "" is not one of after, before`,
 		},
-		"dangling report rule": {
-			with(validFS(), taxonomyFile, `[{"key": "injury", "label": "Injury", "reportable": true, "report_rules": ["no_such_rule"]}]`),
-			`report_rules entry "no_such_rule" is not a deadline rule`,
+		"bad kind": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, `"kind": "report"`, `"kind": "reminder"`, 1)),
+			`deadlines[0]: kind "reminder" is not one of investigation, notification, report`,
 		},
-		"duplicate report rule": {
-			with(validFS(), taxonomyFile, `[{"key": "injury", "label": "Injury", "reportable": true, "report_rules": ["test_rule", "test_rule"]}]`),
-			`report_rules lists "test_rule" twice`,
+		"missing kind": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, `"kind": "report", `, "", 1)),
+			`deadlines[0]: kind "" is not one of`,
 		},
-		"reportable without report rules": {
-			with(validFS(), taxonomyFile, `[{"key": "injury", "label": "Injury", "reportable": true, "report_rules": []}]`),
-			"reportable types need at least one report_rules entry",
+		// A misspelt basis is the dangerous case: it is valid snake case, but
+		// the engine would never supply it, so the clock would never start.
+		"misspelt basis": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, "incident_occurred_at", "incident_occured_at", 1)),
+			`deadlines[0]: basis "incident_occured_at" is not one of employer_notified_at, incident_occurred_at, person_died_at, work_starts_at`,
 		},
-		"report rules on a non-reportable type": {
-			with(validFS(), taxonomyFile, `[{"key": "near_miss", "label": "Near miss", "reportable": false, "report_rules": ["test_rule"]}]`),
-			"report_rules is set but reportable is false",
+		"dangling deadline rule": {
+			with(validFS(), taxonomyFile, `[{"key": "injury", "label": "Injury", "reportable": true, "deadline_rules": ["no_such_rule"]}]`),
+			`deadline_rules entry "no_such_rule" is not a deadline rule`,
+		},
+		"duplicate deadline rule": {
+			with(validFS(), taxonomyFile, `[{"key": "injury", "label": "Injury", "reportable": true, "deadline_rules": ["test_rule", "test_rule"]}]`),
+			`deadline_rules lists "test_rule" twice`,
+		},
+		"reportable with no rules": {
+			with(validFS(), taxonomyFile, `[{"key": "injury", "label": "Injury", "reportable": true, "deadline_rules": []}]`),
+			`reportable types need at least one deadline rule of kind "report"`,
+		},
+		"reportable with only an investigation": {
+			with(validFS(), taxonomyFile, `[{"key": "injury", "label": "Injury", "reportable": true, "deadline_rules": ["test_investigate"]}]`),
+			`reportable types need at least one deadline rule of kind "report"`,
+		},
+		"report on a non-reportable type": {
+			with(validFS(), taxonomyFile, `[{"key": "near_miss", "label": "Near miss", "reportable": false, "deadline_rules": ["test_rule"]}]`),
+			`deadline_rules includes a "report" rule but reportable is false`,
 		},
 	}
 

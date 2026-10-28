@@ -28,9 +28,19 @@ var (
 var (
 	units      = set("calendar_days", "working_days", "hours", unitImmediately)
 	directions = set("after", "before")
+	kinds      = set(kindReport, "investigation", "notification")
+
+	// Each basis is an event the deadline engine (M8) must supply to start the
+	// clock. A misspelt basis would never be supplied, so the clock would
+	// silently never start; a fixed list catches that at load time. Adding a
+	// basis here means the engine must learn to supply it too.
+	bases = set("incident_occurred_at", "person_died_at", "employer_notified_at", "work_starts_at")
 )
 
-const unitImmediately = "immediately"
+const (
+	unitImmediately = "immediately"
+	kindReport      = "report"
+)
 
 func set(values ...string) map[string]bool {
 	m := make(map[string]bool, len(values))
@@ -107,10 +117,13 @@ func (ds *DataSet) validate(dir string) error {
 	}
 
 	seenDeadlines := map[string]bool{}
+	kindOf := map[string]string{}
 	for i, d := range ds.Deadlines {
 		where := fmt.Sprintf("deadlines[%d]", i)
 		key(fileDeadlines, where, d.Key, seenDeadlines)
+		kindOf[d.Key] = d.Kind
 		need(fileDeadlines, where, "label", d.Label)
+		oneOf(fileDeadlines, where, "kind", d.Kind, kinds)
 		switch {
 		case d.Unit == unitImmediately && d.Period != 0:
 			add(fileDeadlines, "%s: period must be 0 when unit is %q", where, unitImmediately)
@@ -119,9 +132,10 @@ func (ds *DataSet) validate(dir string) error {
 		}
 		oneOf(fileDeadlines, where, "unit", d.Unit, units)
 		oneOf(fileDeadlines, where, "direction", d.Direction, directions)
-		if !keyPattern.MatchString(d.Basis) {
-			add(fileDeadlines, "%s: basis %q must be lower snake case", where, d.Basis)
+		if d.Unit == unitImmediately && d.Direction != "after" {
+			add(fileDeadlines, "%s: direction must be \"after\" when unit is %q", where, unitImmediately)
 		}
+		oneOf(fileDeadlines, where, "basis", d.Basis, bases)
 		// Rev 4, section 2.3: every deadline shows the rule and its source.
 		need(fileDeadlines, where, "source_ref", d.SourceRef)
 	}
@@ -131,21 +145,27 @@ func (ds *DataSet) validate(dir string) error {
 		where := fmt.Sprintf("taxonomy[%d]", i)
 		key(fileTaxonomy, where, t.Key, seenTaxonomy)
 		need(fileTaxonomy, where, "label", t.Label)
-		switch {
-		case t.Reportable && len(t.ReportRules) == 0:
-			add(fileTaxonomy, "%s: reportable types need at least one report_rules entry", where)
-		case !t.Reportable && len(t.ReportRules) > 0:
-			add(fileTaxonomy, "%s: report_rules is set but reportable is false", where)
-		}
+		hasReport := false
 		seenRules := map[string]bool{}
-		for _, r := range t.ReportRules {
+		for _, r := range t.DeadlineRules {
+			kind, ok := kindOf[r]
 			switch {
 			case seenRules[r]:
-				add(fileTaxonomy, "%s: report_rules lists %q twice", where, r)
-			case !seenDeadlines[r]:
-				add(fileTaxonomy, "%s: report_rules entry %q is not a deadline rule in %s", where, r, fileDeadlines)
+				add(fileTaxonomy, "%s: deadline_rules lists %q twice", where, r)
+			case !ok:
+				add(fileTaxonomy, "%s: deadline_rules entry %q is not a deadline rule in %s", where, r, fileDeadlines)
+			case kind == kindReport:
+				hasReport = true
 			}
 			seenRules[r] = true
+		}
+		// Both directions, so "reportable" can never disagree with the clocks
+		// the type actually starts.
+		switch {
+		case t.Reportable && !hasReport:
+			add(fileTaxonomy, "%s: reportable types need at least one deadline rule of kind %q", where, kindReport)
+		case !t.Reportable && hasReport:
+			add(fileTaxonomy, "%s: deadline_rules includes a %q rule but reportable is false", where, kindReport)
 		}
 	}
 

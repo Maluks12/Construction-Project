@@ -59,17 +59,23 @@ go test ./...                           # needs Docker Desktop running (testcont
 - `cmd/api`: the server. `cmd/worker`: empty for now.
 - `internal/core/{auth,sites,invites}`: features. Each has model.go, repo.go,
   service.go, handler.go, routes.go.
-- `internal/core/evidence`: for now only the chain encoding (`chain.go`:
-  `MetadataHash`, `ChainHash`, `GenesisHash`) and its specification
-  `CHAIN.md`. `chain_test.go` reads the test vectors and the SQL verification
-  query from `CHAIN.md`, so the document can't drift from the code. Hash
-  inputs must be read back from Postgres: the encoder refuses a time with
+- `internal/core/evidence`: the evidence feature (model, repo, service,
+  handler, routes; see Evidence engine for the endpoints), plus the chain
+  encoding (`chain.go`: `MetadataHash`, `ChainHash`, `GenesisHash`) and its
+  specification `CHAIN.md`. Site scoping goes through
+  `sites.Service.GetInTx`, the same rule as `GET /v1/sites/:id`.
+  `chain_test.go` reads the test vectors and the SQL verification query
+  from `CHAIN.md`, so the document can't drift from the code. Hash inputs
+  must be read back from Postgres: the encoder refuses a time with
   sub-microsecond digits.
 - `internal/platform/{config,database,dbtest,health}`.
 - `internal/platform/storage`: the `Store` interface for evidence objects and
   its S3 implementation (also used against MinIO). Presigned PUTs sign the
-  SHA-256 and `If-None-Match: *` as headers, so S3 refuses other bytes and a
-  second upload to the key. `CheckObjectLock` runs at startup: the API exits
+  SHA-256, the length and `If-None-Match: *`, so S3 refuses other bytes, any
+  other size, and a second upload to the key. Without the length, a client
+  could declare a small size with a huge file's hash and park that file
+  under Object Lock. `Content-Length` and `Host` are signed but not returned
+  in the headers: HTTP clients set them. `CheckObjectLock` runs at startup: the API exits
   unless the bucket's default retention is in `EVIDENCE_LOCK_MODE`.
   `storagetest.Start` runs MinIO (testcontainers) with a locked bucket.
 - MinIO no longer publishes images. Dev and tests use Chainguard's build,
@@ -107,6 +113,17 @@ exact stored version. Dual timestamps. Per-site chain:
 `uploaded_by` and `device_id` (see Known spec issues). The exact byte
 encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
 
+- Endpoints (owner, SHE officer, supervisor on their own sites; others 403):
+  - `PUT /v1/sites/:id/evidence/:evidenceId` declares evidence. 201 with an
+    `upload` block (`method`, `url`, `headers` to send unchanged,
+    `expires_at`, 15 min). The URL signs the length: the body must be
+    exactly `size_bytes`, or S3 refuses it and stores nothing. Repeating the identical declaration is 200
+    (pending: fresh URL; verified: no `upload`). 409 if the id was used with
+    different details (any sealed field, including uploader and site) or was
+    rejected. 400 for a malformed id or invalid fields.
+  - `GET /v1/sites/:id/evidence?status=&limit=` lists newest first
+    (`{"evidence": [...]}`, limit 1–200, default 50).
+  - `GET /v1/sites/:id/evidence/:evidenceId`. `chain` is null until verified.
 - An evidence id is single-use. Its storage key is fixed and the upload URL
   allows one PUT, so after a rejection the client must declare a **new**
   evidence id; the rejected response says so.
@@ -232,6 +249,9 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     the Go encoder. `TestRecomputeSQL` runs the doc's SQL on the real schema
     and shows it catches a 1 µs edit and a deleted entry, even with the
     freeze trigger off.
+  - 6.4 (Mon 2 Nov), **done**: declare, list and get evidence (see Evidence
+    engine). `NewRouter` now takes a `storage.Store`; `internal/app` tests
+    start MinIO too (`testStore`). First contract change of M6.
 
 ## Requested by the frontend
 

@@ -77,6 +77,7 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 
 ### SYNC: Offline sync API (due Wed 25 Nov)
 
+- [ ] Request deadlines and pool limits: replace RequireAuth's own 2s timeout with one request-level deadline set in middleware; a request that hits it or can't get a pool connection gets 503 with Retry-After, never 500; pool size (pgxpool MaxConns) set from config and documented. Found in M6: a burst larger than the pool (default max(4, CPUs)) made auth answer 500 after 2s (due Mon 23 Nov)
 - [ ] Client-generated UUIDs and idempotency keys on every create (due Mon 23 Nov)
 - [ ] Delta pull per site from a cursor (GET /v1/sync?since=) (due Tue 24 Nov)
 - [ ] Batch push with per-record results and conflict rules; evidence is never overwritten (due Wed 25 Nov)

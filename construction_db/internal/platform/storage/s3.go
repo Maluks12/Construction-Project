@@ -70,11 +70,15 @@ func withEndpoint(endpoint string) func(*s3.Options) {
 	}
 }
 
-func (s *S3) PresignPut(ctx context.Context, key string, sum []byte, ttl time.Duration) (*PresignedPut, error) {
+func (s *S3) PresignPut(ctx context.Context, key string, sum []byte, size int64, ttl time.Duration) (*PresignedPut, error) {
 	expires := time.Now().Add(ttl)
+	// The SDK signs Content-Length when it is set (aws/signer/v4), so the URL
+	// takes exactly size bytes: a client can't park a huge file under Object
+	// Lock by declaring a small size with its hash.
 	req, err := s.presign.PresignPutObject(ctx, &s3.PutObjectInput{
 		Bucket:         aws.String(s.bucket),
 		Key:            aws.String(key),
+		ContentLength:  aws.Int64(size),
 		ChecksumSHA256: aws.String(base64.StdEncoding.EncodeToString(sum)),
 		IfNoneMatch:    aws.String("*"),
 	}, s3.WithPresignExpires(ttl))
@@ -82,10 +86,14 @@ func (s *S3) PresignPut(ctx context.Context, key string, sum []byte, ttl time.Du
 		return nil, fmt.Errorf("presign put: %w", err)
 	}
 
+	// Host and Content-Length are signed but set by every HTTP client itself
+	// (browsers and many clients refuse them as headers), so they're left out.
 	headers := map[string]string{}
 	for name := range req.SignedHeader {
-		if http.CanonicalHeaderKey(name) != "Host" {
-			headers[http.CanonicalHeaderKey(name)] = req.SignedHeader.Get(name)
+		switch k := http.CanonicalHeaderKey(name); k {
+		case "Host", "Content-Length":
+		default:
+			headers[k] = req.SignedHeader.Get(name)
 		}
 	}
 	return &PresignedPut{Method: req.Method, URL: req.URL, Headers: headers, ExpiresAt: expires}, nil

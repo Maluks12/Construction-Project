@@ -60,7 +60,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	router, err := app.NewRouter(ctx, pool, cfg.JWTSecret, reg, construction.New())
+	router, err := app.NewRouter(ctx, pool, cfg.JWTSecret, reg, construction.New(), store)
 	if err != nil {
 		slog.Error("build router", "error", err)
 		os.Exit(1)

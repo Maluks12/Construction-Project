@@ -19,6 +19,8 @@ import (
 	"construction_db/internal/editions/construction"
 	"construction_db/internal/platform/database"
 	"construction_db/internal/platform/dbtest"
+	"construction_db/internal/platform/storage"
+	"construction_db/internal/platform/storagetest"
 	"construction_db/internal/regimes"
 )
 
@@ -30,6 +32,7 @@ var (
 	testPool     *pgxpool.Pool // as siteproof_app, like the API
 	testAdmin    *pgxpool.Pool // superuser, only for regulatory_regimes fixtures
 	testRegistry *regimes.Registry
+	testStore    *storage.S3 // MinIO with a locked bucket, like the API's
 )
 
 func TestMain(m *testing.M) {
@@ -50,7 +53,16 @@ func TestMain(m *testing.M) {
 	testPool = pool
 	testAdmin = admin
 
+	s3env, cleanupS3, err := storagetest.Start(context.Background())
+	if err != nil {
+		cleanup()
+		log.Printf("start test storage: %v", err)
+		os.Exit(1)
+	}
+	testStore = s3env.Store
+
 	code := m.Run()
+	cleanupS3()
 	cleanup()
 	os.Exit(code)
 }
@@ -76,7 +88,7 @@ func execAsTenant(t *testing.T, orgID string, want int64, sql string, args ...an
 
 func newRouter(t *testing.T) *gin.Engine {
 	t.Helper()
-	router, err := NewRouter(context.Background(), testPool, testSecret, testRegistry, testEdition)
+	router, err := NewRouter(context.Background(), testPool, testSecret, testRegistry, testEdition, testStore)
 	if err != nil {
 		t.Fatalf("new router: %v", err)
 	}

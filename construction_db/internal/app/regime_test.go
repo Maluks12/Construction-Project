@@ -100,7 +100,7 @@ func TestNewRouterRejectsDefaultWithoutRow(t *testing.T) {
 	}
 	ed := fakeEdition{name: "construction", regime: "test_regime_unseeded"}
 
-	_, err = NewRouter(context.Background(), testPool, testSecret, reg, ed)
+	_, err = NewRouter(context.Background(), testPool, testSecret, reg, ed, testStore)
 	want := `default regime "test_regime_unseeded" has no regulatory_regimes row`
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("error %v does not mention %q", err, want)

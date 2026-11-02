@@ -78,6 +78,12 @@ func (s *Service) get(ctx context.Context, tx pgx.Tx, orgID, userID, role, siteI
 	return site, nil
 }
 
+// GetInTx is Get inside the caller's tenant transaction, so other features
+// apply the same supervisor scoping as GET /v1/sites/:id.
+func (s *Service) GetInTx(ctx context.Context, tx pgx.Tx, orgID, userID, role, siteID string) (*Site, error) {
+	return s.get(ctx, tx, orgID, userID, role, siteID)
+}
+
 // Regime is the one place that resolves a site's regime data. It reads
 // sites.regime_id, never the organisation, and applies the same scoping as Get.
 func (s *Service) Regime(ctx context.Context, orgID, userID, role, siteID string) (*regimes.DataSet, error) {

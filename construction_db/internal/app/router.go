@@ -9,14 +9,17 @@ import (
 
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/edition"
+	"construction_db/internal/core/evidence"
 	"construction_db/internal/core/invites"
 	"construction_db/internal/core/sites"
 	"construction_db/internal/platform/health"
+	"construction_db/internal/platform/storage"
 	"construction_db/internal/regimes"
 )
 
 // ed supplies the edition and regime for new organisations and sites, and its own routes.
-func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *regimes.Registry, ed edition.Edition) (*gin.Engine, error) {
+// store holds evidence objects.
+func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *regimes.Registry, ed edition.Edition, store storage.Store) (*gin.Engine, error) {
 	if err := reg.CheckDefault(ed.DefaultRegime(), ed.Name()); err != nil {
 		return nil, fmt.Errorf("new router: %w", err)
 	}
@@ -37,6 +40,9 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 
 	invitesSvc := invites.NewService(pool, authSvc)
 	invites.Register(router, invitesSvc, authSvc)
+
+	evidenceSvc := evidence.NewService(pool, sitesSvc, store)
+	evidence.Register(router, evidenceSvc, authSvc)
 
 	editionRoutes := router.Group("/v1/" + ed.Name())
 	editionRoutes.Use(auth.RequireAuth(authSvc))

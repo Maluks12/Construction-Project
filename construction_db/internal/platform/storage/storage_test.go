@@ -38,8 +38,13 @@ func TestMain(m *testing.M) {
 
 func presign(t *testing.T, key string, body []byte) *storage.PresignedPut {
 	t.Helper()
+	return presignSized(t, key, body, int64(len(body)))
+}
+
+func presignSized(t *testing.T, key string, body []byte, size int64) *storage.PresignedPut {
+	t.Helper()
 	sum := sha256.Sum256(body)
-	p, err := env.Store.PresignPut(context.Background(), key, sum[:], 5*time.Minute)
+	p, err := env.Store.PresignPut(context.Background(), key, sum[:], size, 5*time.Minute)
 	if err != nil {
 		t.Fatalf("presign: %v", err)
 	}
@@ -115,11 +120,37 @@ func TestPresignedPut(t *testing.T) {
 func TestPresignedPutRejectsOtherBytes(t *testing.T) {
 	p := presign(t, "put/mismatch", []byte("declared"))
 
-	if resp := upload(t, p, []byte("something else"), ""); resp.StatusCode != http.StatusBadRequest {
+	// Same length, so only the checksum can refuse it (400 BadDigest).
+	if resp := upload(t, p, []byte("DECLARED"), ""); resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("put with other bytes: status %d, want 400", resp.StatusCode)
 	}
 	if _, err := env.Store.Stat(context.Background(), "put/mismatch"); !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("stat after rejected put: %v, want ErrNotFound", err)
+	}
+}
+
+// The checksum alone would accept any file that matches its own hash; the
+// signed size stops a huge one being parked under Object Lock.
+func TestPresignedPutEnforcesSize(t *testing.T) {
+	body := []byte("twenty bytes of data")
+	cases := map[string]int64{
+		"more bytes than signed":  int64(len(body)) - 5,
+		"fewer bytes than signed": int64(len(body)) + 5,
+	}
+	for name, signed := range cases {
+		t.Run(name, func(t *testing.T) {
+			key := "put/size-" + strings.ReplaceAll(name, " ", "-")
+			p := presignSized(t, key, body, signed)
+			if _, listed := p.Headers["Content-Length"]; listed {
+				t.Errorf("Content-Length is listed in the headers %v; clients set it from the body", p.Headers)
+			}
+			if resp := upload(t, p, body, ""); resp.StatusCode < 400 || resp.StatusCode > 499 {
+				t.Errorf("put of %d bytes to a URL signed for %d: status %d, want 4xx", len(body), signed, resp.StatusCode)
+			}
+			if _, err := env.Store.Stat(context.Background(), key); !errors.Is(err, storage.ErrNotFound) {
+				t.Errorf("stat after refused put: %v, want ErrNotFound", err)
+			}
+		})
 	}
 }
 

@@ -62,7 +62,8 @@ Shape rules both sides rely on:
 
 ```
 cd construction_db
-docker compose up -d db              # Postgres 16 on localhost:5433
+docker compose up -d db minio        # Postgres 16 on localhost:5433, S3 (MinIO) on :9000
+docker compose run --rm storage-init # once: create the evidence bucket
 docker compose run --rm migrate up   # after pulling new migrations
 go run ./cmd/api                     # API on :8080 (or: docker compose up -d --build api)
 ```
@@ -73,8 +74,11 @@ npm run dev                          # dashboard on :3000
 ```
 
 Secrets live in git-ignored files: `construction_db/.env` (`POSTGRES_*`,
-`JWT_SECRET` of 32+ chars, and `DATABASE_URL` pointing at `localhost:5433`
-for `go run`) and `web/.env.local` (copy `web/.env.example`).
+`JWT_SECRET` of 32+ chars, `DATABASE_URL` pointing at `localhost:5433`
+for `go run`, and the evidence store: `S3_BUCKET`, `S3_ACCESS_KEY_ID`,
+`S3_SECRET_ACCESS_KEY` (8+ chars; also the MinIO login),
+`EVIDENCE_LOCK_MODE=GOVERNANCE` and `S3_ENDPOINT=http://localhost:9000` for
+`go run`) and `web/.env.local` (copy `web/.env.example`).
 
 ## Architecture rules (Rev 4)
 

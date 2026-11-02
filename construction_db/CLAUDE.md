@@ -39,7 +39,8 @@ Known spec issues:
 ## Commands
 
 ```
-docker compose up -d db                 # start Postgres 16
+docker compose up -d db minio           # start Postgres 16 and MinIO (S3) on :9000
+docker compose run --rm storage-init    # once: create the Object Lock evidence bucket
 docker compose run --rm migrate up      # apply migrations
 docker compose up -d --build api        # build and run the API on :8080
 gofmt -l .                              # must print nothing (CI fails otherwise)
@@ -53,6 +54,15 @@ go test ./...                           # needs Docker Desktop running (testcont
 - `internal/core/{auth,sites,invites}`: features. Each has model.go, repo.go,
   service.go, handler.go, routes.go.
 - `internal/platform/{config,database,dbtest,health}`.
+- `internal/platform/storage`: the `Store` interface for evidence objects and
+  its S3 implementation (also used against MinIO). Presigned PUTs sign the
+  SHA-256 and `If-None-Match: *` as headers, so S3 refuses other bytes and a
+  second upload to the key. `CheckObjectLock` runs at startup: the API exits
+  unless the bucket's default retention is in `EVIDENCE_LOCK_MODE`.
+  `storagetest.Start` runs MinIO (testcontainers) with a locked bucket.
+- MinIO no longer publishes images. Dev and tests use Chainguard's build,
+  pinned by digest in both `docker-compose.yml` and `storagetest.Image`; bump
+  them together.
 - `internal/archtest`: layer rules checked against the real import graph
   (core must not depend on editions; editions not on each other).
 - `internal/core/edition`: the `Edition` interface, the only thing core and
@@ -166,6 +176,18 @@ timestamps; per-site chain
     the build if a table with `org_id`, or any public table not on its
     allowlist, lacks forced RLS and a policy. A new tenant table needs a
     policy in a migration, or an allowlist entry with a reason.
+- **Milestone 6, Evidence engine** (due Fri 6 Nov). Plan approved Mon 2 Nov:
+  presigned direct-to-S3 PUT; the server re-hashes the exact stored version;
+  per-site chain appended under a `site_chain_heads` row lock;
+  `metadata_hash` as a fifth chain field. Production lock mode and retention
+  are decided at DEPLOY.
+  - 6.1 (Mon 2 Nov), **done**: `internal/platform/storage` and `storagetest`
+    (see Layout), MinIO in compose, S3 config, startup lock check. Tested on
+    MinIO: other bytes → 400 and nothing stored; a missing signed header →
+    4xx (AWS answers 403); a second PUT → 412. New env vars: `S3_BUCKET`,
+    `EVIDENCE_LOCK_MODE` (both required), `S3_REGION` (default
+    `af-south-1`), `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_ACCESS_KEY_ID`,
+    `S3_SECRET_ACCESS_KEY`.
 
 ## Requested by the frontend
 

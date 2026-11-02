@@ -1,11 +1,13 @@
 # Everything runs in Docker. Run all commands from the construction_db folder.
 #
-#   docker compose up -d db                  start the database
+#   docker compose up -d db minio            start the database and evidence storage
+#   docker compose run --rm storage-init     create the evidence bucket (once)
 #   docker compose run --rm migrate up       apply migrations
 #   docker compose up -d --build api         build and start the API
 #
 # DATABASE_URL is built here from the POSTGRES_* values in .env,
-# so the password only ever lives in one place.
+# so the password only ever lives in one place. Likewise the MinIO root
+# login is S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY.
 
 x-database-url: &database-url postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?sslmode=disable
 
@@ -15,11 +17,16 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: *database-url
+      S3_ENDPOINT: http://minio:9000
+      # Presigned URLs are used from the host, so they must name the host's port.
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
     ports:
       - "8080:8080"
     depends_on:
       db:
         condition: service_healthy
+      minio:
+        condition: service_started
 
   db:
     image: postgres:16-alpine
@@ -35,6 +42,37 @@ services:
       timeout: 3s
       retries: 10
 
+  # Local stand-in for S3. MinIO no longer publishes images; Chainguard's free
+  # build only has "latest", so it is pinned by digest (same as storagetest.Image).
+  minio:
+    image: cgr.dev/chainguard/minio@sha256:0a01100085e30fb08d2f39e39c9f5c9d83a95707f220b007d813b690cd41622d
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY}
+    ports:
+      - "9000:9000"
+    volumes:
+      - miniodata:/data
+
+  # One-off tool. Creates the bucket like production: Object Lock on, every
+  # object retained by default. GOVERNANCE for 1 day, so local data can still
+  # be wiped with "docker compose down -v".
+  storage-init:
+    image: cgr.dev/chainguard/minio-client@sha256:8419d1a4518c12889cf59f11043cb2318175841eb727c415e0aacbd0a749846f
+    profiles: ["tools"]
+    environment:
+      MC_HOST_local: http://${S3_ACCESS_KEY_ID}:${S3_SECRET_ACCESS_KEY}@minio:9000
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        until mc ready local; do sleep 1; done &&
+        mc mb --ignore-existing --with-lock local/${S3_BUCKET} &&
+        mc retention set --default governance 1d local/${S3_BUCKET}
+    depends_on:
+      minio:
+        condition: service_started
+
   # One-off tool, never started by "docker compose up".
   # Usage: docker compose run --rm migrate <up | down 1 | version | force N>
   migrate:
@@ -49,3 +87,4 @@ services:
 
 volumes:
   pgdata:
+  miniodata:

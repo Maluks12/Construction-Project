@@ -14,6 +14,7 @@ import (
 	"construction_db/internal/editions/construction"
 	"construction_db/internal/platform/config"
 	"construction_db/internal/platform/database"
+	"construction_db/internal/platform/storage"
 	"construction_db/internal/regimes"
 )
 
@@ -46,6 +47,16 @@ func main() {
 
 	if err := regimes.CheckDatabase(ctx, pool, reg); err != nil {
 		slog.Error("check regimes", "error", err)
+		os.Exit(1)
+	}
+
+	store, err := storage.NewS3(ctx, cfg.S3)
+	if err != nil {
+		slog.Error("connect evidence storage", "error", err)
+		os.Exit(1)
+	}
+	if err := store.CheckObjectLock(ctx, cfg.EvidenceLockMode); err != nil {
+		slog.Error("check evidence bucket", "error", err)
 		os.Exit(1)
 	}
 

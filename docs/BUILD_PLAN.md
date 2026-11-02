@@ -32,7 +32,7 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 - [x] Migration: evidence + site_chain_heads (content_hash, client_captured_at, server_received_at, prev_chain_hash, chain_hash) (due Mon 2 Nov)
 - [ ] Server re-hashes the stored bytes and rejects mismatches (client compresses to 2048px before hashing) (due Tue 3 Nov)
 - [ ] Per-site chain append under a lock (pg_advisory_xact_lock or FOR UPDATE; UNIQUE(site_id, prev_chain_hash)) (due Wed 4 Nov)
-- [ ] Pin the chain input encoding and document it (bytes vs hex, UTC timestamp precision) (due Wed 4 Nov)
+- [x] Pin the chain input encoding and document it (bytes vs hex, UTC timestamp precision) (due Wed 4 Nov)
 - [ ] Chain verification endpoint: walk a site's chain, report the first break (due Thu 5 Nov)
 - [ ] Concurrency test: parallel uploads to one site give one unforked chain (due Fri 6 Nov)
 
@@ -70,7 +70,7 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 ### M12: Reports & audit pack (due Sun 22 Nov)
 
 - [ ] Site compliance summary endpoint: open findings, overdue actions, expiring competencies (due Sat 21 Nov)
-- [ ] Audit pack export with evidence manifest and chain verification result (due Sun 22 Nov)
+- [ ] Audit pack export with evidence manifest and chain verification result. Include each site's chain head hash and length: the chain alone can't detect its newest entries being deleted (with site_chain_heads rewound), but a pack someone already holds records how long it was (see internal/core/evidence/CHAIN.md). Until the daily signed anchor (P2) exists, this is the only external record (due Sun 22 Nov)
 - [ ] Checkpoint: review the safety core against Rev 4 section 6.D; decide cuts here if behind (due Sun 22 Nov)
 
 ## Sync, billing & deploy (due Sat 28 Nov)

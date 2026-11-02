@@ -59,6 +59,12 @@ go test ./...                           # needs Docker Desktop running (testcont
 - `cmd/api`: the server. `cmd/worker`: empty for now.
 - `internal/core/{auth,sites,invites}`: features. Each has model.go, repo.go,
   service.go, handler.go, routes.go.
+- `internal/core/evidence`: for now only the chain encoding (`chain.go`:
+  `MetadataHash`, `ChainHash`, `GenesisHash`) and its specification
+  `CHAIN.md`. `chain_test.go` reads the test vectors and the SQL verification
+  query from `CHAIN.md`, so the document can't drift from the code. Hash
+  inputs must be read back from Postgres: the encoder refuses a time with
+  sub-microsecond digits.
 - `internal/platform/{config,database,dbtest,health}`.
 - `internal/platform/storage`: the `Store` interface for evidence objects and
   its S3 implementation (also used against MinIO). Presigned PUTs sign the
@@ -220,6 +226,12 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     on the three tables, and tests (`rls_test.go` now states each table's
     expected UPDATE and DELETE outcome; `TestEvidenceIsAppendOnly`). MinIO
     healthcheck in compose. `storage.Open` omits an empty version id.
+  - 6.3 (Mon 2 Nov), **done**: chain encoding pinned in
+    `internal/core/evidence/CHAIN.md` (see Layout). The three vectors were
+    computed by Postgres, spot-checked with `sha256sum`, and reproduced by
+    the Go encoder. `TestRecomputeSQL` runs the doc's SQL on the real schema
+    and shows it catches a 1 µs edit and a deleted entry, even with the
+    freeze trigger off.
 
 ## Requested by the frontend
 

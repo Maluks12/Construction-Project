@@ -167,8 +167,24 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
 - List functions start from `items := []T{}` so JSON is `[]`, not `null`.
 - Wrap errors with `fmt.Errorf("prefix: %w", err)`; one prefix per function.
 - Service errors are sentinel `ErrX` values in model.go; each handler package
-  has a `writeError` switch mapping them to status codes. Unknown errors log
-  and return 500 with `"internal error"` (never send err.Error() for a 500).
+  has a `writeError` switch mapping them to status codes. Its default branch
+  calls `httpapi.WriteUnexpected(c, "request failed", err)`, and so does any
+  middleware with an unexpected error. Never write a 500 by hand:
+  - out of time (`errors.Is(err, context.DeadlineExceeded)`, which includes
+    waiting for a pool connection) is **503** `"server busy, try again"`
+    with `Retry-After: 2`, logged at warn;
+  - the client went away (`context.Canceled`) is 499 with no body, logged
+    at info: not a server error, and nobody receives it;
+  - anything else is 500 `"internal error"`, logged at error (never send
+    err.Error() for a 500).
+- **One deadline per request:** `httpapi.Deadline(REQUEST_TIMEOUT)`, set in
+  `NewRouter` right after Recovery. Pass `c.Request.Context()` down; don't
+  add your own timeouts. A future long-running endpoint (e.g. the M12 audit
+  pack export) needs its own, longer deadline.
+- **Pool size:** `DB_MAX_CONNS` (default 20) per API instance. Keep the sum
+  across instances below Postgres's `max_connections` (100 by default) minus
+  headroom for `migrate`, psql and admin tools. `main.go` logs it at
+  startup. Tests use `dbtest.MaxConns` (10).
 - `isNotFound(err)` treats `pgx.ErrNoRows` and SQLSTATE `22P02` (malformed
   UUID) as not found. `isUniqueViolation(err, "constraint_name")` checks
   `23505`.
@@ -252,6 +268,11 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
   - 6.4 (Mon 2 Nov), **done**: declare, list and get evidence (see Evidence
     engine). `NewRouter` now takes a `storage.Store`; `internal/app` tests
     start MinIO too (`testStore`). First contract change of M6.
+  - Interposed (Mon 2 Nov), **done**: busy is 503, not 500 (see
+    Conventions). `RequireAuth`'s own 2s timeout is gone; one request
+    deadline (`REQUEST_TIMEOUT`, default 10s) covers everything. Pool size
+    from `DB_MAX_CONNS`. Found by commit 4's concurrency test: a burst larger
+    than the pool made auth answer 500 after 2s. Contract change: 503.
 
 ## Requested by the frontend
 

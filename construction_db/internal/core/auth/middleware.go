@@ -1,9 +1,7 @@
 package auth
 
 import (
-	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -13,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"construction_db/internal/platform/database"
+	"construction_db/internal/platform/httpapi"
 )
 
 const (
@@ -24,8 +23,9 @@ const (
 
 func RequireAuth(svc *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
-		defer cancel()
+		// The request's own deadline (httpapi.Deadline) bounds this, waiting
+		// for a pool connection included.
+		ctx := c.Request.Context()
 
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -61,8 +61,7 @@ func RequireAuth(svc *Service) gin.HandlerFunc {
 			return
 		}
 		if err != nil {
-			slog.Error("require auth: load session and membership", "err", err)
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+			httpapi.WriteUnexpected(c, "require auth: load session and membership", err)
 			return
 		}
 

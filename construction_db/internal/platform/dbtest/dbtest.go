@@ -14,6 +14,10 @@ import (
 	"construction_db/internal/platform/database"
 )
 
+// MaxConns is the app pool's size in tests: fixed, so tests that fill the
+// pool behave the same on every machine.
+const MaxConns = 10
+
 // Start runs Postgres with every migration applied. app connects like the API
 // (as siteproof_app, under RLS); admin is the superuser, for fixtures the app
 // may not write.
@@ -41,7 +45,7 @@ func Start(ctx context.Context) (app, admin *pgxpool.Pool, cleanup func(), err e
 		return nil, nil, nil, fmt.Errorf("connection string: %w", err)
 	}
 
-	app, err = database.Connect(ctx, url)
+	app, err = database.Connect(ctx, url, MaxConns)
 	if err != nil {
 		_ = testcontainers.TerminateContainer(ctr)
 		return nil, nil, nil, fmt.Errorf("connect: %w", err)

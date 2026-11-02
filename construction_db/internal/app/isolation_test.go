@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -24,7 +25,12 @@ import (
 	"construction_db/internal/regimes"
 )
 
-const testSecret = "test-secret-that-is-at-least-32-characters-long"
+const (
+	testSecret = "test-secret-that-is-at-least-32-characters-long"
+	// Generous: these tests check behaviour, not speed, and run under -race
+	// beside other packages' containers. TestBusyIs503 tests the deadline.
+	testRequestTimeout = time.Minute
+)
 
 var testEdition = construction.New()
 
@@ -88,7 +94,7 @@ func execAsTenant(t *testing.T, orgID string, want int64, sql string, args ...an
 
 func newRouter(t *testing.T) *gin.Engine {
 	t.Helper()
-	router, err := NewRouter(context.Background(), testPool, testSecret, testRegistry, testEdition, testStore)
+	router, err := NewRouter(context.Background(), testPool, testSecret, testRegistry, testEdition, testStore, testRequestTimeout)
 	if err != nil {
 		t.Fatalf("new router: %v", err)
 	}

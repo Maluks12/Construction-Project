@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,13 +14,14 @@ import (
 	"construction_db/internal/core/invites"
 	"construction_db/internal/core/sites"
 	"construction_db/internal/platform/health"
+	"construction_db/internal/platform/httpapi"
 	"construction_db/internal/platform/storage"
 	"construction_db/internal/regimes"
 )
 
 // ed supplies the edition and regime for new organisations and sites, and its own routes.
-// store holds evidence objects.
-func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *regimes.Registry, ed edition.Edition, store storage.Store) (*gin.Engine, error) {
+// store holds evidence objects. requestTimeout is every request's deadline.
+func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *regimes.Registry, ed edition.Edition, store storage.Store, requestTimeout time.Duration) (*gin.Engine, error) {
 	if err := reg.CheckDefault(ed.DefaultRegime(), ed.Name()); err != nil {
 		return nil, fmt.Errorf("new router: %w", err)
 	}
@@ -28,7 +30,9 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	}
 
 	router := gin.New()
-	router.Use(gin.Recovery())
+	// Recovery outermost, so a panic is still a 500; then one deadline for
+	// everything after it, auth included.
+	router.Use(gin.Recovery(), httpapi.Deadline(requestTimeout))
 
 	router.GET("/healthz", health.Handler(pool))
 

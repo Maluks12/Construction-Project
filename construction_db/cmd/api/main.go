@@ -38,12 +38,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := database.Connect(ctx, cfg.DatabaseURL)
+	pool, err := database.Connect(ctx, cfg.DatabaseURL, cfg.DBMaxConns)
 	if err != nil {
 		slog.Error("connect database", "error", err)
 		os.Exit(1)
 	}
 	defer pool.Close()
+	slog.Info("database pool", "max_conns", cfg.DBMaxConns, "request_timeout", cfg.RequestTimeout.String())
 
 	if err := regimes.CheckDatabase(ctx, pool, reg); err != nil {
 		slog.Error("check regimes", "error", err)
@@ -60,7 +61,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	router, err := app.NewRouter(ctx, pool, cfg.JWTSecret, reg, construction.New(), store)
+	router, err := app.NewRouter(ctx, pool, cfg.JWTSecret, reg, construction.New(), store, cfg.RequestTimeout)
 	if err != nil {
 		slog.Error("build router", "error", err)
 		os.Exit(1)

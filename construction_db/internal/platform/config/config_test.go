@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"construction_db/internal/platform/storage"
 )
@@ -13,6 +14,64 @@ func valid() Config {
 		JWTSecret:        strings.Repeat("s", 32),
 		S3:               storage.S3Config{Bucket: "evidence", Region: "af-south-1"},
 		EvidenceLockMode: storage.LockCompliance,
+		RequestTimeout:   10 * time.Second,
+		DBMaxConns:       20,
+	}
+}
+
+// Load reads the environment; there is no .env in this package's directory.
+func TestLoad(t *testing.T) {
+	setRequired := func(t *testing.T) {
+		t.Setenv("DATABASE_URL", "postgres://x")
+		t.Setenv("JWT_SECRET", strings.Repeat("s", 32))
+		t.Setenv("S3_BUCKET", "evidence")
+		t.Setenv("EVIDENCE_LOCK_MODE", storage.LockGovernance)
+		t.Setenv("S3_ACCESS_KEY_ID", "")
+		t.Setenv("S3_SECRET_ACCESS_KEY", "")
+	}
+
+	t.Run("defaults", func(t *testing.T) {
+		setRequired(t)
+		t.Setenv("REQUEST_TIMEOUT", "")
+		t.Setenv("DB_MAX_CONNS", "")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.RequestTimeout != 10*time.Second || cfg.DBMaxConns != 20 {
+			t.Errorf("request timeout %s, max conns %d; want 10s and 20", cfg.RequestTimeout, cfg.DBMaxConns)
+		}
+	})
+
+	t.Run("set", func(t *testing.T) {
+		setRequired(t)
+		t.Setenv("REQUEST_TIMEOUT", "1500ms")
+		t.Setenv("DB_MAX_CONNS", "7")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.RequestTimeout != 1500*time.Millisecond || cfg.DBMaxConns != 7 {
+			t.Errorf("request timeout %s, max conns %d; want 1.5s and 7", cfg.RequestTimeout, cfg.DBMaxConns)
+		}
+	})
+
+	bad := map[string][2]string{
+		"timeout without a unit": {"REQUEST_TIMEOUT", "10"},
+		"timeout not a duration": {"REQUEST_TIMEOUT", "soon"},
+		"zero timeout":           {"REQUEST_TIMEOUT", "0s"},
+		"max conns not a number": {"DB_MAX_CONNS", "many"},
+		"max conns too large":    {"DB_MAX_CONNS", "3000000000"},
+		"max conns zero":         {"DB_MAX_CONNS", "0"},
+	}
+	for name, kv := range bad {
+		t.Run(name, func(t *testing.T) {
+			setRequired(t)
+			t.Setenv(kv[0], kv[1])
+			if _, err := Load(); err == nil || !strings.Contains(err.Error(), kv[0]) {
+				t.Errorf("%s=%s: got %v, want an error naming %s", kv[0], kv[1], err, kv[0])
+			}
+		})
 	}
 }
 
@@ -29,6 +88,9 @@ func TestValidate(t *testing.T) {
 		{"unknown lock mode", func(c *Config) { c.EvidenceLockMode = "governance" }, "EVIDENCE_LOCK_MODE must be"},
 		{"key without secret", func(c *Config) { c.S3.AccessKeyID = "id" }, "S3_SECRET_ACCESS_KEY"},
 		{"secret without key", func(c *Config) { c.S3.SecretAccessKey = "secret" }, "S3_ACCESS_KEY_ID"},
+		{"zero request timeout", func(c *Config) { c.RequestTimeout = 0 }, "REQUEST_TIMEOUT"},
+		{"negative request timeout", func(c *Config) { c.RequestTimeout = -time.Second }, "REQUEST_TIMEOUT"},
+		{"no pool connections", func(c *Config) { c.DBMaxConns = 0 }, "DB_MAX_CONNS"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

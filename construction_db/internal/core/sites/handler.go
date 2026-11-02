@@ -2,12 +2,12 @@ package sites
 
 import (
 	"errors"
-	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"construction_db/internal/core/auth"
+	"construction_db/internal/platform/httpapi"
 )
 
 type Handler struct {
@@ -35,8 +35,7 @@ func writeError(c *gin.Context, err error) {
 	case errors.Is(err, ErrLocationHasChildren):
 		c.JSON(http.StatusConflict, gin.H{"error": "location has active child locations"})
 	default:
-		slog.Error("request failed", "path", c.Request.URL.Path, "err", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		httpapi.WriteUnexpected(c, "request failed", err)
 	}
 }
 

@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 
@@ -18,13 +20,34 @@ type Config struct {
 
 	S3               storage.S3Config
 	EvidenceLockMode string
+
+	RequestTimeout time.Duration // one deadline per request (httpapi.Deadline)
+	DBMaxConns     int32         // pgxpool MaxConns
 }
+
+const (
+	defaultRequestTimeout = 10 * time.Second
+	defaultDBMaxConns     = 20
+)
 
 func Load() (*Config, error) {
 	var err error = godotenv.Load()
 
 	if err != nil {
 		log.Println("Warning: . env file not found, using environment variables")
+	}
+
+	timeout := defaultRequestTimeout
+	if s := os.Getenv("REQUEST_TIMEOUT"); s != "" {
+		if timeout, err = time.ParseDuration(s); err != nil {
+			return nil, fmt.Errorf("REQUEST_TIMEOUT must be a duration such as 10s: %w", err)
+		}
+	}
+	maxConns := int64(defaultDBMaxConns)
+	if s := os.Getenv("DB_MAX_CONNS"); s != "" {
+		if maxConns, err = strconv.ParseInt(s, 10, 32); err != nil {
+			return nil, fmt.Errorf("DB_MAX_CONNS must be a whole number: %w", err)
+		}
 	}
 
 	cfg := &Config{
@@ -40,6 +63,8 @@ func Load() (*Config, error) {
 			SecretAccessKey: os.Getenv("S3_SECRET_ACCESS_KEY"),
 		},
 		EvidenceLockMode: os.Getenv("EVIDENCE_LOCK_MODE"),
+		RequestTimeout:   timeout,
+		DBMaxConns:       int32(maxConns),
 	}
 
 	if cfg.Port == "" {
@@ -88,6 +113,14 @@ func (c *Config) validate() error {
 
 	if (c.S3.AccessKeyID == "") != (c.S3.SecretAccessKey == "") {
 		return fmt.Errorf("set both S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY, or neither")
+	}
+
+	if c.RequestTimeout <= 0 {
+		return fmt.Errorf("REQUEST_TIMEOUT must be more than zero")
+	}
+
+	if c.DBMaxConns < 1 {
+		return fmt.Errorf("DB_MAX_CONNS must be at least 1")
 	}
 	return nil
 }

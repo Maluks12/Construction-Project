@@ -53,7 +53,9 @@ Shape rules both sides rely on:
   `TokenPair`.
 - Errors are `{"error": "<message>"}`. 400 validation, 401 bad or expired
   token, 403 wrong role, 404 not found (including someone else's or a
-  malformed id), 409 conflict, 500 `"internal error"`.
+  malformed id), 409 conflict, 500 `"internal error"`, 503 `"server busy,
+  try again"` with a `Retry-After` header (seconds): the request ran out of
+  time; retry after that many seconds.
 - Phone numbers are E.164 (`+27820000001`).
 - Access token 15 min; refresh token 30 days, rotated, with reuse detection (a
   refresh token used twice revokes the whole session).

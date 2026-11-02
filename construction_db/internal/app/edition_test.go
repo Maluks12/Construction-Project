@@ -47,7 +47,7 @@ func TestEditionRoutes(t *testing.T) {
 			})
 		},
 	}
-	router, err := NewRouter(context.Background(), testPool, testSecret, testRegistry, ed, testStore)
+	router, err := NewRouter(context.Background(), testPool, testSecret, testRegistry, ed, testStore, testRequestTimeout)
 	if err != nil {
 		t.Fatalf("new router: %v", err)
 	}

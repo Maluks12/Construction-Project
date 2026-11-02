@@ -2,12 +2,12 @@ package invites
 
 import (
 	"errors"
-	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"construction_db/internal/core/auth"
+	"construction_db/internal/platform/httpapi"
 )
 
 type Handler struct {
@@ -34,8 +34,7 @@ func writeError(c *gin.Context, err error) {
 	case errors.Is(err, ErrInviteNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	default:
-		slog.Error("request failed", "path", c.Request.URL.Path, "err", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		httpapi.WriteUnexpected(c, "request failed", err)
 	}
 }
 

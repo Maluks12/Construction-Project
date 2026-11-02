@@ -2,7 +2,6 @@ package evidence
 
 import (
 	"errors"
-	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -10,6 +9,7 @@ import (
 
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/sites"
+	"construction_db/internal/platform/httpapi"
 )
 
 type Handler struct {
@@ -32,8 +32,7 @@ func writeError(c *gin.Context, err error) {
 		errors.Is(err, ErrBadDeviceID), errors.Is(err, ErrBadStatus), errors.Is(err, ErrBadLimit):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
-		slog.Error("request failed", "path", c.Request.URL.Path, "err", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		httpapi.WriteUnexpected(c, "request failed", err)
 	}
 }
 

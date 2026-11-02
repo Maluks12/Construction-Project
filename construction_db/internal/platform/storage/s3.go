@@ -111,11 +111,15 @@ func (s *S3) Stat(ctx context.Context, key string) (*ObjectInfo, error) {
 }
 
 func (s *S3) Open(ctx context.Context, key, versionID string) (io.ReadCloser, error) {
-	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket:    aws.String(s.bucket),
-		Key:       aws.String(key),
-		VersionId: aws.String(versionID),
-	})
+	in := &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(key),
+	}
+	// S3 rejects an empty versionId; omitting it reads the latest version.
+	if versionID != "" {
+		in.VersionId = aws.String(versionID)
+	}
+	out, err := s.client.GetObject(ctx, in)
 	if isNotFound(err) {
 		return nil, ErrNotFound
 	}

@@ -29,7 +29,7 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 ### M6: Evidence engine (due Fri 6 Nov)
 
 - [x] S3 storage behind an interface; presigned upload URLs (af-south-1, Object Lock bucket) (due Mon 2 Nov)
-- [ ] Migration: evidence + site_chain_heads (content_hash, client_captured_at, server_received_at, prev_chain_hash, chain_hash) (due Mon 2 Nov)
+- [x] Migration: evidence + site_chain_heads (content_hash, client_captured_at, server_received_at, prev_chain_hash, chain_hash) (due Mon 2 Nov)
 - [ ] Server re-hashes the stored bytes and rejects mismatches (client compresses to 2048px before hashing) (due Tue 3 Nov)
 - [ ] Per-site chain append under a lock (pg_advisory_xact_lock or FOR UPDATE; UNIQUE(site_id, prev_chain_hash)) (due Wed 4 Nov)
 - [ ] Pin the chain input encoding and document it (bytes vs hex, UTC timestamp precision) (due Wed 4 Nov)
@@ -38,6 +38,7 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 
 ### M7: Inspections & checklists (due Tue 10 Nov)
 
+- [ ] Evidence access log: append-only (who, when, which evidence, from where; every view, export and share, Rev 4 §2.1 and A.2, P1). Then a short-lived presigned GET for evidence bytes that writes a log entry. No endpoint may serve evidence bytes before this (due Mon 9 Nov)
 - [ ] Migration: inspections, responses, findings; templates come from the regime (due Sat 7 Nov)
 - [ ] Start and complete inspections, answer items, attach evidence (due Mon 9 Nov)
 - [ ] A failed item raises a finding with severity (due Mon 9 Nov)

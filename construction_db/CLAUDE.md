@@ -16,6 +16,12 @@ Known spec issues:
   site. Use **per site**.
 - The chain is ordered by server receipt, so concurrent offline uploads need a
   per-site chain-head lock or the chain forks.
+- Rev 4 §2.1's chain formula has four fields and leaves the device timestamp,
+  GPS, uploader and device unsealed, although Rev 4 presents dual timestamps
+  as integrity evidence. We append a fifth field, `metadata_hash` (decided
+  2 Nov 2026). Rev 4's four fields keep their order, so it's an extension,
+  not a replacement. Corrections are new records, never edits to sealed
+  fields.
 - Phase 1 is about 105 features; section 6.D's "if it must shrink" list is the
   realistic scope.
 - Rev 4 §1.4 keeps regime content in `regime_*` database tables. We embed
@@ -83,11 +89,33 @@ go test ./...                           # needs Docker Desktop running (testcont
 
 When showing a `routes.go`, always show the full file.
 
-## Evidence engine (to build)
+## Evidence engine (building, M6)
 
-Compress to 2048px → SHA-256 → server re-verifies on the stored bytes; dual
-timestamps; per-site chain
-`SHA256(content_hash || server_received_at || site_id || prev_chain_hash)`.
+The client compresses to a 2048px long edge, hashes with SHA-256, and PUTs
+the bytes straight to S3 with a presigned URL. The server then re-hashes the
+exact stored version. Dual timestamps. Per-site chain:
+
+`chain_hash = SHA256(content_sha256 || server_received_at || site_id || prev_chain_hash || metadata_hash)`
+
+`metadata_hash` seals `evidence_id`, `client_captured_at`, `lat`/`lng`,
+`uploaded_by` and `device_id` (see Known spec issues). The exact byte
+encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
+
+- An evidence id is single-use. Its storage key is fixed and the upload URL
+  allows one PUT, so after a rejection the client must declare a **new**
+  evidence id; the rejected response says so.
+- Migration 000010: `evidence` (declared metadata and status), append-only
+  `evidence_chain`, and `site_chain_heads` (locked FOR UPDATE to serialise
+  appends per site). The app role can update only an evidence row's outcome
+  columns. The `evidence_freeze` trigger freezes verified and rejected rows
+  for every role, except that `retain_until` may be extended (legal hold or
+  claim), never shortened or cleared.
+- Evidence rows pin their site and uploader's membership (foreign keys), so
+  a future "remove member" must deactivate, not delete.
+- Testing uploads from a real phone: set `S3_PUBLIC_ENDPOINT` to this
+  machine's LAN address (e.g. `http://192.168.1.20:9000`). It is part of
+  the presigned URL's signature and the phone can't reach `localhost`. Allow
+  inbound TCP 9000 in Windows Firewall and keep the phone on the same Wi-Fi.
 
 ## Conventions (learned the hard way)
 
@@ -187,7 +215,11 @@ timestamps; per-site chain
     4xx (AWS answers 403); a second PUT → 412. New env vars: `S3_BUCKET`,
     `EVIDENCE_LOCK_MODE` (both required), `S3_REGION` (default
     `af-south-1`), `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_ACCESS_KEY_ID`,
-    `S3_SECRET_ACCESS_KEY`.
+    `S3_SECRET_ACCESS_KEY`. All listed in `.env.example`.
+  - 6.2 (Mon 2 Nov), **done**: migration 000010 (see Evidence engine), RLS
+    on the three tables, and tests (`rls_test.go` now states each table's
+    expected UPDATE and DELETE outcome; `TestEvidenceIsAppendOnly`). MinIO
+    healthcheck in compose. `storage.Open` omits an empty version id.
 
 ## Requested by the frontend
 

@@ -1,6 +1,7 @@
 package database_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -16,29 +17,71 @@ import (
 
 // Two orgs with exactly one row in every RLS table, seeded as superuser.
 const (
-	rlsOrgA  = "20000000-0000-0000-0000-00000000000a"
-	rlsOrgB  = "20000000-0000-0000-0000-00000000000b"
-	rlsUserA = "21000000-0000-0000-0000-00000000000a"
-	rlsUserB = "21000000-0000-0000-0000-00000000000b"
-	rlsSiteB = "22000000-0000-0000-0000-00000000000b"
-	rlsSessB = "24000000-0000-0000-0000-00000000000b"
+	rlsOrgA      = "20000000-0000-0000-0000-00000000000a"
+	rlsOrgB      = "20000000-0000-0000-0000-00000000000b"
+	rlsUserA     = "21000000-0000-0000-0000-00000000000a"
+	rlsUserB     = "21000000-0000-0000-0000-00000000000b"
+	rlsSiteA     = "22000000-0000-0000-0000-00000000000a"
+	rlsSiteB     = "22000000-0000-0000-0000-00000000000b"
+	rlsSessB     = "24000000-0000-0000-0000-00000000000b"
+	rlsEvidenceA = "28000000-0000-0000-0000-00000000000a"
+	rlsEvidenceB = "28000000-0000-0000-0000-00000000000b"
+)
+
+// What an unfiltered DELETE as tenant A does to a table.
+type deleteRule int
+
+const (
+	deleteOK     deleteRule = iota // removes A's row only
+	deleteDenied                   // the app has no DELETE privilege (42501)
+	deletePinned                   // A's row is referenced by A's evidence (23503)
 )
 
 type rlsTable struct {
 	name, key    string // key identifies a row's org; refresh_tokens has no org_id
 	wantA, wantB string
+	update       string // a column the app may set to itself; "" means no UPDATE privilege
+	del          deleteRule
 }
 
 // In foreign-key-safe delete order.
 var rlsTables = []rlsTable{
-	{"refresh_tokens", "token_hash", "rls-refresh-a", "rls-refresh-b"},
-	{"sessions", "org_id", rlsOrgA, rlsOrgB},
-	{"invitations", "org_id", rlsOrgA, rlsOrgB},
-	{"site_locations", "org_id", rlsOrgA, rlsOrgB},
-	{"site_members", "org_id", rlsOrgA, rlsOrgB},
-	{"sites", "org_id", rlsOrgA, rlsOrgB},
-	{"org_members", "org_id", rlsOrgA, rlsOrgB},
-	{"organisations", "id", rlsOrgA, rlsOrgB},
+	{"evidence_chain", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"site_chain_heads", "org_id", rlsOrgA, rlsOrgB, "org_id", deleteDenied},
+	{"evidence", "org_id", rlsOrgA, rlsOrgB, "status", deleteDenied},
+	{"refresh_tokens", "token_hash", "rls-refresh-a", "rls-refresh-b", "token_hash", deleteOK},
+	{"sessions", "org_id", rlsOrgA, rlsOrgB, "org_id", deleteOK},
+	{"invitations", "org_id", rlsOrgA, rlsOrgB, "org_id", deleteOK},
+	{"site_locations", "org_id", rlsOrgA, rlsOrgB, "org_id", deleteOK},
+	{"site_members", "org_id", rlsOrgA, rlsOrgB, "org_id", deleteOK},
+	{"sites", "org_id", rlsOrgA, rlsOrgB, "org_id", deletePinned},
+	{"org_members", "org_id", rlsOrgA, rlsOrgB, "org_id", deletePinned},
+	{"organisations", "id", rlsOrgA, rlsOrgB, "id", deletePinned},
+}
+
+func hash32(b byte) []byte { return bytes.Repeat([]byte{b}, 32) }
+
+func pgCode(err error) string {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code
+	}
+	return ""
+}
+
+// inSavepoint runs one statement in a savepoint of tx, so an expected error
+// leaves tx usable. keep=false rolls the statement back either way.
+func inSavepoint(ctx context.Context, tx pgx.Tx, keep bool, sql string, args ...any) (int64, error) {
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	tag, err := sp.Exec(ctx, sql, args...)
+	if err != nil || !keep {
+		_ = sp.Rollback(ctx)
+		return tag.RowsAffected(), err
+	}
+	return tag.RowsAffected(), sp.Commit(ctx)
 }
 
 var seedOnce = sync.OnceValue(func() error {
@@ -51,7 +94,7 @@ var seedOnce = sync.OnceValue(func() error {
 
 	for _, x := range []string{"a", "b"} {
 		id := func(prefix string) string { return prefix + "000000-0000-0000-0000-00000000000" + x }
-		org, user, site, loc, sess, inv := id("20"), id("21"), id("22"), id("23"), id("24"), id("26")
+		org, user, site, loc, sess, inv, ev := id("20"), id("21"), id("22"), id("23"), id("24"), id("26"), id("28")
 
 		stmts := []struct {
 			sql  string
@@ -66,6 +109,11 @@ var seedOnce = sync.OnceValue(func() error {
 			{`INSERT INTO sessions (id, org_id, user_id, expires_at) VALUES ($1, $2, $3, now() + interval '1 hour')`, []any{sess, org, user}},
 			{`INSERT INTO refresh_tokens (session_id, token_hash, expires_at) VALUES ($1, $2, now() + interval '1 hour')`, []any{sess, "rls-refresh-" + x}},
 			{`INSERT INTO invitations (id, org_id, user_id, token_hash, invited_by, expires_at) VALUES ($1, $2, $3, $4, $3, now() + interval '1 day')`, []any{inv, org, user, "rls-invite-" + x}},
+			{`INSERT INTO evidence (id, org_id, site_id, uploaded_by, content_sha256, size_bytes, content_type, client_captured_at, object_key, object_version_id, retain_until, status)
+			  VALUES ($1, $2, $3, $4, $5, 1, 'image/jpeg', now(), $6, 'v1', now() + interval '1 day', 'verified')`, []any{ev, org, site, user, hash32(1), "rls/" + x}},
+			{`INSERT INTO site_chain_heads (site_id, org_id, seq, head_hash) VALUES ($1, $2, 1, $3)`, []any{site, org, hash32(3)}},
+			{`INSERT INTO evidence_chain (evidence_id, org_id, site_id, seq, content_sha256, server_received_at, prev_chain_hash, metadata_hash, chain_hash)
+			  VALUES ($1, $2, $3, 1, $4, now(), $5, $6, $7)`, []any{ev, org, site, hash32(1), hash32(0), hash32(2), hash32(3)}},
 		}
 		for _, s := range stmts {
 			if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
@@ -137,6 +185,12 @@ func TestRLSWrites(t *testing.T) {
 			"sessions":       {`INSERT INTO sessions (org_id, user_id, expires_at) VALUES ($1, $2, now() + interval '1 hour')`, []any{rlsOrgB, rlsUserB}},
 			"invitations":    {`INSERT INTO invitations (org_id, user_id, token_hash, invited_by, expires_at) VALUES ($1, $2, 'rls-smuggled', $2, now() + interval '1 day')`, []any{rlsOrgB, rlsUserB}},
 			"refresh_tokens": {`INSERT INTO refresh_tokens (session_id, token_hash, expires_at) VALUES ($1, 'rls-smuggled', now() + interval '1 day')`, []any{rlsSessB}},
+			"evidence": {`INSERT INTO evidence (id, org_id, site_id, uploaded_by, content_sha256, size_bytes, content_type, client_captured_at, object_key)
+			  VALUES ('29000000-0000-0000-0000-00000000000b', $1, $2, $3, $4, 1, 'image/jpeg', now(), 'rls-smuggled')`, []any{rlsOrgB, rlsSiteB, rlsUserB, hash32(9)}},
+			// These collide with B's seeded rows too; the policy check must come first.
+			"site_chain_heads": {`INSERT INTO site_chain_heads (site_id, org_id) VALUES ($1, $2)`, []any{rlsSiteB, rlsOrgB}},
+			"evidence_chain": {`INSERT INTO evidence_chain (evidence_id, org_id, site_id, seq, content_sha256, server_received_at, prev_chain_hash, metadata_hash, chain_hash)
+			  VALUES ($1, $2, $3, 2, $4, now(), $5, $6, $7)`, []any{rlsEvidenceB, rlsOrgB, rlsSiteB, hash32(1), hash32(3), hash32(4), hash32(5)}},
 		}
 		for _, tb := range rlsTables {
 			t.Run(tb.name, func(t *testing.T) {
@@ -166,21 +220,42 @@ func TestRLSWrites(t *testing.T) {
 		}
 
 		for _, tb := range rlsTables {
-			tag, err := tx.Exec(ctx, fmt.Sprintf(`UPDATE %s SET %s = %s`, tb.name, tb.key, tb.key))
-			if err != nil {
-				t.Fatalf("update %s: %v", tb.name, err)
+			col := tb.update
+			if col == "" {
+				col = tb.key
 			}
-			if tag.RowsAffected() != 1 {
-				t.Errorf("unfiltered UPDATE %s changed %d rows, want 1", tb.name, tag.RowsAffected())
+			n, err := inSavepoint(ctx, tx, true, fmt.Sprintf(`UPDATE %s SET %s = %s`, tb.name, col, col))
+			switch {
+			case tb.update == "":
+				if pgCode(err) != "42501" {
+					t.Errorf("unfiltered UPDATE %s: got %v, want SQLSTATE 42501", tb.name, err)
+				}
+			case err != nil:
+				t.Errorf("unfiltered UPDATE %s: %v", tb.name, err)
+			case n != 1:
+				t.Errorf("unfiltered UPDATE %s changed %d rows, want 1", tb.name, n)
 			}
 		}
+
 		for _, tb := range rlsTables {
-			tag, err := tx.Exec(ctx, fmt.Sprintf(`DELETE FROM %s`, tb.name))
-			if err != nil {
-				t.Fatalf("delete %s: %v", tb.name, err)
-			}
-			if tag.RowsAffected() != 1 {
-				t.Errorf("unfiltered DELETE %s removed %d rows, want 1", tb.name, tag.RowsAffected())
+			n, err := inSavepoint(ctx, tx, true, fmt.Sprintf(`DELETE FROM %s`, tb.name))
+			switch tb.del {
+			case deleteOK:
+				if err != nil || n != 1 {
+					t.Errorf("unfiltered DELETE %s: removed %d rows, err %v; want 1", tb.name, n, err)
+				}
+			case deleteDenied:
+				if pgCode(err) != "42501" {
+					t.Errorf("unfiltered DELETE %s: got %v, want SQLSTATE 42501", tb.name, err)
+				}
+			case deletePinned:
+				if pgCode(err) != "23503" {
+					t.Errorf("unfiltered DELETE %s: got %v, want SQLSTATE 23503 (A's row is pinned by A's evidence)", tb.name, err)
+				}
+				q := fmt.Sprintf(`DELETE FROM %s WHERE %s::text = $1`, tb.name, tb.key)
+				if n, err := inSavepoint(ctx, tx, true, q, tb.wantB); err != nil || n != 0 {
+					t.Errorf("DELETE %s of B's row: removed %d rows, err %v; want 0", tb.name, n, err)
+				}
 			}
 		}
 	})

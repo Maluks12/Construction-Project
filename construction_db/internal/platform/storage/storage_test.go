@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
@@ -98,14 +99,16 @@ func TestPresignedPut(t *testing.T) {
 		t.Errorf("stat = %+v, want the bucket's default GOVERNANCE retention", info)
 	}
 
-	r, err := env.Store.Open(ctx, "put/ok", info.VersionID)
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	defer r.Close()
-	got, err := io.ReadAll(r)
-	if err != nil || !bytes.Equal(got, body) {
-		t.Errorf("open read %q, err %v; want %q", got, err, body)
+	for _, version := range []string{info.VersionID, ""} {
+		r, err := env.Store.Open(ctx, "put/ok", version)
+		if err != nil {
+			t.Fatalf("open version %q: %v", version, err)
+		}
+		got, err := io.ReadAll(r)
+		r.Close()
+		if err != nil || !bytes.Equal(got, body) {
+			t.Errorf("open version %q read %q, err %v; want %q", version, got, err, body)
+		}
 	}
 }
 
@@ -146,6 +149,35 @@ func TestPresignedPutOnlyOnce(t *testing.T) {
 	}
 	if resp := upload(t, p, body, ""); resp.StatusCode != http.StatusPreconditionFailed {
 		t.Errorf("second put: status %d, want 412", resp.StatusCode)
+	}
+}
+
+// MinIO accepts an empty versionId but AWS rejects it, so this checks the
+// request itself rather than relying on MinIO.
+func TestOpenOmitsEmptyVersion(t *testing.T) {
+	queries := make(chan url.Values, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries <- r.URL.Query()
+		w.Header().Set("Content-Type", "application/xml")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = io.WriteString(w, `<Error><Code>NoSuchKey</Code></Error>`)
+	}))
+	defer srv.Close()
+
+	cfg := env.Config
+	cfg.Endpoint = srv.URL
+	s, err := storage.NewS3(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for version, want := range map[string]bool{"": false, "v1": true} {
+		if _, err := s.Open(context.Background(), "k", version); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("open version %q: %v, want ErrNotFound", version, err)
+		}
+		if got := (<-queries).Has("versionId"); got != want {
+			t.Errorf("open version %q: versionId in query = %v, want %v", version, got, want)
+		}
 	}
 }
 

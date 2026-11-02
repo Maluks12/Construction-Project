@@ -73,12 +73,9 @@ npm install                          # after package.json changes
 npm run dev                          # dashboard on :3000
 ```
 
-Secrets live in git-ignored files: `construction_db/.env` (`POSTGRES_*`,
-`JWT_SECRET` of 32+ chars, `DATABASE_URL` pointing at `localhost:5433`
-for `go run`, and the evidence store: `S3_BUCKET`, `S3_ACCESS_KEY_ID`,
-`S3_SECRET_ACCESS_KEY` (8+ chars; also the MinIO login),
-`EVIDENCE_LOCK_MODE=GOVERNANCE` and `S3_ENDPOINT=http://localhost:9000` for
-`go run`) and `web/.env.local` (copy `web/.env.example`).
+Secrets live in git-ignored files: `construction_db/.env` (copy
+`construction_db/.env.example`) and `web/.env.local` (copy
+`web/.env.example`).
 
 ## Architecture rules (Rev 4)
 

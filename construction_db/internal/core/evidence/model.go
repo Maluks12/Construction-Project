@@ -11,7 +11,15 @@ const (
 	StatusRejected = "rejected"
 
 	MaxSizeBytes = 10 << 20
+	MaxImageEdge = 2048 // Rev 4 §2.1: compressed to a 2048px long edge
 	uploadTTL    = 15 * time.Minute
+
+	// Why a stored file was rejected (evidence.rejected_reason).
+	ReasonSizeMismatch       = "size_mismatch"
+	ReasonHashMismatch       = "hash_mismatch"
+	ReasonNotAnImage         = "not_an_image"
+	ReasonWrongType          = "wrong_type"
+	ReasonTooLargeDimensions = "too_large_dimensions"
 )
 
 var (
@@ -24,7 +32,29 @@ var (
 	ErrBadDeviceID      = errors.New("device_id must be 1-200 bytes")
 	ErrBadStatus        = errors.New("status must be pending, verified or rejected")
 	ErrBadLimit         = errors.New("limit must be 1-200")
+	ErrNotUploaded      = errors.New("file not uploaded yet")
 )
+
+// RejectedError is a stored file that failed a check. The evidence is now
+// rejected for good; its id can't be used again.
+type RejectedError struct {
+	Reason  string // one of the Reason constants
+	Message string
+}
+
+func (e *RejectedError) Error() string { return e.Message + "; declare a new evidence id" }
+
+var rejections = map[string]string{
+	ReasonSizeMismatch:       "uploaded file is not size_bytes long",
+	ReasonHashMismatch:       "uploaded file does not match content_sha256",
+	ReasonNotAnImage:         "uploaded file is not a JPEG or PNG",
+	ReasonWrongType:          "uploaded file is not the declared content_type",
+	ReasonTooLargeDimensions: "image is larger than 2048px on its long edge",
+}
+
+func rejected(reason string) *RejectedError {
+	return &RejectedError{Reason: reason, Message: rejections[reason]}
+}
 
 type Evidence struct {
 	ID               string      `json:"id"`

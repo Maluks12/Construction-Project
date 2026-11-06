@@ -38,7 +38,8 @@ var (
 	testPool     *pgxpool.Pool // as siteproof_app, like the API
 	testAdmin    *pgxpool.Pool // superuser, only for regulatory_regimes fixtures
 	testRegistry *regimes.Registry
-	testStore    *storage.S3 // MinIO with a locked bucket, like the API's
+	testStore    *storage.S3      // MinIO with a locked bucket, like the API's
+	testS3       *storagetest.Env // its admin client writes objects directly, as a tamperer would
 )
 
 func TestMain(m *testing.M) {
@@ -66,6 +67,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	testStore = s3env.Store
+	testS3 = s3env
 
 	code := m.Run()
 	cleanupS3()

@@ -101,6 +101,98 @@ func GetSiteEvidence(ctx context.Context, db DBTX, orgID, siteID, id string) (*E
 	return e, nil
 }
 
+// GetEvidenceForUpdate locks the evidence row. OF e because Postgres can't
+// lock the nullable side of the LEFT JOIN.
+func GetEvidenceForUpdate(ctx context.Context, db DBTX, orgID, id string) (*Evidence, error) {
+	e, err := scanEvidence(db.QueryRow(ctx, selectEvidence+`WHERE e.org_id = $1 AND e.id = $2 FOR UPDATE OF e`, orgID, id))
+	if err != nil {
+		return nil, fmt.Errorf("get evidence for update: %w", err)
+	}
+	return e, nil
+}
+
+// EnsureHead creates a site's chain head (seq 0, genesis hash) if it has none.
+// ON CONFLICT makes two first uploads to a site safe.
+func EnsureHead(ctx context.Context, db DBTX, orgID, siteID string) error {
+	_, err := db.Exec(ctx, `INSERT INTO site_chain_heads (site_id, org_id) VALUES ($1, $2) ON CONFLICT (site_id) DO NOTHING`, siteID, orgID)
+	if err != nil {
+		return fmt.Errorf("ensure chain head: %w", err)
+	}
+	return nil
+}
+
+// LockHead locks a site's chain head until the transaction ends; this is what
+// serialises appends to one site's chain.
+func LockHead(ctx context.Context, db DBTX, orgID, siteID string) (seq int64, headHash []byte, err error) {
+	err = db.QueryRow(ctx, `SELECT seq, head_hash FROM site_chain_heads WHERE org_id = $1 AND site_id = $2 FOR UPDATE`, orgID, siteID).Scan(&seq, &headHash)
+	if err != nil {
+		return 0, nil, fmt.Errorf("lock chain head: %w", err)
+	}
+	return seq, headHash, nil
+}
+
+// Now is the database clock at this moment, not at the transaction's start.
+func Now(ctx context.Context, db DBTX) (time.Time, error) {
+	var t time.Time
+	if err := db.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&t); err != nil {
+		return time.Time{}, fmt.Errorf("clock: %w", err)
+	}
+	return t.UTC(), nil
+}
+
+type chainEntry struct {
+	EvidenceID, OrgID, SiteID              string
+	Seq                                    int64
+	ContentSHA256                          []byte
+	ServerReceivedAt                       time.Time
+	PrevChainHash, MetadataHash, ChainHash []byte
+}
+
+func InsertChainEntry(ctx context.Context, db DBTX, c chainEntry) error {
+	query := `
+		INSERT INTO evidence_chain (evidence_id, org_id, site_id, seq, content_sha256, server_received_at,
+		                            prev_chain_hash, metadata_hash, chain_hash)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`
+	_, err := db.Exec(ctx, query, c.EvidenceID, c.OrgID, c.SiteID, c.Seq, c.ContentSHA256, c.ServerReceivedAt,
+		c.PrevChainHash, c.MetadataHash, c.ChainHash)
+	if err != nil {
+		return fmt.Errorf("insert chain entry: %w", err)
+	}
+	return nil
+}
+
+func AdvanceHead(ctx context.Context, db DBTX, orgID, siteID string, seq int64, headHash []byte) (bool, error) {
+	tag, err := db.Exec(ctx, `UPDATE site_chain_heads SET seq = $3, head_hash = $4, updated_at = now() WHERE org_id = $1 AND site_id = $2`,
+		orgID, siteID, seq, headHash)
+	if err != nil {
+		return false, fmt.Errorf("advance chain head: %w", err)
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+func MarkVerified(ctx context.Context, db DBTX, orgID, id, versionID string, retainUntil time.Time) (bool, error) {
+	tag, err := db.Exec(ctx, `
+		UPDATE evidence SET status = 'verified', object_version_id = $3, retain_until = $4, updated_at = now()
+		WHERE org_id = $1 AND id = $2 AND status = 'pending'
+	`, orgID, id, versionID, retainUntil)
+	if err != nil {
+		return false, fmt.Errorf("mark verified: %w", err)
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
+func MarkRejected(ctx context.Context, db DBTX, orgID, id, reason string) (bool, error) {
+	tag, err := db.Exec(ctx, `
+		UPDATE evidence SET status = 'rejected', rejected_reason = $3, updated_at = now()
+		WHERE org_id = $1 AND id = $2 AND status = 'pending'
+	`, orgID, id, reason)
+	if err != nil {
+		return false, fmt.Errorf("mark rejected: %w", err)
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 // ListEvidence returns a site's evidence, newest first. status "" means any.
 func ListEvidence(ctx context.Context, db DBTX, orgID, siteID, status string, limit int) ([]Evidence, error) {
 	query := selectEvidence + `

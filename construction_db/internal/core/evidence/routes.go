@@ -17,4 +17,5 @@ func Register(r *gin.Engine, svc *Service, authSvc *auth.Service) {
 	protected.GET("", h.List)
 	protected.GET("/:evidenceId", h.Get)
 	protected.PUT("/:evidenceId", h.Declare)
+	protected.POST("/:evidenceId/complete", h.Complete)
 }

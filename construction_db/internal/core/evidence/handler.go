@@ -21,7 +21,13 @@ func NewHandler(svc *Service) *Handler {
 }
 
 func writeError(c *gin.Context, err error) {
+	var rej *RejectedError
 	switch {
+	case errors.As(err, &rej):
+		// The code lets the app act on the reason without parsing the text.
+		c.JSON(http.StatusBadRequest, gin.H{"error": rej.Error(), "rejected_reason": rej.Reason})
+	case errors.Is(err, ErrNotUploaded):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, sites.ErrSiteNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "site not found"})
 	case errors.Is(err, ErrEvidenceNotFound):
@@ -45,6 +51,20 @@ func (h *Handler) Declare(c *gin.Context) {
 
 	ev, created, err := h.svc.Declare(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c),
 		c.Param("id"), c.Param("evidenceId"), req)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	c.JSON(status, ev)
+}
+
+func (h *Handler) Complete(c *gin.Context) {
+	ev, created, err := h.svc.Complete(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c),
+		c.Param("id"), c.Param("evidenceId"))
 	if err != nil {
 		writeError(c, err)
 		return

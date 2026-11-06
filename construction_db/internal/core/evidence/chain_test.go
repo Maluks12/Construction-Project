@@ -18,7 +18,10 @@ import (
 	"construction_db/internal/platform/dbtest"
 )
 
-var admin *pgxpool.Pool // superuser: fixtures and the auditor's query
+var (
+	admin   *pgxpool.Pool // superuser: fixtures and the auditor's query
+	appPool *pgxpool.Pool // as siteproof_app, under RLS, like the API
+)
 
 func TestMain(m *testing.M) {
 	app, adm, cleanup, err := dbtest.Start(context.Background())
@@ -26,8 +29,7 @@ func TestMain(m *testing.M) {
 		log.Printf("start test database: %v", err)
 		os.Exit(1)
 	}
-	app.Close()
-	admin = adm
+	admin, appPool = adm, app
 
 	code := m.Run()
 	cleanup()

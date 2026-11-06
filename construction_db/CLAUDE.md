@@ -124,6 +124,33 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
   - `GET /v1/sites/:id/evidence?status=&limit=` lists newest first
     (`{"evidence": [...]}`, limit 1–200, default 50).
   - `GET /v1/sites/:id/evidence/:evidenceId`. `chain` is null until verified.
+  - `POST /v1/sites/:id/evidence/:evidenceId/complete` (uploader only;
+    anyone else 404). Re-checks the version S3 stored and, if it passes,
+    seals it into the site's chain: 201 with `chain`. Already verified: 200
+    (idempotent). No object yet: 409 `"file not uploaded yet"` (stays
+    pending). A failed check is 400 and the evidence becomes `rejected`
+    for good, with `rejected_reason` one of `size_mismatch`,
+    `hash_mismatch`, `not_an_image`, `wrong_type`, `too_large_dimensions`.
+    The 400 body carries the code too:
+    `{"error": "...; declare a new evidence id", "rejected_reason": "..."}`.
+    An object without Object Lock retention is a 500 (bucket fault; stays
+    pending).
+- Complete reads the stored file as one stream in constant memory
+  (`complete.go` `inspect`): `LimitReader(10 MiB + 1)` → `TeeReader` into
+  `MultiWriter(sha256, counter)` → `bufio.Reader`. `image.DecodeConfig`
+  reads the header from that stream, however much EXIF/ICC metadata comes
+  first, then the rest is drained, so every byte is hashed exactly once.
+  Checks run size, hash, then the decode result. A read error, even one
+  the decoder swallowed, is a 500 and the evidence stays pending; it is
+  never turned into a rejection that would burn the id.
+- Complete reads exactly the version `Stat` saw: a version written in
+  between can't swap what is checked and sealed
+  (`TestEvidenceCompleteReadsTheStatVersion`).
+- The chain append (`appendToChain`) runs after the S3 reads, in one short
+  transaction: ensure and lock the site's head row (`FOR UPDATE`), lock the
+  evidence row, take `clock_timestamp()`, compute the hashes from the rows
+  as read from Postgres, insert the entry, advance the head, mark
+  verified. Lock order is always head, then evidence.
 - An evidence id is single-use. Its storage key is fixed and the upload URL
   allows one PUT, so after a rejection the client must declare a **new**
   evidence id; the rejected response says so.
@@ -273,6 +300,11 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     deadline (`REQUEST_TIMEOUT`, default 10s) covers everything. Pool size
     from `DB_MAX_CONNS`. Found by commit 4's concurrency test: a burst larger
     than the pool made auth answer 500 after 2s. Contract change: 503.
+  - 6.5 (Fri 6 Nov), **done**: complete endpoint (see Evidence engine):
+    stream-check the stored bytes, then append to the site chain under the
+    head-row lock. M6 runs one day over: the concurrency test (6.6), the
+    verify endpoint (6.7) and docs (6.8) land Sat 7 Nov, from the slack
+    before M7.
 
 ## Requested by the frontend
 

@@ -46,6 +46,7 @@ type rlsTable struct {
 
 // In foreign-key-safe delete order.
 var rlsTables = []rlsTable{
+	{"evidence_access_log", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"evidence_chain", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"site_chain_heads", "org_id", rlsOrgA, rlsOrgB, "org_id", deleteDenied},
 	{"evidence", "org_id", rlsOrgA, rlsOrgB, "status", deleteDenied},
@@ -114,6 +115,7 @@ var seedOnce = sync.OnceValue(func() error {
 			{`INSERT INTO site_chain_heads (site_id, org_id, seq, head_hash) VALUES ($1, $2, 1, $3)`, []any{site, org, hash32(3)}},
 			{`INSERT INTO evidence_chain (evidence_id, org_id, site_id, seq, content_sha256, server_received_at, prev_chain_hash, metadata_hash, chain_hash)
 			  VALUES ($1, $2, $3, 1, $4, now(), $5, $6, $7)`, []any{ev, org, site, hash32(1), hash32(0), hash32(2), hash32(3)}},
+			{`INSERT INTO evidence_access_log (org_id, site_id, evidence_id, user_id, action) VALUES ($1, $2, $3, $4, 'view_record')`, []any{org, site, ev, user}},
 		}
 		for _, s := range stmts {
 			if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
@@ -191,6 +193,8 @@ func TestRLSWrites(t *testing.T) {
 			"site_chain_heads": {`INSERT INTO site_chain_heads (site_id, org_id) VALUES ($1, $2)`, []any{rlsSiteB, rlsOrgB}},
 			"evidence_chain": {`INSERT INTO evidence_chain (evidence_id, org_id, site_id, seq, content_sha256, server_received_at, prev_chain_hash, metadata_hash, chain_hash)
 			  VALUES ($1, $2, $3, 2, $4, now(), $5, $6, $7)`, []any{rlsEvidenceB, rlsOrgB, rlsSiteB, hash32(1), hash32(3), hash32(4), hash32(5)}},
+			"evidence_access_log": {`INSERT INTO evidence_access_log (org_id, site_id, evidence_id, user_id, action) VALUES ($1, $2, $3, $4, 'view_record')`,
+				[]any{rlsOrgB, rlsSiteB, rlsEvidenceB, rlsUserB}},
 		}
 		for _, tb := range rlsTables {
 			t.Run(tb.name, func(t *testing.T) {

@@ -348,6 +348,20 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     due date. M7 starts with the evidence access log (it was due Mon 9 Nov)
     and runs about three days behind; decide any cuts at the Sun 22 Nov
     checkpoint.
+- **Milestone 7, Inspections and checklists** (due Tue 10 Nov). Plan
+  approved Mon 9 Nov; expected done Mon 16 Nov, six days late. Decisions:
+  - Access log rows for byte views, single-record reads, and one row per
+    list request.
+  - Fixed core severity list with one-sentence definitions.
+  - Photo-on-fail enforced at completion.
+  - Only verified, same-site evidence can be attached (foreign keys);
+    old photos are flagged, not blocked.
+  - Natural keys for responses; 403 for "not your inspection".
+  - 7.1 (Mon 9 Nov), **done**: migration 000011 `evidence_access_log`.
+    The app may only INSERT and SELECT. A trigger blocks UPDATE, DELETE
+    and TRUNCATE for every role, superusers included. Foreign keys pin a
+    row's evidence to its site and its user to the org. Nothing writes it
+    yet; 7.2 does.
 
 ## Requested by the frontend
 

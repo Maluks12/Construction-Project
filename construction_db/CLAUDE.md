@@ -64,6 +64,9 @@ go test ./...                           # needs Docker Desktop running (testcont
   encoding (`chain.go`: `MetadataHash`, `ChainHash`, `GenesisHash`) and its
   specification `CHAIN.md`. Site scoping goes through
   `sites.Service.GetInTx`, the same rule as `GET /v1/sites/:id`.
+  `internal/core/evidence/evidencetest` reads `CHAIN.md` for any test:
+  `Block(marker)` and `Recompute(ctx, db, siteID)`, which runs the
+  published verification SQL.
   `chain_test.go` reads the test vectors and the SQL verification query
   from `CHAIN.md`, so the document can't drift from the code. Hash inputs
   must be read back from Postgres: the encoder refuses a time with
@@ -302,9 +305,18 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     than the pool made auth answer 500 after 2s. Contract change: 503.
   - 6.5 (Fri 6 Nov), **done**: complete endpoint (see Evidence engine):
     stream-check the stored bytes, then append to the site chain under the
-    head-row lock. M6 runs one day over: the concurrency test (6.6), the
-    verify endpoint (6.7) and docs (6.8) land Sat 7 Nov, from the slack
-    before M7.
+    head-row lock.
+  - 6.6 (Mon 9 Nov), **done**: `TestParallelUploadsGiveOneChain` fires 20
+    completes on one site and 5 on another at once (a barrier after the
+    uploads makes them contend for the lock) and checks each chain in Go
+    and with `CHAIN.md`'s SQL. Without `FOR UPDATE` on the head, about 16
+    of 20 fail with 500 on the unique constraints, and no fork is stored.
+    `TestForkFailsLoudly` names the constraint that stops each kind of
+    fork. The constraints don't catch a seq gap; the verify endpoint must.
+  - Schedule: M6 was due Fri 6 Nov. The verify endpoint (6.7) and docs
+    (6.8) land Tue 10 Nov, four days late; M7, including the access log
+    due Mon 9 Nov, moves with it. Decide any cuts at the Sun 22 Nov
+    checkpoint.
 
 ## Requested by the frontend
 

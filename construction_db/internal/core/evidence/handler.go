@@ -76,6 +76,15 @@ func (h *Handler) Complete(c *gin.Context) {
 	c.JSON(status, ev)
 }
 
+func (h *Handler) VerifyChain(c *gin.Context) {
+	v, err := h.svc.VerifyChain(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c), c.Param("id"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, v)
+}
+
 func (h *Handler) Get(c *gin.Context) {
 	ev, err := h.svc.Get(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c),
 		c.Param("id"), c.Param("evidenceId"))

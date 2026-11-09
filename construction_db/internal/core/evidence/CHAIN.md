@@ -19,20 +19,30 @@ product must never be described as "tamper-proof" or "court-admissible". It
 is built to the reliability factors in section 15 of the Electronic
 Communications and Transactions Act 25 of 2002.
 
-**What it can't show on its own: truncation.** Someone with database access
-who deletes the newest entries and rewinds `site_chain_heads` to match leaves
-a shorter chain that still verifies: every remaining entry links correctly
-to the one before it. (`TestRecomputeSQL` demonstrates this.) Catching it
-needs a site's head hash and length recorded somewhere outside the database,
-to compare against later:
+**What it can't show on its own.** Two changes by someone with write access
+to the database leave a chain that still verifies:
+
+- **Truncation:** deleting the newest entries and their evidence rows, and
+  rewinding `site_chain_heads` to match. Every remaining entry links
+  correctly to the one before it. (Deleting only the chain entries is
+  caught: their evidence is left `verified` with no entry.)
+- **A consistent rewrite:** editing a sealed field, then recomputing that
+  entry's hashes, every hash after it, and the head. Nothing about the hash
+  function prevents this; the chain only makes it more work.
+
+`TestRecomputeSQL`, `TestChainWalker` and `TestVerifyChain` demonstrate
+both. Catching them needs a site's head hash and length recorded somewhere
+outside the database, to compare against later. The verify endpoint returns
+exactly these (`head_hash`, `length`):
 
 - the daily signed chain anchor (Rev 4 §2.1, P2), written to a separate
   append-only store;
 - the chain head and length included in every audit pack export (M12), so a
-  pack someone already holds proves how long the chain was on that day.
+  pack someone already holds proves what the chain was on that day.
 
 Until one of those exists, the chain shows that the entries present are
-intact, not that none were removed from the end.
+consistent with each other, not that none were removed from the end or
+rewritten since.
 
 ## The formulas
 

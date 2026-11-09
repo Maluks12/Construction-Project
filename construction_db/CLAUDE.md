@@ -138,6 +138,23 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     `{"error": "...; declare a new evidence id", "rejected_reason": "..."}`.
     An object without Object Lock retention is a 500 (bucket fault; stays
     pending).
+  - `GET /v1/sites/:id/chain` (owner and SHE officer only; others 403)
+    walks the site's chain as stored and returns `{site_id, intact, length,
+    head_seq, head_hash, first_break, checked_at}`. `first_break` is null
+    or `{seq, evidence_id, reason}`, with the reasons checked in this
+    order: `seq_gap`, `prev_mismatch`, `metadata_changed`,
+    `chain_hash_mismatch`, `entry_without_verified_evidence` (per entry;
+    the last means the freeze trigger was switched off), then
+    `head_mismatch`, then `verified_without_entry` (seq null). Walking a
+    long chain can exceed `REQUEST_TIMEOUT`; the M12 audit pack may need to
+    run it in `cmd/worker`. `intact` means no break found,
+    never "tamper-proof": a consistent rewrite or a full truncation still
+    verifies (`CHAIN.md`), so `head_hash` and `length` are what to record
+    outside the database (M12 audit pack).
+- `verify.go`: the walk reads one snapshot (`database.WithTenantSnapshot`)
+  and streams entries through `chainWalker`, so memory doesn't grow with the
+  chain. `afterHeadRead` is a test hook (no-op in production) that proves
+  the snapshot (`TestVerifyChainReadsOneSnapshot`).
 - Complete reads the stored file as one stream in constant memory
   (`complete.go` `inspect`): `LimitReader(10 MiB + 1)` → `TeeReader` into
   `MultiWriter(sha256, counter)` → `bufio.Reader`. `image.DecodeConfig`
@@ -207,6 +224,10 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     at info: not a server error, and nobody receives it;
   - anything else is 500 `"internal error"`, logged at error (never send
     err.Error() for a 500).
+- **Reads that must agree** (a head row and the entries it summarises) run
+  in `database.WithTenantSnapshot`: read-only REPEATABLE READ, so commits
+  made by others mid-way are invisible. Plain `WithTenant` reads can see a
+  commit between two queries.
 - **One deadline per request:** `httpapi.Deadline(REQUEST_TIMEOUT)`, set in
   `NewRouter` right after Recovery. Pass `c.Request.Context()` down; don't
   add your own timeouts. A future long-running endpoint (e.g. the M12 audit
@@ -313,6 +334,9 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     of 20 fail with 500 on the unique constraints, and no fork is stored.
     `TestForkFailsLoudly` names the constraint that stops each kind of
     fork. The constraints don't catch a seq gap; the verify endpoint must.
+  - 6.7 (Mon 9 Nov), **done**: `GET /v1/sites/:id/chain` (see Evidence
+    engine). Every check is mutation-tested; `CHAIN.md` now documents the
+    consistent-rewrite limit alongside truncation.
   - Schedule: M6 was due Fri 6 Nov. The verify endpoint (6.7) and docs
     (6.8) land Tue 10 Nov, four days late; M7, including the access log
     due Mon 9 Nov, moves with it. Decide any cuts at the Sun 22 Nov

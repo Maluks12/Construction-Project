@@ -35,6 +35,39 @@ var (
 	ErrNotUploaded      = errors.New("file not uploaded yet")
 )
 
+// Why a chain check failed (ChainBreak.Reason), in the order they're checked.
+const (
+	BreakSeqGap            = "seq_gap"
+	BreakPrevMismatch      = "prev_mismatch"
+	BreakMetadataChanged   = "metadata_changed"
+	BreakChainHashMismatch = "chain_hash_mismatch"
+	// A chain entry whose evidence row isn't verified any more. The freeze
+	// trigger stops that, so it means someone switched the trigger off.
+	BreakEntryWithoutVerifiedEvidence = "entry_without_verified_evidence"
+	BreakHeadMismatch                 = "head_mismatch"
+	BreakVerifiedWithoutEntry         = "verified_without_entry"
+)
+
+// ChainVerification is the result of walking a site's chain as stored.
+// Intact means no break was found; it never means "tamper-proof". HeadSeq
+// and HeadHash are what to record outside the database: only an external
+// record of them shows that entries were removed from the end (CHAIN.md).
+type ChainVerification struct {
+	SiteID     string      `json:"site_id"`
+	Intact     bool        `json:"intact"`
+	Length     int64       `json:"length"`
+	HeadSeq    int64       `json:"head_seq"`
+	HeadHash   string      `json:"head_hash"`
+	FirstBreak *ChainBreak `json:"first_break"`
+	CheckedAt  time.Time   `json:"checked_at"`
+}
+
+type ChainBreak struct {
+	Seq        *int64 `json:"seq"` // null for verified_without_entry
+	EvidenceID string `json:"evidence_id"`
+	Reason     string `json:"reason"`
+}
+
 // RejectedError is a stored file that failed a check. The evidence is now
 // rejected for good; its id can't be used again.
 type RejectedError struct {

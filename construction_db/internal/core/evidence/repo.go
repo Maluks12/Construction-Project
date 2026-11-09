@@ -3,6 +3,7 @@ package evidence
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -191,6 +192,83 @@ func MarkRejected(ctx context.Context, db DBTX, orgID, id, reason string) (bool,
 		return false, fmt.Errorf("mark rejected: %w", err)
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+// GetHead returns a site's chain head; a site with no evidence yet has none
+// (ok false).
+func GetHead(ctx context.Context, db DBTX, orgID, siteID string) (seq int64, headHash []byte, ok bool, err error) {
+	err = db.QueryRow(ctx, `SELECT seq, head_hash FROM site_chain_heads WHERE org_id = $1 AND site_id = $2`, orgID, siteID).Scan(&seq, &headHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, nil, false, nil
+	}
+	if err != nil {
+		return 0, nil, false, fmt.Errorf("get chain head: %w", err)
+	}
+	return seq, headHash, true, nil
+}
+
+// storedEntry is one chain entry with the evidence fields it seals.
+type storedEntry struct {
+	SiteID                                 string
+	Seq                                    int64
+	ContentSHA256                          []byte
+	ServerReceivedAt                       time.Time
+	PrevChainHash, MetadataHash, ChainHash []byte
+	Metadata                               Metadata
+	EvidenceStatus                         string // must be verified for a chained entry
+}
+
+// StreamChain calls fn for each of a site's entries in seq order, one row at
+// a time, so a long chain never sits in memory.
+func StreamChain(ctx context.Context, db DBTX, orgID, siteID string, fn func(storedEntry) error) error {
+	rows, err := db.Query(ctx, `
+		SELECT c.site_id, c.seq, c.content_sha256, c.server_received_at, c.prev_chain_hash, c.metadata_hash, c.chain_hash,
+		       e.id, e.client_captured_at, e.lat, e.lng, e.uploaded_by, e.device_id, e.status
+		FROM evidence_chain c
+		JOIN evidence e ON e.id = c.evidence_id
+		WHERE c.org_id = $1 AND c.site_id = $2
+		ORDER BY c.seq
+	`, orgID, siteID)
+	if err != nil {
+		return fmt.Errorf("stream chain: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var s storedEntry
+		m := &s.Metadata
+		if err := rows.Scan(&s.SiteID, &s.Seq, &s.ContentSHA256, &s.ServerReceivedAt, &s.PrevChainHash, &s.MetadataHash, &s.ChainHash,
+			&m.EvidenceID, &m.ClientCapturedAt, &m.Lat, &m.Lng, &m.UploadedBy, &m.DeviceID, &s.EvidenceStatus); err != nil {
+			return fmt.Errorf("scan chain entry: %w", err)
+		}
+		if err := fn(s); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("stream chain: %w", err)
+	}
+	return nil
+}
+
+// VerifiedWithoutEntry returns one verified evidence id on the site that has
+// no chain entry, or "" if there is none.
+func VerifiedWithoutEntry(ctx context.Context, db DBTX, orgID, siteID string) (string, error) {
+	var id string
+	err := db.QueryRow(ctx, `
+		SELECT e.id FROM evidence e
+		WHERE e.org_id = $1 AND e.site_id = $2 AND e.status = 'verified'
+		  AND NOT EXISTS (SELECT 1 FROM evidence_chain c WHERE c.evidence_id = e.id)
+		ORDER BY e.created_at, e.id
+		LIMIT 1
+	`, orgID, siteID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("verified without entry: %w", err)
+	}
+	return id, nil
 }
 
 // ListEvidence returns a site's evidence, newest first. status "" means any.

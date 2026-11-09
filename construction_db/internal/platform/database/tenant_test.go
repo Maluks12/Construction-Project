@@ -17,6 +17,55 @@ const (
 	orgB = "00000000-0000-0000-0000-00000000000b"
 )
 
+// A snapshot transaction must not see a commit made after its first query;
+// a plain WithTenant does, which shows the test can tell them apart.
+func TestWithTenantSnapshot(t *testing.T) {
+	seedRLS(t)
+	ctx := context.Background()
+	tenant := database.Tenant{OrgID: rlsOrgA}
+
+	countAround := func(t *testing.T, with func(context.Context, *pgxpool.Pool, database.Tenant, func(pgx.Tx) error) error, name string) (before, after int) {
+		t.Helper()
+		err := with(ctx, pool, tenant, func(tx pgx.Tx) error {
+			if err := tx.QueryRow(ctx, `SELECT count(*) FROM site_locations`).Scan(&before); err != nil {
+				return err
+			}
+			// Another connection commits a new row for the same tenant.
+			if _, err := admin.Exec(ctx, `INSERT INTO site_locations (org_id, site_id, kind, name) VALUES ($1, $2, 'zone', $3)`, rlsOrgA, rlsSiteA, name); err != nil {
+				return err
+			}
+			return tx.QueryRow(ctx, `SELECT count(*) FROM site_locations`).Scan(&after)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if _, err := admin.Exec(ctx, `DELETE FROM site_locations WHERE name = $1`, name); err != nil {
+				t.Errorf("clean up %s: %v", name, err)
+			}
+		})
+		return before, after
+	}
+
+	if before, after := countAround(t, database.WithTenantSnapshot, "Snapshot probe"); after != before {
+		t.Errorf("snapshot saw %d rows, then %d after another connection committed; want the same", before, after)
+	}
+	if before, after := countAround(t, database.WithTenant, "Read committed probe"); after != before+1 {
+		t.Errorf("WithTenant saw %d rows, then %d; want the new row visible", before, after)
+	}
+
+	t.Run("read only", func(t *testing.T) {
+		err := database.WithTenantSnapshot(ctx, pool, tenant, func(tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, `UPDATE site_locations SET name = name`)
+			return err
+		})
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "25006" {
+			t.Errorf("got %v, want SQLSTATE 25006 (read-only transaction)", err)
+		}
+	})
+}
+
 func TestTenant(t *testing.T) {
 	ctx := context.Background()
 

@@ -15,6 +15,8 @@ import (
 	"testing/iotest"
 	"time"
 
+	"github.com/google/uuid"
+
 	"construction_db/internal/platform/storage"
 )
 
@@ -157,22 +159,18 @@ func (f *failOnce) Read([]byte) (int, error) {
 // every time; racing HTTP requests only reach it when they happen to overlap.
 func TestAppendToChainTwice(t *testing.T) {
 	ctx := context.Background()
-	const (
-		org  = "45000000-0000-4000-8000-000000000001"
-		user = "45000000-0000-4000-8000-000000000002"
-		site = "45000000-0000-4000-8000-000000000003"
-		id   = "45000000-0000-4000-8000-000000000004"
-	)
+	// Fresh ids each run, so -count=N works against the shared database.
+	org, user, site, id := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
 	for _, f := range []struct {
 		sql  string
 		args []any
 	}{
 		{`INSERT INTO organisations (id, trading_name, primary_edition, enabled_editions) VALUES ($1, 'Twice', 'construction', ARRAY['construction'])`, []any{org}},
-		{`INSERT INTO users (id, email, full_name) VALUES ($1, 'twice@chain.test', 'Twice')`, []any{user}},
+		{`INSERT INTO users (id, email, full_name) VALUES ($1, $2, 'Twice')`, []any{user, "twice-" + user + "@chain.test"}},
 		{`INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'owner')`, []any{org, user}},
 		{`INSERT INTO sites (id, org_id, regime_id, name) SELECT $1, $2, id, 'Twice' FROM regulatory_regimes LIMIT 1`, []any{site, org}},
 		{`INSERT INTO evidence (id, org_id, site_id, uploaded_by, content_sha256, size_bytes, content_type, client_captured_at, object_key)
-		  VALUES ($1, $2, $3, $4, $5, 1, 'image/jpeg', '2026-11-06T08:00:00Z', 'twice')`, []any{id, org, site, user, bytes.Repeat([]byte{7}, 32)}},
+		  VALUES ($1, $2, $3, $4, $5, 1, 'image/jpeg', '2026-11-06T08:00:00Z', $6)`, []any{id, org, site, user, bytes.Repeat([]byte{7}, 32), "twice/" + id}},
 	} {
 		if _, err := admin.Exec(ctx, f.sql, f.args...); err != nil {
 			t.Fatalf("fixture %q: %v", f.sql, err)

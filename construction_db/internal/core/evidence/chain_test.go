@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"construction_db/internal/core/evidence/evidencetest"
 	"construction_db/internal/platform/dbtest"
 )
 
@@ -88,24 +88,11 @@ func unhex(t *testing.T, s string) []byte {
 // document is the fixture and can't drift from the code.
 func block(t *testing.T, marker string) string {
 	t.Helper()
-	doc, err := os.ReadFile("CHAIN.md")
+	body, err := evidencetest.Block(marker)
 	if err != nil {
-		t.Fatalf("read CHAIN.md: %v", err)
+		t.Fatal(err)
 	}
-	_, rest, ok := strings.Cut(string(doc), "<!-- "+marker+" -->")
-	if !ok {
-		t.Fatalf("CHAIN.md has no %q marker", marker)
-	}
-	_, rest, ok = strings.Cut(rest, "```")
-	if !ok {
-		t.Fatalf("CHAIN.md: no fenced block after %q", marker)
-	}
-	_, rest, _ = strings.Cut(rest, "\n") // skip the language tag
-	body, _, ok := strings.Cut(rest, "```")
-	if !ok {
-		t.Fatalf("CHAIN.md: unterminated block after %q", marker)
-	}
-	return strings.ReplaceAll(body, "\r\n", "\n")
+	return body
 }
 
 func vectors(t *testing.T) []vector {
@@ -287,21 +274,15 @@ type sqlCheck struct {
 	seqOK, prevOK, metadataOK, chainOK bool
 }
 
-func recompute(t *testing.T, db interface {
-	Query(context.Context, string, ...any) (pgx.Rows, error)
-}, siteID string) []sqlCheck {
+func recompute(t *testing.T, db evidencetest.Querier, siteID string) []sqlCheck {
 	t.Helper()
-	rows, err := db.Query(context.Background(), block(t, "recompute-sql"), siteID)
+	checks, err := evidencetest.Recompute(context.Background(), db, siteID)
 	if err != nil {
-		t.Fatalf("recompute query: %v", err)
+		t.Fatal(err)
 	}
-	got, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (sqlCheck, error) {
-		var c sqlCheck
-		err := r.Scan(&c.seq, &c.evidenceID, &c.seqOK, &c.prevOK, &c.metadataOK, &c.chainOK)
-		return c, err
-	})
-	if err != nil {
-		t.Fatalf("recompute query: %v", err)
+	got := []sqlCheck{}
+	for _, c := range checks {
+		got = append(got, sqlCheck{c.Seq, c.EvidenceID, c.SeqOK, c.PrevOK, c.MetadataOK, c.ChainOK})
 	}
 	return got
 }

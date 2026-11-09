@@ -34,7 +34,7 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 - [x] Per-site chain append under a lock (pg_advisory_xact_lock or FOR UPDATE; UNIQUE(site_id, prev_chain_hash)) (due Wed 4 Nov)
 - [x] Pin the chain input encoding and document it (bytes vs hex, UTC timestamp precision) (due Wed 4 Nov)
 - [ ] Chain verification endpoint: walk a site's chain, report the first break (due Thu 5 Nov)
-- [ ] Concurrency test: parallel uploads to one site give one unforked chain (due Fri 6 Nov)
+- [x] Concurrency test: parallel uploads to one site give one unforked chain (due Fri 6 Nov)
 
 ### M7: Inspections & checklists (due Tue 10 Nov)
 

@@ -450,6 +450,7 @@ and 4 if uploads start failing with signature errors.
 | `npm` / `npx`: *"running scripts is disabled"* | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
 | `npx tsc --noEmit`: *"Cannot find name 'PageProps'"* | Run `npx next typegen` first. |
 | `go test` fails to start containers | Docker Desktop must be running. On a slow first run, the images are still downloading; try again. |
+| `go test` fails in a fraction of a second with *"rootless Docker is not supported on Windows"*, although Docker Desktop is running | An intermittent hiccup when many test packages start containers at once. Run it again; if it keeps happening, run fewer packages at a time: `go test -p 4 ./...`. |
 | Phone upload fails with `SignatureDoesNotMatch` or can't connect | `S3_PUBLIC_ENDPOINT` must be the exact address the phone uses, and port 9000 must be open (section 10). |
 
 ---
@@ -461,6 +462,7 @@ and 4 if uploads start failing with signature errors.
 | `CLAUDE.md` | How the team works, the API contract between backend and dashboard, architecture rules |
 | `construction_db\CLAUDE.md` | Backend layout, conventions, the evidence engine, known risks and spec issues, status |
 | `construction_db\internal\core\evidence\CHAIN.md` | The evidence hash chain, byte by byte, with test vectors |
+| `docs\api\evidence.md` | The evidence API for the dashboard and app: upload flow, endpoints, status codes and the TypeScript types |
 | `construction_db\internal\regimes\SOURCES_za_construction_2014.md` | Legal sources for every checklist, deadline and incident type |
 | `web\CLAUDE.md` and `web\README.md` | Dashboard rules, structure and status |
 | `docs\BUILD_PLAN.md` | Milestones and due dates (everything due Sat 5 Dec 2026) |

@@ -26,7 +26,7 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 
 ## Safety core (due Sun 22 Nov (checkpoint))
 
-### M6: Evidence engine (due Fri 6 Nov)
+### M6: Evidence engine (due Fri 6 Nov; done Mon 9 Nov)
 
 - [x] S3 storage behind an interface; presigned upload URLs (af-south-1, Object Lock bucket) (due Mon 2 Nov)
 - [x] Migration: evidence + site_chain_heads (content_hash, client_captured_at, server_received_at, prev_chain_hash, chain_hash) (due Mon 2 Nov)

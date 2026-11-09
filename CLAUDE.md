@@ -46,6 +46,11 @@ request body, response shape, status codes or error text is a contract change:
 - Frontend: never work around a missing field by guessing; ask for the
   endpoint change.
 
+Endpoint references for the frontend live in `docs/api/` (so far:
+`evidence.md`, with the types to mirror). A backend change to an endpoint
+listed there updates the reference in the same commit; `TestAPIDoc` fails
+if its types drift from the Go code.
+
 Shape rules both sides rely on:
 - Single objects are returned unwrapped; lists are wrapped
   (`{"sites": [...]}`) and are `[]`, never `null`, when empty.

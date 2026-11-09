@@ -104,7 +104,13 @@ go test ./...                           # needs Docker Desktop running (testcont
 
 When showing a `routes.go`, always show the full file.
 
-## Evidence engine (building, M6)
+## Evidence engine (M6, done Mon 9 Nov)
+
+The frontend's reference is `docs/api/evidence.md`: the upload flow, every
+endpoint with its exact status codes and error texts, and the TypeScript
+types. `TestAPIDoc` checks its types against the Go structs and constants,
+so when an evidence endpoint changes, update the reference in the same
+commit.
 
 The client compresses to a 2048px long edge, hashes with SHA-256, and PUTs
 the bytes straight to S3 with a presigned URL. The server then re-hashes the
@@ -337,9 +343,10 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
   - 6.7 (Mon 9 Nov), **done**: `GET /v1/sites/:id/chain` (see Evidence
     engine). Every check is mutation-tested; `CHAIN.md` now documents the
     consistent-rewrite limit alongside truncation.
-  - Schedule: M6 was due Fri 6 Nov. The verify endpoint (6.7) and docs
-    (6.8) land Tue 10 Nov, four days late; M7, including the access log
-    due Mon 9 Nov, moves with it. Decide any cuts at the Sun 22 Nov
+  - 6.8 (Mon 9 Nov), **done**: `docs/api/evidence.md` for the frontend,
+    guarded by `TestAPIDoc`. **M6 is done**, three days after its Fri 6 Nov
+    due date. M7 starts with the evidence access log (it was due Mon 9 Nov)
+    and runs about three days behind; decide any cuts at the Sun 22 Nov
     checkpoint.
 
 ## Requested by the frontend

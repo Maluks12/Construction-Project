@@ -96,6 +96,11 @@ go test ./...                           # needs Docker Desktop running (testcont
   if a `regulatory_regimes` row has no data set with the same version and
   edition. `testdata/shipped.json` locks shipped keys: a test fails if one
   disappears. Add new keys to it when they ship.
+- `internal/core/checklists`: the checklist engine (Rev 4 §2.4).
+  `GET /v1/sites/:id/checklists` returns the site regime's templates
+  (through `sites.Service.Regime`, never hardcoded) and the severity scale.
+  `sites.Service.RegimeInTx` resolves a site's regime, with its
+  `regulatory_regimes.id`, inside the caller's transaction.
 - `internal/platform/apidoctest`: checks a `docs/api/*.md` reference's
   TypeScript against the Go types (`Load`, `CheckStruct`, `CheckFields`,
   `CheckUnion`). Each feature's `TestAPIDoc` uses it.
@@ -411,6 +416,27 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     from evidence's `TestAPIDoc`, with the same rules (pulled forward from
     7.8). Removing a field, changing a union value or editing a rejection
     row in `evidence.md` still fails the test.
+  - 7.3b (Wed 11 Nov), **done**: `GET /v1/sites/:id/checklists`,
+    `sites.Service.RegimeInTx`, the severity scale (below), and
+    `docs/api/inspections.md`. `regimes.Cadences` is exported for the API
+    doc. A test fails if a shipped template uses a response type other than
+    `pass_fail_na`.
+
+## Finding severity
+
+A fixed product scale (decided 9 Nov 2026), not regime data, so findings
+compare across sites and regimes. The source is `checklists.Severities`.
+This table and the one in `docs/api/inspections.md` must match it word for
+word (`TestSeverityDefinitions`). Fix wording only: a change of meaning
+needs a new level, because past findings keep the old one. A practitioner
+has yet to review the wording.
+
+| key | label | definition |
+|---|---|---|
+| `low` | Low | A minor shortfall unlikely to cause injury (e.g. housekeeping or paperwork); fix at the next routine opportunity. |
+| `medium` | Medium | Could cause an injury needing treatment, or breaks a regulation with no immediate danger; fix within days, not weeks. |
+| `high` | High | Could cause serious injury or a reportable incident, but not imminently; fix before the affected work continues on the next shift. |
+| `critical` | Critical | Imminent danger of death or serious injury; stop the affected work now and keep it stopped until it is made safe. |
 
 ## Requested by the frontend
 

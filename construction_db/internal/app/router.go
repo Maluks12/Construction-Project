@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"construction_db/internal/core/auth"
+	"construction_db/internal/core/checklists"
 	"construction_db/internal/core/edition"
 	"construction_db/internal/core/evidence"
 	"construction_db/internal/core/invites"
@@ -59,6 +60,8 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 
 	evidenceSvc := evidence.NewService(pool, sitesSvc, store)
 	evidence.Register(router, evidenceSvc, authSvc)
+
+	checklists.Register(router, checklists.NewService(sitesSvc), authSvc)
 
 	editionRoutes := router.Group("/v1/" + ed.Name())
 	editionRoutes.Use(auth.RequireAuth(authSvc))

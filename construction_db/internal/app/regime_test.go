@@ -46,6 +46,31 @@ func TestSiteRegime(t *testing.T) {
 		}
 	})
 
+	t.Run("in the caller's transaction, with the regime's row id", func(t *testing.T) {
+		var wantID string
+		if err := testAdmin.QueryRow(ctx, `SELECT id::text FROM regulatory_regimes WHERE code = $1`, testEdition.DefaultRegime()).Scan(&wantID); err != nil {
+			t.Fatalf("read regime id: %v", err)
+		}
+		err := database.WithTenant(ctx, testPool, database.Tenant{OrgID: owner.OrgID, UserID: owner.UserID}, func(tx pgx.Tx) error {
+			sr, err := svc.RegimeInTx(ctx, tx, owner.OrgID, owner.UserID, auth.RoleOwner, createdSite)
+			if err != nil {
+				return err
+			}
+			if sr.Site.ID != createdSite || sr.RegimeID != wantID || sr.Data.Regime.Code != testEdition.DefaultRegime() {
+				t.Errorf("RegimeInTx = site %s, regime id %s, code %s; want %s, %s, %s",
+					sr.Site.ID, sr.RegimeID, sr.Data.Regime.Code, createdSite, wantID, testEdition.DefaultRegime())
+			}
+			_, err = svc.RegimeInTx(ctx, tx, owner.OrgID, supervisorID, auth.RoleSupervisor, createdSite)
+			if !errors.Is(err, sites.ErrSiteNotFound) {
+				t.Errorf("unassigned supervisor: got %v, want ErrSiteNotFound", err)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("RegimeInTx: %v", err)
+		}
+	})
+
 	t.Run("assigned supervisor", func(t *testing.T) {
 		if _, err := svc.Regime(ctx, owner.OrgID, supervisorID, auth.RoleSupervisor, signupSite); err != nil {
 			t.Fatalf("Regime: %v", err)

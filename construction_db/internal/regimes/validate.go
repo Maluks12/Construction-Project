@@ -19,9 +19,11 @@ var jurisdictionPattern = regexp.MustCompile(`^[A-Z]{2}$`)
 // The same values as the CHECK on regulatory_regimes.edition.
 var editions = set("construction", "mining")
 
-// Rev 4, section 2.4.
+// Rev 4, section 2.4. Cadences is exported because the API sends it
+// (docs/api/inspections.md checks its union against it).
 var (
-	cadences      = set("per_shift", "daily", "weekly", "per_activity", "ad_hoc")
+	Cadences      = []string{"per_shift", "daily", "weekly", "per_activity", "ad_hoc"}
+	cadences      = set(Cadences...)
 	responseTypes = set("pass_fail_na", "scale", "numeric", "count", "text")
 )
 

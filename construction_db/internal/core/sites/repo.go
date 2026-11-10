@@ -66,18 +66,19 @@ func GetSite(ctx context.Context, db DBTX, orgID, siteID string) (*Site, error) 
 	return &s, nil
 }
 
-func GetSiteRegimeCode(ctx context.Context, db DBTX, orgID, siteID string) (string, error) {
+// GetSiteRegime returns the id and code of the site's regime
+// (sites.regime_id, never the organisation's).
+func GetSiteRegime(ctx context.Context, db DBTX, orgID, siteID string) (id, code string, err error) {
 	query := `
-		SELECT r.code
+		SELECT r.id, r.code
 		FROM sites s
 		JOIN regulatory_regimes r ON r.id = s.regime_id
 		WHERE s.org_id = $1 AND s.id = $2
 	`
-	var code string
-	if err := db.QueryRow(ctx, query, orgID, siteID).Scan(&code); err != nil {
-		return "", fmt.Errorf("get site regime code: %w", err)
+	if err := db.QueryRow(ctx, query, orgID, siteID).Scan(&id, &code); err != nil {
+		return "", "", fmt.Errorf("get site regime: %w", err)
 	}
-	return code, nil
+	return id, code, nil
 }
 
 func CreateSite(ctx context.Context, db DBTX, orgID, regimeCode, name string, address *string) (*Site, error) {

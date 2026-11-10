@@ -84,33 +84,49 @@ func (s *Service) GetInTx(ctx context.Context, tx pgx.Tx, orgID, userID, role, s
 	return s.get(ctx, tx, orgID, userID, role, siteID)
 }
 
-// Regime is the one place that resolves a site's regime data. It reads
-// sites.regime_id, never the organisation, and applies the same scoping as Get.
+// SiteRegime is a site with the regime it operates under. RegimeID is the
+// regulatory_regimes row, for records that must name the regime they were
+// made under.
+type SiteRegime struct {
+	Site     *Site
+	RegimeID string
+	Data     *regimes.DataSet
+}
+
+// Regime returns a site's regime data in its own transaction; see RegimeInTx.
 func (s *Service) Regime(ctx context.Context, orgID, userID, role, siteID string) (*regimes.DataSet, error) {
-	var code string
+	var sr *SiteRegime
 	err := s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
-		if _, err := s.get(ctx, tx, orgID, userID, role, siteID); err != nil {
-			return err
-		}
 		var err error
-		code, err = GetSiteRegimeCode(ctx, tx, orgID, siteID)
-		if isNotFound(err) {
-			return ErrSiteNotFound
-		}
+		sr, err = s.RegimeInTx(ctx, tx, orgID, userID, role, siteID)
 		return err
 	})
-	if errors.Is(err, ErrSiteNotFound) {
+	if err != nil {
 		return nil, err
+	}
+	return sr.Data, nil
+}
+
+// RegimeInTx is the one place that resolves a site's regime. It reads
+// sites.regime_id, never the organisation, and applies the same scoping as
+// GET /v1/sites/:id. A regime with no data set is an internal error, not a 404.
+func (s *Service) RegimeInTx(ctx context.Context, tx pgx.Tx, orgID, userID, role, siteID string) (*SiteRegime, error) {
+	site, err := s.get(ctx, tx, orgID, userID, role, siteID)
+	if err != nil {
+		return nil, err
+	}
+	id, code, err := GetSiteRegime(ctx, tx, orgID, site.ID)
+	if isNotFound(err) {
+		return nil, ErrSiteNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("site regime: %w", err)
 	}
-
 	ds, ok := s.regimes.Get(code)
 	if !ok {
 		return nil, fmt.Errorf("site regime: no data set for %q", code)
 	}
-	return ds, nil
+	return &SiteRegime{Site: site, RegimeID: id, Data: ds}, nil
 }
 
 func isNotFound(err error) bool {

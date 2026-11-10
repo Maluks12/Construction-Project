@@ -32,7 +32,7 @@ func writeError(c *gin.Context, err error) {
 	case errors.As(err, &rej):
 		// The code lets the app act on the reason without parsing the text.
 		c.JSON(http.StatusBadRequest, gin.H{"error": rej.Error(), "rejected_reason": rej.Reason})
-	case errors.Is(err, ErrNotUploaded):
+	case errors.Is(err, ErrNotUploaded), errors.Is(err, ErrNotVerified):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, sites.ErrSiteNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "site not found"})
@@ -80,6 +80,16 @@ func (h *Handler) Complete(c *gin.Context) {
 		status = http.StatusCreated
 	}
 	c.JSON(status, ev)
+}
+
+func (h *Handler) View(c *gin.Context) {
+	v, err := h.svc.View(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c),
+		c.Param("id"), c.Param("evidenceId"), clientOf(c))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, v)
 }
 
 func (h *Handler) VerifyChain(c *gin.Context) {

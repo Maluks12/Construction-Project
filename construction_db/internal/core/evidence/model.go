@@ -13,6 +13,9 @@ const (
 	MaxSizeBytes = 10 << 20
 	MaxImageEdge = 2048 // Rev 4 §2.1: compressed to a 2048px long edge
 	uploadTTL    = 15 * time.Minute
+	// A view URL is a bearer link: anyone holding it can fetch the photo
+	// until it expires, so keep it short.
+	viewTTL = 60 * time.Second
 
 	// Why a stored file was rejected (evidence.rejected_reason).
 	ReasonSizeMismatch       = "size_mismatch"
@@ -33,6 +36,7 @@ var (
 	ErrBadStatus        = errors.New("status must be pending, verified or rejected")
 	ErrBadLimit         = errors.New("limit must be 1-200")
 	ErrNotUploaded      = errors.New("file not uploaded yet")
+	ErrNotVerified      = errors.New("evidence not verified")
 )
 
 // Why a chain check failed (ChainBreak.Reason), in the order they're checked.
@@ -106,7 +110,16 @@ type Evidence struct {
 	Chain            *ChainEntry `json:"chain"`            // null until verified
 	Upload           *Upload     `json:"upload,omitempty"` // only when the bytes are still needed
 
-	ObjectKey string `json:"-"`
+	ObjectKey       string  `json:"-"`
+	ObjectVersionID *string `json:"-"` // the sealed S3 version; set once verified
+}
+
+// ViewURL fetches the photo itself. It's a bearer link until ExpiresAt; ask
+// again rather than keeping it.
+type ViewURL struct {
+	Method    string    `json:"method"`
+	URL       string    `json:"url"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 // ChainEntry is the evidence's place in its site's chain. Hashes are lowercase hex.

@@ -1,7 +1,8 @@
 # Evidence API
 
 For the dashboard and the mobile app: how to record evidence (photos), read
-it back, and check a site's evidence chain. Built in M6. The backend keeps
+it back, view the photo, and check a site's evidence chain. Built in M6;
+access logging and photo viewing added in M7. The backend keeps
 this file true: `TestAPIDoc` (in `construction_db/internal/core/evidence`)
 fails if the types below stop matching the Go code.
 
@@ -19,7 +20,8 @@ The photo's bytes never pass through the API. They go straight to storage
 2. **Upload** the bytes: send `upload.method` (`PUT`) to `upload.url` with
    every header in `upload.headers`, unchanged, and a body of **exactly**
    `size_bytes` bytes. Storage answers 200. Any other body, a missing or
-   changed header, or a second upload to the same link is refused. The link
+   changed header (`Content-Type` included: it must be the declared
+   `content_type`), or a second upload to the same link is refused. The link
    expires at `upload.expires_at` (15 minutes); declaring again with the
    same details returns a fresh one.
 3. **Complete** it: `POST /v1/sites/:siteId/evidence/:evidenceId/complete`.
@@ -100,6 +102,33 @@ IP, user agent). A refused request (404, 403, 400) isn't, because nothing
 was shown. Declare and complete responses aren't either: they return what
 the uploader just sent.
 
+### `POST /v1/sites/:siteId/evidence/:evidenceId/view` — view the photo
+
+No body. Owner, SHE officer, supervisor. Returns `ViewURL`: a link to the
+photo itself, valid for **60 seconds**. Put `url` straight into an `<img
+src>` (no headers needed) or download it.
+
+| Status | When |
+|---|---|
+| 200 | `ViewURL` |
+| 404 | `"site not found"` or `"evidence not found"` (including a malformed id or the wrong site) |
+| 409 | `"evidence not verified"`: still pending (complete it first) or rejected (its bytes are never served) |
+
+- **Every successful call is recorded** in the evidence access log before
+  the link is made (who, when, IP, user agent, and the exact stored version
+  the link serves). If it can't be recorded, the call fails with 500 and no
+  link is issued.
+- The link always serves the **sealed version** (the bytes the chain
+  seals), with `Content-Type` set to the verified `content_type`.
+- **Don't keep the link.** Anyone holding it can fetch the photo until
+  `expires_at`, so don't store it, log it or share it. Call `/view` again
+  each time the photo is shown; that's what makes each view count.
+- It's POST, not GET, because it records a view. A link previewer or
+  prefetcher that follows GET links can't create one.
+- What the log can and can't say: a row means a link was issued to that
+  person. It doesn't prove the photo was downloaded. Downloads themselves
+  are in the storage provider's access logs.
+
 ### `GET /v1/sites/:siteId/chain` — check a site's chain
 
 **Owner and SHE officer only.** Walks the site's evidence chain as stored
@@ -127,10 +156,8 @@ and returns `ChainVerification`. 404 `"site not found"`.
 
 ## Not available yet
 
-- **Viewing or downloading the photo itself.** Every view must be logged
-  first (M7, access log); until then the API serves evidence details, not
-  bytes.
 - Paging through long evidence lists (comes with sync).
+- Reading the access log (planned for the M12 audit pack).
 
 ## Types for `web/src/lib/types.ts`
 
@@ -223,5 +250,11 @@ export interface ChainBreak {
   seq: number | null;
   evidence_id: string;
   reason: ChainBreakReason;
+}
+
+export interface ViewURL {
+  method: "GET";
+  url: string;
+  expires_at: string;
 }
 ```

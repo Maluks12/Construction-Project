@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	"construction_db/internal/platform/storage"
@@ -44,7 +46,7 @@ func presign(t *testing.T, key string, body []byte) *storage.PresignedPut {
 func presignSized(t *testing.T, key string, body []byte, size int64) *storage.PresignedPut {
 	t.Helper()
 	sum := sha256.Sum256(body)
-	p, err := env.Store.PresignPut(context.Background(), key, sum[:], size, 5*time.Minute)
+	p, err := env.Store.PresignPut(context.Background(), key, sum[:], size, "image/jpeg", 5*time.Minute)
 	if err != nil {
 		t.Fatalf("presign: %v", err)
 	}
@@ -76,8 +78,8 @@ func TestPresignedPut(t *testing.T) {
 	body := []byte("photo bytes")
 	p := presign(t, "put/ok", body)
 
-	if p.Headers["X-Amz-Checksum-Sha256"] == "" || p.Headers["If-None-Match"] != "*" {
-		t.Fatalf("signed headers %v lack the checksum or If-None-Match", p.Headers)
+	if p.Headers["X-Amz-Checksum-Sha256"] == "" || p.Headers["If-None-Match"] != "*" || p.Headers["Content-Type"] != "image/jpeg" {
+		t.Fatalf("signed headers %v lack the checksum, If-None-Match or Content-Type", p.Headers)
 	}
 	u, err := url.Parse(p.URL)
 	if err != nil {
@@ -103,16 +105,23 @@ func TestPresignedPut(t *testing.T) {
 	if info.LockMode != storage.LockGovernance || info.RetainUntil == nil || !info.RetainUntil.After(time.Now()) {
 		t.Errorf("stat = %+v, want the bucket's default GOVERNANCE retention", info)
 	}
+	head, err := env.Admin.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(env.Config.Bucket), Key: aws.String("put/ok")})
+	if err != nil {
+		t.Fatalf("head: %v", err)
+	}
+	if ct := aws.ToString(head.ContentType); ct != "image/jpeg" {
+		t.Errorf("stored Content-Type %q, want the signed image/jpeg", ct)
+	}
 
 	for _, version := range []string{info.VersionID, ""} {
-		r, err := env.Store.Open(ctx, "put/ok", version)
+		r, err := env.Store.ReadVersion(ctx, "put/ok", version)
 		if err != nil {
-			t.Fatalf("open version %q: %v", version, err)
+			t.Fatalf("read version %q: %v", version, err)
 		}
 		got, err := io.ReadAll(r)
 		r.Close()
 		if err != nil || !bytes.Equal(got, body) {
-			t.Errorf("open version %q read %q, err %v; want %q", version, got, err, body)
+			t.Errorf("read version %q got %q, err %v; want %q", version, got, err, body)
 		}
 	}
 }
@@ -156,7 +165,7 @@ func TestPresignedPutEnforcesSize(t *testing.T) {
 
 func TestPresignedPutNeedsSignedHeaders(t *testing.T) {
 	body := []byte("photo bytes")
-	for _, h := range []string{"X-Amz-Checksum-Sha256", "If-None-Match"} {
+	for _, h := range []string{"X-Amz-Checksum-Sha256", "If-None-Match", "Content-Type"} {
 		t.Run("without "+h, func(t *testing.T) {
 			key := "put/unsigned-" + h
 			p := presign(t, key, body)
@@ -168,6 +177,32 @@ func TestPresignedPutNeedsSignedHeaders(t *testing.T) {
 				t.Errorf("stat after refused put: %v, want ErrNotFound", err)
 			}
 		})
+	}
+}
+
+// The declared type is signed: an upload as anything else is refused, so a
+// stored object can't carry a type the server never saw.
+func TestPresignedPutRefusesOtherContentType(t *testing.T) {
+	body := []byte("photo bytes")
+	p := presign(t, "put/other-type", body)
+	other := *p
+	other.Headers = map[string]string{}
+	for k, v := range p.Headers {
+		other.Headers[k] = v
+	}
+	other.Headers["Content-Type"] = "text/html"
+
+	// AWS answers 403 SignatureDoesNotMatch; either way nothing may be stored.
+	if resp := upload(t, &other, body, ""); resp.StatusCode < 400 || resp.StatusCode > 499 {
+		t.Errorf("put as text/html to a URL signed for image/jpeg: status %d, want 4xx", resp.StatusCode)
+	}
+	if _, err := env.Store.Stat(context.Background(), "put/other-type"); !errors.Is(err, storage.ErrNotFound) {
+		t.Errorf("stat after refused put: %v, want ErrNotFound", err)
+	}
+
+	sum := sha256.Sum256(body)
+	if _, err := env.Store.PresignPut(context.Background(), "put/no-type", sum[:], int64(len(body)), "", time.Minute); !errors.Is(err, storage.ErrNoContentType) {
+		t.Errorf("presign without a content type: %v, want ErrNoContentType", err)
 	}
 }
 
@@ -185,7 +220,7 @@ func TestPresignedPutOnlyOnce(t *testing.T) {
 
 // MinIO accepts an empty versionId but AWS rejects it, so this checks the
 // request itself rather than relying on MinIO.
-func TestOpenOmitsEmptyVersion(t *testing.T) {
+func TestReadVersionOmitsEmptyVersion(t *testing.T) {
 	queries := make(chan url.Values, 2)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		queries <- r.URL.Query()
@@ -203,12 +238,79 @@ func TestOpenOmitsEmptyVersion(t *testing.T) {
 	}
 
 	for version, want := range map[string]bool{"": false, "v1": true} {
-		if _, err := s.Open(context.Background(), "k", version); !errors.Is(err, storage.ErrNotFound) {
-			t.Fatalf("open version %q: %v, want ErrNotFound", version, err)
+		if _, err := s.ReadVersion(context.Background(), "k", version); !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("read version %q: %v, want ErrNotFound", version, err)
 		}
 		if got := (<-queries).Has("versionId"); got != want {
-			t.Errorf("open version %q: versionId in query = %v, want %v", version, got, want)
+			t.Errorf("read version %q: versionId in query = %v, want %v", version, got, want)
 		}
+	}
+}
+
+// A view URL serves exactly the version it names, as the type the server
+// verified, whatever Content-Type the uploader stored.
+func TestPresignedGet(t *testing.T) {
+	ctx := context.Background()
+	const key = "get/versioned"
+	put := func(body, contentType string) string {
+		t.Helper()
+		out, err := env.Admin.PutObject(ctx, &s3.PutObjectInput{
+			Bucket: aws.String(env.Config.Bucket), Key: aws.String(key),
+			Body: strings.NewReader(body), ContentType: aws.String(contentType),
+		})
+		if err != nil {
+			t.Fatalf("put: %v", err)
+		}
+		return aws.ToString(out.VersionId)
+	}
+	// The first version is stored as HTML, as an uploader could arrange
+	// (the presigned PUT doesn't sign Content-Type).
+	first := put("first version", "text/html")
+	put("second version", "image/png")
+
+	before := time.Now()
+	p, err := env.Store.PresignGet(ctx, key, first, "image/jpeg", time.Minute)
+	if err != nil {
+		t.Fatalf("presign get: %v", err)
+	}
+	if p.Method != http.MethodGet {
+		t.Errorf("method %s, want GET", p.Method)
+	}
+	if p.ExpiresAt.Before(before.Add(time.Minute)) || p.ExpiresAt.After(time.Now().Add(time.Minute)) {
+		t.Errorf("expires at %s, want about a minute from now", p.ExpiresAt)
+	}
+	u, err := url.Parse(p.URL)
+	if err != nil {
+		t.Fatalf("parse url: %v", err)
+	}
+	if got := u.Query().Get("X-Amz-Expires"); got != "60" {
+		t.Errorf("X-Amz-Expires = %q, want 60", got)
+	}
+
+	resp, err := http.Get(p.URL)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("get: status %d, err %v", resp.StatusCode, err)
+	}
+	if string(body) != "first version" {
+		t.Errorf("body %q, want the named version, not the latest", body)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "image/jpeg" {
+		t.Errorf("Content-Type %q, want the forced image/jpeg, not the stored text/html", ct)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); cd != "inline" {
+		t.Errorf("Content-Disposition %q, want inline", cd)
+	}
+
+	if _, err := env.Store.PresignGet(ctx, key, "", "image/jpeg", time.Minute); !errors.Is(err, storage.ErrNoVersionID) {
+		t.Errorf("no version: %v, want ErrNoVersionID", err)
+	}
+	if _, err := env.Store.PresignGet(ctx, key, first, "", time.Minute); !errors.Is(err, storage.ErrNoContentType) {
+		t.Errorf("no content type: %v, want ErrNoContentType", err)
 	}
 }
 
@@ -217,8 +319,8 @@ func TestMissingObject(t *testing.T) {
 	if _, err := env.Store.Stat(ctx, "missing"); !errors.Is(err, storage.ErrNotFound) {
 		t.Errorf("stat: %v, want ErrNotFound", err)
 	}
-	if _, err := env.Store.Open(ctx, "missing", "00000000-0000-0000-0000-000000000000"); !errors.Is(err, storage.ErrNotFound) {
-		t.Errorf("open: %v, want ErrNotFound", err)
+	if _, err := env.Store.ReadVersion(ctx, "missing", "00000000-0000-0000-0000-000000000000"); !errors.Is(err, storage.ErrNotFound) {
+		t.Errorf("read version: %v, want ErrNotFound", err)
 	}
 }
 

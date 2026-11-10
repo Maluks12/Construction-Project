@@ -40,7 +40,7 @@ func (s *Service) Complete(ctx context.Context, orgID, userID, role, siteID, evi
 	}
 
 	// Read exactly the version Stat saw, so what is checked is what is sealed.
-	r, err := s.store.Open(ctx, ev.ObjectKey, info.VersionID)
+	r, err := s.store.ReadVersion(ctx, ev.ObjectKey, info.VersionID)
 	if err != nil {
 		return nil, false, fmt.Errorf("complete evidence: %w", err)
 	}

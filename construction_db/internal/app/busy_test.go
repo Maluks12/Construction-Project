@@ -60,8 +60,12 @@ func TestBusyIs503(t *testing.T) {
 		if got := rec.Header().Get("Retry-After"); got != httpapi.RetryAfterSeconds {
 			t.Errorf("Retry-After %q, want %q", got, httpapi.RetryAfterSeconds)
 		}
-		if elapsed < timeout || elapsed > timeout+time.Second {
-			t.Errorf("answered after %s, want about the %s deadline", elapsed, timeout)
+		// The upper bound only has to tell this router's deadline from a
+		// longer one (the 10s production default, or a stray per-handler
+		// timeout), so it is generous: a loaded machine running every
+		// package's containers has taken 1.7s here.
+		if elapsed < timeout || elapsed > timeout+5*time.Second {
+			t.Errorf("answered after %s, want the %s deadline, not a longer one", elapsed, timeout)
 		}
 	})
 

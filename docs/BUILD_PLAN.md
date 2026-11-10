@@ -38,7 +38,7 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 
 ### M7: Inspections & checklists (due Tue 10 Nov)
 
-- [ ] Evidence access log: append-only (who, when, which evidence, from where; every view, export and share, Rev 4 §2.1 and A.2, P1). Then a short-lived presigned GET for evidence bytes that writes a log entry. No endpoint may serve evidence bytes before this (due Mon 9 Nov)
+- [x] Evidence access log: append-only (who, when, which evidence, from where; every view, export and share, Rev 4 §2.1 and A.2, P1). Then a short-lived presigned GET for evidence bytes that writes a log entry. No endpoint may serve evidence bytes before this (due Mon 9 Nov; done Tue 10 Nov)
 - [ ] Migration: inspections, responses, findings; templates come from the regime (due Sat 7 Nov)
 - [ ] Start and complete inspections, answer items, attach evidence (due Mon 9 Nov)
 - [ ] A failed item raises a finding with severity (due Mon 9 Nov)
@@ -96,6 +96,8 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 - [ ] Evidence bucket in af-south-1: Object Lock and versioning on, SSE-KMS with its own evidence key (Rev 4 §2.13), all public access blocked (before the production deploy)
 - [ ] API IAM role on the evidence bucket only: s3:PutObject, GetObject, GetObjectVersion, GetObjectRetention, GetBucketObjectLockConfiguration. No Delete* and no BypassGovernanceRetention (before the production deploy)
 - [ ] Rate limiting on auth and evidence endpoints (Rev 3 security list, P1) (before the production deploy)
+- [ ] Evidence downloads logged by S3: server access logging or CloudTrail data events on the evidence bucket, to a separate bucket. The API's access log records that a 60-second view link was issued, not that it was used; this records the actual GETs (before the production deploy)
+- [ ] Set TRUSTED_PROXIES to the load balancer's addresses. Empty (the default) trusts no proxy, so behind a load balancer every access-log row would record the load balancer's IP; listing a range clients can reach lets them choose the logged IP (before the production deploy)
 - [ ] Production deploy: GHCR image, secrets, migrate step, health checks, backups (due Sat 28 Nov)
 - [ ] Smoke test the deployed API. Use a dedicated smoke-test org and site: evidence it uploads can never be deleted (due Sat 28 Nov)
 

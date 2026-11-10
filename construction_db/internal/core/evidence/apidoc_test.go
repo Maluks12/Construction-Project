@@ -67,6 +67,7 @@ func TestAPIDoc(t *testing.T) {
 	for name, v := range map[string]any{
 		"Evidence": Evidence{}, "ChainEntry": ChainEntry{}, "Upload": Upload{},
 		"ChainVerification": ChainVerification{}, "ChainBreak": ChainBreak{}, "DeclareRequest": DeclareRequest{},
+		"ViewURL": ViewURL{},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, ok := interfaces[name]

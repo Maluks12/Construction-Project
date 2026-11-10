@@ -70,15 +70,20 @@ func withEndpoint(endpoint string) func(*s3.Options) {
 	}
 }
 
-func (s *S3) PresignPut(ctx context.Context, key string, sum []byte, size int64, ttl time.Duration) (*PresignedPut, error) {
+func (s *S3) PresignPut(ctx context.Context, key string, sum []byte, size int64, contentType string, ttl time.Duration) (*PresignedPut, error) {
+	if contentType == "" {
+		return nil, fmt.Errorf("presign put %s: %w", key, ErrNoContentType)
+	}
 	expires := time.Now().Add(ttl)
 	// The SDK signs Content-Length when it is set (aws/signer/v4), so the URL
 	// takes exactly size bytes: a client can't park a huge file under Object
-	// Lock by declaring a small size with its hash.
+	// Lock by declaring a small size with its hash. Content-Type is signed
+	// too, so the stored object carries the declared type and no other.
 	req, err := s.presign.PresignPutObject(ctx, &s3.PutObjectInput{
 		Bucket:         aws.String(s.bucket),
 		Key:            aws.String(key),
 		ContentLength:  aws.Int64(size),
+		ContentType:    aws.String(contentType),
 		ChecksumSHA256: aws.String(base64.StdEncoding.EncodeToString(sum)),
 		IfNoneMatch:    aws.String("*"),
 	}, s3.WithPresignExpires(ttl))
@@ -118,7 +123,7 @@ func (s *S3) Stat(ctx context.Context, key string) (*ObjectInfo, error) {
 	}, nil
 }
 
-func (s *S3) Open(ctx context.Context, key, versionID string) (io.ReadCloser, error) {
+func (s *S3) ReadVersion(ctx context.Context, key, versionID string) (io.ReadCloser, error) {
 	in := &s3.GetObjectInput{
 		Bucket: aws.String(s.bucket),
 		Key:    aws.String(key),
@@ -135,6 +140,32 @@ func (s *S3) Open(ctx context.Context, key, versionID string) (io.ReadCloser, er
 		return nil, fmt.Errorf("open %s: %w", key, err)
 	}
 	return out.Body, nil
+}
+
+// PresignGet signs a GET of one version, using the public endpoint because
+// the client fetches it. The upload's Content-Type isn't signed, so the stored
+// type is whatever the uploader sent; the response-content-type override
+// makes S3 answer with contentType instead, so a file that passed as a JPEG
+// can't be served as text/html from the bucket's host.
+func (s *S3) PresignGet(ctx context.Context, key, versionID, contentType string, ttl time.Duration) (*PresignedGet, error) {
+	if versionID == "" {
+		return nil, fmt.Errorf("presign get %s: %w", key, ErrNoVersionID)
+	}
+	if contentType == "" {
+		return nil, fmt.Errorf("presign get %s: %w", key, ErrNoContentType)
+	}
+	expires := time.Now().Add(ttl)
+	req, err := s.presign.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket:                     aws.String(s.bucket),
+		Key:                        aws.String(key),
+		VersionId:                  aws.String(versionID),
+		ResponseContentType:        aws.String(contentType),
+		ResponseContentDisposition: aws.String("inline"),
+	}, s3.WithPresignExpires(ttl))
+	if err != nil {
+		return nil, fmt.Errorf("presign get: %w", err)
+	}
+	return &PresignedGet{Method: req.Method, URL: req.URL, ExpiresAt: expires}, nil
 }
 
 // CheckObjectLock fails unless every new object in the bucket gets retention

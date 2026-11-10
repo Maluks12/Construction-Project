@@ -291,7 +291,7 @@ func TestEvidenceCompleteAccess(t *testing.T) {
 }
 
 // overwritingStore lets a new version of the object land right after Stat,
-// as a write between Stat and Open would.
+// as a write between Stat and ReadVersion would.
 type overwritingStore struct {
 	storage.Store
 	overwrite func(key string)

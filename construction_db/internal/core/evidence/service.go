@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"maps"
 	"time"
 	"unicode/utf8"
 
@@ -74,13 +73,13 @@ func (s *Service) Declare(ctx context.Context, orgID, userID, role, siteID, evid
 	}
 
 	if ev.Status == StatusPending {
-		p, err := s.store.PresignPut(ctx, ev.ObjectKey, sum, ev.SizeBytes, uploadTTL)
+		// Content-Type is among the signed headers, so storage refuses any
+		// other type and the stored object carries the declared one.
+		p, err := s.store.PresignPut(ctx, ev.ObjectKey, sum, ev.SizeBytes, ev.ContentType, uploadTTL)
 		if err != nil {
 			return nil, false, fmt.Errorf("declare evidence: %w", err)
 		}
-		headers := map[string]string{"Content-Type": ev.ContentType}
-		maps.Copy(headers, p.Headers)
-		ev.Upload = &Upload{Method: p.Method, URL: p.URL, Headers: headers, ExpiresAt: p.ExpiresAt.UTC()}
+		ev.Upload = &Upload{Method: p.Method, URL: p.URL, Headers: p.Headers, ExpiresAt: p.ExpiresAt.UTC()}
 	}
 	return ev, created, nil
 }
@@ -221,7 +220,7 @@ func (s *Service) List(ctx context.Context, orgID, userID, role, siteID, status 
 
 // isSentinel reports errors the handler maps to a status, which must reach it unwrapped.
 func isSentinel(err error) bool {
-	for _, s := range []error{sites.ErrSiteNotFound, ErrEvidenceNotFound, ErrIDReused, ErrRejected} {
+	for _, s := range []error{sites.ErrSiteNotFound, ErrEvidenceNotFound, ErrIDReused, ErrRejected, ErrNotVerified} {
 		if errors.Is(err, s) {
 			return true
 		}

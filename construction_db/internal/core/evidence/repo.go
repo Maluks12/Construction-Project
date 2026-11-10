@@ -32,7 +32,7 @@ type newEvidence struct {
 const selectEvidence = `
 	SELECT e.id, e.site_id, e.status, e.rejected_reason, e.content_sha256, e.size_bytes,
 	       e.content_type, e.client_captured_at, e.lat, e.lng, e.device_id, e.uploaded_by,
-	       e.created_at, e.object_key,
+	       e.created_at, e.object_key, e.object_version_id,
 	       c.seq, c.server_received_at, c.prev_chain_hash, c.metadata_hash, c.chain_hash
 	FROM evidence e
 	LEFT JOIN evidence_chain c ON c.evidence_id = e.id
@@ -49,7 +49,7 @@ func scanEvidence(row pgx.Row) (*Evidence, error) {
 	err := row.Scan(
 		&e.ID, &e.SiteID, &e.Status, &e.RejectedReason, &sum, &e.SizeBytes,
 		&e.ContentType, &e.ClientCapturedAt, &e.Lat, &e.Lng, &e.DeviceID, &e.UploadedBy,
-		&e.CreatedAt, &e.ObjectKey,
+		&e.CreatedAt, &e.ObjectKey, &e.ObjectVersionID,
 		&seq, &received, &prev, &meta, &chainSum,
 	)
 	if err != nil {

@@ -74,8 +74,9 @@ go test ./...                           # needs Docker Desktop running (testcont
 - `internal/platform/{config,database,dbtest,health}`.
 - `internal/platform/storage`: the `Store` interface for evidence objects and
   its S3 implementation (also used against MinIO). Presigned PUTs sign the
-  SHA-256, the length and `If-None-Match: *`, so S3 refuses other bytes, any
-  other size, and a second upload to the key. Without the length, a client
+  SHA-256, the length, the declared `Content-Type` and `If-None-Match: *`,
+  so S3 refuses other bytes, any other size, any other type, and a second
+  upload to the key. Without the length, a client
   could declare a small size with a huge file's hash and park that file
   under Object Lock. `Content-Length` and `Host` are signed but not returned
   in the headers: HTTP clients set them. `CheckObjectLock` runs at startup: the API exits
@@ -144,6 +145,13 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     `{"error": "...; declare a new evidence id", "rejected_reason": "..."}`.
     An object without Object Lock retention is a 500 (bucket fault; stays
     pending).
+  - `POST /v1/sites/:id/evidence/:evidenceId/view` (M7) returns a
+    60-second presigned GET of the sealed version, served as the verified
+    `content_type`. The `view_bytes` row commits before the URL is signed.
+    It is 409 `"evidence not verified"` for pending or rejected evidence.
+    Only `evidence/access.go` may call `Store.PresignGet`, and only
+    `complete.go` may call `Store.ReadVersion`; `internal/archtest`
+    (`TestEvidenceBytesGuard`) enforces it.
   - `GET /v1/sites/:id/chain` (owner and SHE officer only; others 403)
     walks the site's chain as stored and returns `{site_id, intact, length,
     head_seq, head_hash, first_break, checked_at}`. `first_break` is null
@@ -321,7 +329,7 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
   - 6.2 (Mon 2 Nov), **done**: migration 000010 (see Evidence engine), RLS
     on the three tables, and tests (`rls_test.go` now states each table's
     expected UPDATE and DELETE outcome; `TestEvidenceIsAppendOnly`). MinIO
-    healthcheck in compose. `storage.Open` omits an empty version id.
+    healthcheck in compose. `storage.Open` (now `ReadVersion`, 7.2b) omits an empty version id.
   - 6.3 (Mon 2 Nov), **done**: chain encoding pinned in
     `internal/core/evidence/CHAIN.md` (see Layout). The three vectors were
     computed by Postgres, spot-checked with `sha256sum`, and reproduced by
@@ -377,6 +385,25 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
       TrustedProxies}`.
     - The user agent is cleaned to what Postgres accepts (valid UTF-8, no
       NUL, at most 512 bytes).
+    - The IP is normalised: IPv4-mapped addresses are unmapped and IPv6
+      zones dropped.
+  - 7.2b (Tue 10 Nov), **done**: `POST …/evidence/:evidenceId/view` (see
+    Evidence engine). **The access-log task is complete.**
+    - `Store.Open` is renamed `ReadVersion`, and `Store.PresignGet` is new.
+    - The presign forces `response-content-type`. The upload's
+      `Content-Type` wasn't signed, so without the override a file stored
+      as `text/html` was served as HTML (the mutation test showed it on
+      MinIO).
+    - The upload now signs `Content-Type` too: `PresignPut` takes the
+      declared type, so S3 refuses any other and new objects carry the
+      verified type. The override stays for objects uploaded before this
+      change.
+    - `TestEvidenceBytesGuard` is a name-based tripwire. It also fails on a
+      new `Store` method or an S3 import outside `storage`.
+    - `TestAccessLogFailureFailsTheRead`: with the log's INSERT revoked,
+      get, list and view all answer 500 with nothing else.
+    - Two new DEPLOY tasks in BUILD_PLAN: S3 access logs, and
+      `TRUSTED_PROXIES`.
 
 ## Requested by the frontend
 

@@ -44,7 +44,8 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
-	slog.Info("database pool", "max_conns", cfg.DBMaxConns, "request_timeout", cfg.RequestTimeout.String())
+	slog.Info("database pool", "max_conns", cfg.DBMaxConns, "request_timeout", cfg.RequestTimeout.String(),
+		"trusted_proxies", cfg.TrustedProxies)
 
 	if err := regimes.CheckDatabase(ctx, pool, reg); err != nil {
 		slog.Error("check regimes", "error", err)
@@ -61,7 +62,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	router, err := app.NewRouter(ctx, pool, cfg.JWTSecret, reg, construction.New(), store, cfg.RequestTimeout)
+	router, err := app.NewRouter(ctx, pool, cfg.JWTSecret, reg, construction.New(), store,
+		app.HTTPOptions{RequestTimeout: cfg.RequestTimeout, TrustedProxies: cfg.TrustedProxies})
 	if err != nil {
 		slog.Error("build router", "error", err)
 		os.Exit(1)

@@ -271,6 +271,30 @@ func VerifiedWithoutEntry(ctx context.Context, db DBTX, orgID, siteID string) (s
 	return id, nil
 }
 
+// accessEntry is one evidence_access_log row. EvidenceID is nil only for a
+// list; the filter and count fields are set only for a list.
+type accessEntry struct {
+	OrgID, SiteID, UserID, Action string
+	EvidenceID                    *string
+	ObjectVersionID               *string // view_bytes only
+	FilterStatus                  *string
+	FilterLimit, ResultCount      *int
+	Client                        Client
+}
+
+func InsertAccess(ctx context.Context, db DBTX, a accessEntry) error {
+	_, err := db.Exec(ctx, `
+		INSERT INTO evidence_access_log (org_id, site_id, evidence_id, user_id, action, object_version_id,
+		                                 filter_status, filter_limit, result_count, ip, user_agent)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::inet, $11)
+	`, a.OrgID, a.SiteID, a.EvidenceID, a.UserID, a.Action, a.ObjectVersionID,
+		a.FilterStatus, a.FilterLimit, a.ResultCount, a.Client.logIP(), a.Client.logUserAgent())
+	if err != nil {
+		return fmt.Errorf("insert access log: %w", err)
+	}
+	return nil
+}
+
 // ListEvidence returns a site's evidence, newest first. status "" means any.
 func ListEvidence(ctx context.Context, db DBTX, orgID, siteID, status string, limit int) ([]Evidence, error) {
 	query := selectEvidence + `

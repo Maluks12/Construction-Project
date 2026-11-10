@@ -42,7 +42,7 @@ func TestBusyIs503(t *testing.T) {
 	token := signup(t, newRouter(t), "Busy Co", "owner@busy-"+uuid.NewString()[:8]+".test")
 
 	const timeout = 300 * time.Millisecond
-	router, err := NewRouter(context.Background(), testPool, testSecret, testRegistry, testEdition, testStore, timeout)
+	router, err := NewRouter(context.Background(), testPool, testSecret, testRegistry, testEdition, testStore, HTTPOptions{RequestTimeout: timeout})
 	if err != nil {
 		t.Fatalf("new router: %v", err)
 	}

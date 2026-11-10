@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -23,6 +24,10 @@ type Config struct {
 
 	RequestTimeout time.Duration // one deadline per request (httpapi.Deadline)
 	DBMaxConns     int32         // pgxpool MaxConns
+
+	// Proxies whose X-Forwarded-For is believed; empty means none, so the
+	// client IP is the TCP peer. Gin trusts every proxy unless told otherwise.
+	TrustedProxies []string
 }
 
 const (
@@ -65,6 +70,7 @@ func Load() (*Config, error) {
 		EvidenceLockMode: os.Getenv("EVIDENCE_LOCK_MODE"),
 		RequestTimeout:   timeout,
 		DBMaxConns:       int32(maxConns),
+		TrustedProxies:   splitList(os.Getenv("TRUSTED_PROXIES")),
 	}
 
 	if cfg.Port == "" {
@@ -122,5 +128,22 @@ func (c *Config) validate() error {
 	if c.DBMaxConns < 1 {
 		return fmt.Errorf("DB_MAX_CONNS must be at least 1")
 	}
+
+	for _, p := range c.TrustedProxies {
+		if _, _, err := net.ParseCIDR(p); err != nil && net.ParseIP(p) == nil {
+			return fmt.Errorf("TRUSTED_PROXIES: %q is not an IP address or CIDR", p)
+		}
+	}
 	return nil
+}
+
+// splitList splits a comma-separated value, dropping blanks; nil if empty.
+func splitList(s string) []string {
+	var out []string
+	for _, item := range strings.Split(s, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
 }

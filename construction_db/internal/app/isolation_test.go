@@ -34,6 +34,9 @@ const (
 
 var testEdition = construction.New()
 
+// No trusted proxies, as in production by default.
+var testHTTP = HTTPOptions{RequestTimeout: testRequestTimeout}
+
 var (
 	testPool     *pgxpool.Pool // as siteproof_app, like the API
 	testAdmin    *pgxpool.Pool // superuser, only for regulatory_regimes fixtures
@@ -96,7 +99,7 @@ func execAsTenant(t *testing.T, orgID string, want int64, sql string, args ...an
 
 func newRouter(t *testing.T) *gin.Engine {
 	t.Helper()
-	router, err := NewRouter(context.Background(), testPool, testSecret, testRegistry, testEdition, testStore, testRequestTimeout)
+	router, err := NewRouter(context.Background(), testPool, testSecret, testRegistry, testEdition, testStore, testHTTP)
 	if err != nil {
 		t.Fatalf("new router: %v", err)
 	}

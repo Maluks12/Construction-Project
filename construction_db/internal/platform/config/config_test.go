@@ -1,6 +1,7 @@
 package config
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ func TestLoad(t *testing.T) {
 		t.Setenv("EVIDENCE_LOCK_MODE", storage.LockGovernance)
 		t.Setenv("S3_ACCESS_KEY_ID", "")
 		t.Setenv("S3_SECRET_ACCESS_KEY", "")
+		t.Setenv("TRUSTED_PROXIES", "")
 	}
 
 	t.Run("defaults", func(t *testing.T) {
@@ -40,6 +42,21 @@ func TestLoad(t *testing.T) {
 		}
 		if cfg.RequestTimeout != 10*time.Second || cfg.DBMaxConns != 20 {
 			t.Errorf("request timeout %s, max conns %d; want 10s and 20", cfg.RequestTimeout, cfg.DBMaxConns)
+		}
+		if cfg.TrustedProxies != nil {
+			t.Errorf("trusted proxies %q, want none", cfg.TrustedProxies)
+		}
+	})
+
+	t.Run("trusted proxies", func(t *testing.T) {
+		setRequired(t)
+		t.Setenv("TRUSTED_PROXIES", " 10.0.0.1, 172.16.0.0/12,,::1 ")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []string{"10.0.0.1", "172.16.0.0/12", "::1"}; !slices.Equal(cfg.TrustedProxies, want) {
+			t.Errorf("trusted proxies %q, want %q", cfg.TrustedProxies, want)
 		}
 	})
 
@@ -63,6 +80,8 @@ func TestLoad(t *testing.T) {
 		"max conns not a number": {"DB_MAX_CONNS", "many"},
 		"max conns too large":    {"DB_MAX_CONNS", "3000000000"},
 		"max conns zero":         {"DB_MAX_CONNS", "0"},
+		"proxy not an address":   {"TRUSTED_PROXIES", "10.0.0.1,proxy.internal"},
+		"proxy CIDR malformed":   {"TRUSTED_PROXIES", "10.0.0.0/33"},
 	}
 	for name, kv := range bad {
 		t.Run(name, func(t *testing.T) {

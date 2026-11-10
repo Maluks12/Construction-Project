@@ -252,6 +252,12 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
   Mounting under `/v1/construction` doesn't guarantee that by itself.
 - Org, user and role always come from the token (`auth.OrgID(c)` etc.), never
   the body.
+- **Evidence reads are logged.** Any code that returns evidence details or
+  bytes writes an `evidence_access_log` row (`evidence.InsertAccess`) in
+  the same transaction as the read, so a failed log write fails the read.
+  Take the client from `clientOf(c)`. `c.ClientIP()` believes
+  `X-Forwarded-For` only from `TRUSTED_PROXIES` (default none; Gin's own
+  default trusts every proxy).
 - Emails compare with `lower()`.
 - `.gitattributes` forces LF for Go files; gofmt in CI depends on it.
 
@@ -362,6 +368,15 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     and TRUNCATE for every role, superusers included. Foreign keys pin a
     row's evidence to its site and its user to the org. Nothing writes it
     yet; 7.2 does.
+  - 7.2a (Mon 9 Nov), **done**: `GET` evidence writes a `view_record`
+    row, and the list writes one `list` row per request (filters and
+    count). Refused reads write nothing.
+    - New env `TRUSTED_PROXIES` (default none), passed to
+      `router.SetTrustedProxies`.
+    - `NewRouter` now takes `app.HTTPOptions{RequestTimeout,
+      TrustedProxies}`.
+    - The user agent is cleaned to what Postgres accepts (valid UTF-8, no
+      NUL, at most 512 bytes).
 
 ## Requested by the frontend
 

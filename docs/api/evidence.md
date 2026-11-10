@@ -86,11 +86,19 @@ Owner, SHE officer, supervisor. Newest first, as `EvidenceList`
 400 `"status must be pending, verified or rejected"` or `"limit must be
 1-200"`; 404 `"site not found"`. There is no paging yet.
 
+Each successful request is recorded once in the evidence access log (who,
+when, IP, user agent, the filters and how many items came back).
+
 ### `GET /v1/sites/:siteId/evidence/:evidenceId` — get
 
 Owner, SHE officer, supervisor. `Evidence`, without `upload`. 404 `"site
 not found"` or `"evidence not found"` (including a malformed id or the
 wrong site).
+
+Each successful request is recorded in the evidence access log (who, when,
+IP, user agent). A refused request (404, 403, 400) isn't, because nothing
+was shown. Declare and complete responses aren't either: they return what
+the uploader just sent.
 
 ### `GET /v1/sites/:siteId/chain` — check a site's chain
 

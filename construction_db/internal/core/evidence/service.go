@@ -150,7 +150,9 @@ func sameDeclaration(e *Evidence, siteID, userID string, req DeclareRequest) boo
 		equalPtr(e.DeviceID, req.DeviceID)
 }
 
-func (s *Service) Get(ctx context.Context, orgID, userID, role, siteID, evidenceID string) (*Evidence, error) {
+// Get logs the read in the same transaction: if the log row can't be
+// written, the caller gets an error, not the evidence.
+func (s *Service) Get(ctx context.Context, orgID, userID, role, siteID, evidenceID string, client Client) (*Evidence, error) {
 	var ev *Evidence
 	err := s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
 		site, err := s.sites.GetInTx(ctx, tx, orgID, userID, role, siteID)
@@ -161,7 +163,13 @@ func (s *Service) Get(ctx context.Context, orgID, userID, role, siteID, evidence
 		if isNotFound(err) {
 			return ErrEvidenceNotFound
 		}
-		return err
+		if err != nil {
+			return err
+		}
+		return InsertAccess(ctx, tx, accessEntry{
+			OrgID: orgID, SiteID: site.ID, UserID: userID, Action: ActionViewRecord,
+			EvidenceID: &ev.ID, Client: client,
+		})
 	})
 	if isSentinel(err) {
 		return nil, err
@@ -172,7 +180,9 @@ func (s *Service) Get(ctx context.Context, orgID, userID, role, siteID, evidence
 	return ev, nil
 }
 
-func (s *Service) List(ctx context.Context, orgID, userID, role, siteID, status string, limit int) ([]Evidence, error) {
+// List logs one row for the whole request, with its filters and how many
+// items it returned, in the same transaction as the read.
+func (s *Service) List(ctx context.Context, orgID, userID, role, siteID, status string, limit int, client Client) ([]Evidence, error) {
 	if status != "" && status != StatusPending && status != StatusVerified && status != StatusRejected {
 		return nil, ErrBadStatus
 	}
@@ -187,7 +197,18 @@ func (s *Service) List(ctx context.Context, orgID, userID, role, siteID, status 
 			return err
 		}
 		items, err = ListEvidence(ctx, tx, orgID, site.ID, status, limit)
-		return err
+		if err != nil {
+			return err
+		}
+		var filterStatus *string
+		if status != "" {
+			filterStatus = &status
+		}
+		count := len(items)
+		return InsertAccess(ctx, tx, accessEntry{
+			OrgID: orgID, SiteID: site.ID, UserID: userID, Action: ActionList,
+			FilterStatus: filterStatus, FilterLimit: &limit, ResultCount: &count, Client: client,
+		})
 	})
 	if isSentinel(err) {
 		return nil, err

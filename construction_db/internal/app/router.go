@@ -19,9 +19,16 @@ import (
 	"construction_db/internal/regimes"
 )
 
+// HTTPOptions are the server-level HTTP settings.
+type HTTPOptions struct {
+	RequestTimeout time.Duration // every request's deadline
+	// Proxies whose X-Forwarded-For sets the client IP; nil trusts none.
+	TrustedProxies []string
+}
+
 // ed supplies the edition and regime for new organisations and sites, and its own routes.
-// store holds evidence objects. requestTimeout is every request's deadline.
-func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *regimes.Registry, ed edition.Edition, store storage.Store, requestTimeout time.Duration) (*gin.Engine, error) {
+// store holds evidence objects.
+func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *regimes.Registry, ed edition.Edition, store storage.Store, opts HTTPOptions) (*gin.Engine, error) {
 	if err := reg.CheckDefault(ed.DefaultRegime(), ed.Name()); err != nil {
 		return nil, fmt.Errorf("new router: %w", err)
 	}
@@ -30,9 +37,14 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	}
 
 	router := gin.New()
+	// Gin trusts every proxy by default, which would let any client choose the
+	// IP the evidence access log records. nil trusts none.
+	if err := router.SetTrustedProxies(opts.TrustedProxies); err != nil {
+		return nil, fmt.Errorf("new router: trusted proxies: %w", err)
+	}
 	// Recovery outermost, so a panic is still a 500; then one deadline for
 	// everything after it, auth included.
-	router.Use(gin.Recovery(), httpapi.Deadline(requestTimeout))
+	router.Use(gin.Recovery(), httpapi.Deadline(opts.RequestTimeout))
 
 	router.GET("/healthz", health.Handler(pool))
 

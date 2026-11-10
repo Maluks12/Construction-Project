@@ -20,6 +20,12 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
+// clientOf is where the request came from, for the access log. ClientIP
+// believes X-Forwarded-For only from the router's trusted proxies.
+func clientOf(c *gin.Context) Client {
+	return Client{IP: c.ClientIP(), UserAgent: c.Request.UserAgent()}
+}
+
 func writeError(c *gin.Context, err error) {
 	var rej *RejectedError
 	switch {
@@ -87,7 +93,7 @@ func (h *Handler) VerifyChain(c *gin.Context) {
 
 func (h *Handler) Get(c *gin.Context) {
 	ev, err := h.svc.Get(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c),
-		c.Param("id"), c.Param("evidenceId"))
+		c.Param("id"), c.Param("evidenceId"), clientOf(c))
 	if err != nil {
 		writeError(c, err)
 		return
@@ -107,7 +113,7 @@ func (h *Handler) List(c *gin.Context) {
 	}
 
 	items, err := h.svc.List(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c),
-		c.Param("id"), c.Query("status"), limit)
+		c.Param("id"), c.Query("status"), limit, clientOf(c))
 	if err != nil {
 		writeError(c, err)
 		return

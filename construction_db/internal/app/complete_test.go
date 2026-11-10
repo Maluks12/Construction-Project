@@ -317,7 +317,7 @@ func TestEvidenceCompleteReadsTheStatVersion(t *testing.T) {
 			t.Errorf("write newer version: %v", err)
 		}
 	}}
-	router, err := NewRouter(ctx, testPool, testSecret, testRegistry, testEdition, store, testRequestTimeout)
+	router, err := NewRouter(ctx, testPool, testSecret, testRegistry, testEdition, store, testHTTP)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +346,7 @@ func TestEvidenceCompleteNeedsObjectLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router, err := NewRouter(ctx, testPool, testSecret, testRegistry, testEdition, store, testRequestTimeout)
+	router, err := NewRouter(ctx, testPool, testSecret, testRegistry, testEdition, store, testHTTP)
 	if err != nil {
 		t.Fatal(err)
 	}

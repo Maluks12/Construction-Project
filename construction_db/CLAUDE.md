@@ -474,6 +474,43 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
       still be answered and completed.
     - Reads (list, get, findings) stay allowed on archived sites.
     - A **completed** site accepts new inspections (defects period).
+  - 7.4 (Tue 10 Nov), **done**: migration 000012. It has four tables:
+    `inspections`, `inspection_responses`, `inspection_response_evidence`
+    and `inspection_findings`. It also adds `UNIQUE (org_id, site_id, id,
+    status)` on `evidence`.
+    - **The guards are triggers that apply to every role**, owner and
+      superuser included:
+      - a new inspection starts in progress;
+      - a correction must point at a completed inspection on the same
+        site;
+      - a completed inspection changes in no way;
+      - an inspection in progress changes only by being completed;
+      - the copied item text never changes;
+      - findings never change;
+      - TRUNCATE is refused.
+    - **Completion requires** every item answered, exactly `item_count`
+      responses, and a photo on every fail. On completion,
+      `inspections_raise_findings` inserts one finding per fail, copying
+      its severity.
+    - **Photos:** only verified evidence from the inspection's site can be
+      attached, enforced by two FKs sharing `site_id`. One of them targets
+      `evidence (…, status)` through the constant `evidence_status =
+      'verified'`.
+    - **Findings** have an FK to the response's `(…, result, severity)`,
+      so a finding is always a fail with the same severity.
+    - **Answers versus completion:** the response and photo guards lock
+      the inspection `FOR SHARE`. A completion therefore waits for open
+      answers, and a later answer fails.
+      `TestAnswerWaitsForCompletion` and `TestCompletionWaitsForAnswer`
+      prove it, and both fail without the lock.
+      `TestAnswersRacingCompletion` runs 20 answers against one
+      completion: no deadlock, and only successful answers stored.
+    - **Grants:** the app can update only the completion columns of
+      `inspections` and the answer columns of responses. It can delete
+      photo links while in progress. No other UPDATE or DELETE.
+    - **RLS:** `rls_test.go` has a new `deleteFrozen` rule. Org C in
+      `inspections_test.go` holds the committed fixtures the
+      two-transaction tests need.
 
 ## Finding severity
 

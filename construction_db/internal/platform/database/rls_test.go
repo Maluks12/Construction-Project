@@ -26,6 +26,8 @@ const (
 	rlsSessB     = "24000000-0000-0000-0000-00000000000b"
 	rlsEvidenceA = "28000000-0000-0000-0000-00000000000a"
 	rlsEvidenceB = "28000000-0000-0000-0000-00000000000b"
+	rlsInspA     = "2a000000-0000-0000-0000-00000000000a" // completed, one failed item with a photo
+	rlsInspB     = "2a000000-0000-0000-0000-00000000000b"
 )
 
 // What an unfiltered DELETE as tenant A does to a table.
@@ -35,6 +37,7 @@ const (
 	deleteOK     deleteRule = iota // removes A's row only
 	deleteDenied                   // the app has no DELETE privilege (42501)
 	deletePinned                   // A's row is referenced by A's evidence (23503)
+	deleteFrozen                   // the app may delete, but A's row belongs to a completed inspection (23514)
 )
 
 type rlsTable struct {
@@ -46,6 +49,10 @@ type rlsTable struct {
 
 // In foreign-key-safe delete order.
 var rlsTables = []rlsTable{
+	{"inspection_findings", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"inspection_response_evidence", "org_id", rlsOrgA, rlsOrgB, "", deleteFrozen},
+	{"inspection_responses", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"inspections", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"evidence_access_log", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"evidence_chain", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"site_chain_heads", "org_id", rlsOrgA, rlsOrgB, "org_id", deleteDenied},
@@ -95,7 +102,7 @@ var seedOnce = sync.OnceValue(func() error {
 
 	for _, x := range []string{"a", "b"} {
 		id := func(prefix string) string { return prefix + "000000-0000-0000-0000-00000000000" + x }
-		org, user, site, loc, sess, inv, ev := id("20"), id("21"), id("22"), id("23"), id("24"), id("26"), id("28")
+		org, user, site, loc, sess, inv, ev, insp := id("20"), id("21"), id("22"), id("23"), id("24"), id("26"), id("28"), id("2a")
 
 		stmts := []struct {
 			sql  string
@@ -116,6 +123,17 @@ var seedOnce = sync.OnceValue(func() error {
 			{`INSERT INTO evidence_chain (evidence_id, org_id, site_id, seq, content_sha256, server_received_at, prev_chain_hash, metadata_hash, chain_hash)
 			  VALUES ($1, $2, $3, 1, $4, now(), $5, $6, $7)`, []any{ev, org, site, hash32(1), hash32(0), hash32(2), hash32(3)}},
 			{`INSERT INTO evidence_access_log (org_id, site_id, evidence_id, user_id, action) VALUES ($1, $2, $3, $4, 'view_record')`, []any{org, site, ev, user}},
+			// One completed inspection: completing it raises its one finding.
+			{`INSERT INTO inspections (id, org_id, site_id, regime_id, template_key, template_version, template_sha256,
+			                           template_title, template_source_ref, item_count, started_by, client_started_at)
+			  SELECT $1, $2, $3, id, 'rls_check', 1, $5, 'RLS check', 'reg 1', 1, $4, now() FROM regulatory_regimes LIMIT 1`,
+				[]any{insp, org, site, user, hash32(4)}},
+			{`INSERT INTO inspection_responses (org_id, site_id, inspection_id, item_key, position, prompt, response_type,
+			                                    result, severity, client_answered_at, answered_at)
+			  VALUES ($1, $2, $3, 'item', 1, 'OK?', 'pass_fail_na', 'fail', 'high', now(), now())`, []any{org, site, insp}},
+			{`INSERT INTO inspection_response_evidence (org_id, site_id, inspection_id, item_key, evidence_id) VALUES ($1, $2, $3, 'item', $4)`,
+				[]any{org, site, insp, ev}},
+			{`UPDATE inspections SET status = 'completed', completed_at = now(), client_completed_at = now() WHERE id = $1`, []any{insp}},
 		}
 		for _, s := range stmts {
 			if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
@@ -195,6 +213,16 @@ func TestRLSWrites(t *testing.T) {
 			  VALUES ($1, $2, $3, 2, $4, now(), $5, $6, $7)`, []any{rlsEvidenceB, rlsOrgB, rlsSiteB, hash32(1), hash32(3), hash32(4), hash32(5)}},
 			"evidence_access_log": {`INSERT INTO evidence_access_log (org_id, site_id, evidence_id, user_id, action) VALUES ($1, $2, $3, $4, 'view_record')`,
 				[]any{rlsOrgB, rlsSiteB, rlsEvidenceB, rlsUserB}},
+			"inspections": {`INSERT INTO inspections (id, org_id, site_id, regime_id, template_key, template_version, template_sha256,
+			                                          template_title, template_source_ref, item_count, started_by, client_started_at)
+			  SELECT '2c000000-0000-0000-0000-00000000000b', $1, $2, id, 'k', 1, $4, 't', 'r', 1, $3, now() FROM regulatory_regimes LIMIT 1`,
+				[]any{rlsOrgB, rlsSiteB, rlsUserB, hash32(4)}},
+			"inspection_responses": {`INSERT INTO inspection_responses (org_id, site_id, inspection_id, item_key, position, prompt, response_type)
+			  VALUES ($1, $2, $3, 'smuggled', 2, 'P?', 'pass_fail_na')`, []any{rlsOrgB, rlsSiteB, rlsInspB}},
+			"inspection_response_evidence": {`INSERT INTO inspection_response_evidence (org_id, site_id, inspection_id, item_key, evidence_id)
+			  VALUES ($1, $2, $3, 'item', $4)`, []any{rlsOrgB, rlsSiteB, rlsInspB, rlsEvidenceB}},
+			"inspection_findings": {`INSERT INTO inspection_findings (org_id, site_id, inspection_id, item_key, severity)
+			  VALUES ($1, $2, $3, 'item', 'high')`, []any{rlsOrgB, rlsSiteB, rlsInspB}},
 		}
 		for _, tb := range rlsTables {
 			t.Run(tb.name, func(t *testing.T) {
@@ -251,6 +279,10 @@ func TestRLSWrites(t *testing.T) {
 			case deleteDenied:
 				if pgCode(err) != "42501" {
 					t.Errorf("unfiltered DELETE %s: got %v, want SQLSTATE 42501", tb.name, err)
+				}
+			case deleteFrozen:
+				if pgCode(err) != "23514" {
+					t.Errorf("unfiltered DELETE %s: got %v, want SQLSTATE 23514 (A's row belongs to a completed inspection)", tb.name, err)
 				}
 			case deletePinned:
 				if pgCode(err) != "23503" {

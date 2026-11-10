@@ -75,6 +75,13 @@
       "first_aid",
       "near_miss",
       "property_damage"
-    ]
+    ],
+    "checklist_versions": {
+      "excavation_inspection": {"version": 1, "sha256": "6de66ec2686fbacc3d6195ced67f2e9fd1b5981dbe9531ee7ae0becda4875161"},
+      "mobile_plant_pre_use": {"version": 1, "sha256": "2be18b4bbc57e542e97f0cbba44c4074e5f3980dbb9b0d6c7f4bc6fc206a39c9"},
+      "temporary_works_inspection": {"version": 1, "sha256": "db04e9a9e4016d6d6715929f1168d0974f83d1d716127c452f2cd771c3b20f32"},
+      "temporary_electrical_weekly": {"version": 1, "sha256": "4cc79fa4da942c45efd59c367d59c8e59d9c915a44131272c162c136120cbda4"},
+      "housekeeping_walk": {"version": 1, "sha256": "39dae5b79307793bf6f7c3410f5ed4efadd5fd0ce1e70a4ca82650803e67aebd"}
+    }
   }
 }

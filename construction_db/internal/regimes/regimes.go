@@ -6,6 +6,12 @@
 // Rule: a shipped key never changes meaning. Fix wording in place, but a
 // change in meaning gets a new key. testdata/shipped.json lists the keys that
 // have shipped, and a test fails if any of them disappears.
+//
+// Checklist templates also lock their content: any change to what an
+// inspector reads (title, prompts, items) needs a higher version, because an
+// inspection records (key, version) and the version must identify the
+// wording. shipped.json holds each template's version and content hash, and
+// a test fails until both are updated.
 package regimes
 
 import (

@@ -95,7 +95,11 @@ go test ./...                           # needs Docker Desktop running (testcont
   `Load()` validates them; `CheckDatabase` runs at startup and the API exits
   if a `regulatory_regimes` row has no data set with the same version and
   edition. `testdata/shipped.json` locks shipped keys: a test fails if one
-  disappears. Add new keys to it when they ship.
+  disappears. Add new keys to it when they ship. It also locks each
+  checklist template's `version` and content hash
+  (`TestChecklistVersionsLocked`). Fix wording in place **and bump the
+  template's `version`**, then paste the lock entry the test prints. A
+  change of meaning still needs a new key.
 - `internal/core/checklists`: the checklist engine (Rev 4 §2.4).
   `GET /v1/sites/:id/checklists` returns the site regime's templates
   (through `sites.Service.Regime`, never hardcoded) and the severity scale.
@@ -421,6 +425,15 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     `docs/api/inspections.md`. `regimes.Cadences` is exported for the API
     doc. A test fails if a shipped template uses a response type other than
     `pass_fail_na`.
+  - 7.3c (Wed 11 Nov), **done**: template version lock in `shipped.json`
+    (`checklist_versions`).
+    - The hash covers what an inspector reads (key, title, cadence,
+      source ref, items) through its own struct, so adding a field to
+      `ChecklistTemplate` doesn't change every hash.
+    - It fails on a content change without a version bump, a bump without
+      a lock update, a version going down, or a template missing from the
+      lock. Each message says what to do.
+    - **7.3 is done.**
 
 ## Finding severity
 

@@ -13,14 +13,16 @@ import (
 // keys are written "<checklist_key>/<item_key>" because item keys are only
 // unique inside their checklist.
 //
-// Only keys are locked, not content: fixing a label or prompt is fine, but a
-// change in meaning needs a new key. New keys are added to the lock by hand
-// when they ship.
+// Keys are locked here; checklist content is locked by ChecklistVersions
+// (versions_test.go): fixing a prompt is fine but needs a version bump, and
+// a change in meaning needs a new key. New keys are added to the lock by
+// hand when they ship.
 type shippedKeys struct {
-	Checklists     []string `json:"checklists"`
-	ChecklistItems []string `json:"checklist_items"`
-	Deadlines      []string `json:"deadlines"`
-	Taxonomy       []string `json:"taxonomy"`
+	Checklists        []string                 `json:"checklists"`
+	ChecklistItems    []string                 `json:"checklist_items"`
+	Deadlines         []string                 `json:"deadlines"`
+	Taxonomy          []string                 `json:"taxonomy"`
+	ChecklistVersions map[string]lockedVersion `json:"checklist_versions"`
 }
 
 // missingKeys returns one entry per locked key that reg no longer has, sorted

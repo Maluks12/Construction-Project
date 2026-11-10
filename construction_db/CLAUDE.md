@@ -96,6 +96,9 @@ go test ./...                           # needs Docker Desktop running (testcont
   if a `regulatory_regimes` row has no data set with the same version and
   edition. `testdata/shipped.json` locks shipped keys: a test fails if one
   disappears. Add new keys to it when they ship.
+- `internal/platform/apidoctest`: checks a `docs/api/*.md` reference's
+  TypeScript against the Go types (`Load`, `CheckStruct`, `CheckFields`,
+  `CheckUnion`). Each feature's `TestAPIDoc` uses it.
 - `internal/app/router.go` wires everything; `internal/app/*_test.go` are the
   HTTP integration tests (testcontainers Postgres, migrations applied
   automatically).
@@ -404,6 +407,10 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
       get, list and view all answer 500 with nothing else.
     - Two new DEPLOY tasks in BUILD_PLAN: S3 access logs, and
       `TRUSTED_PROXIES`.
+  - 7.3a (Wed 11 Nov), **done**: `internal/platform/apidoctest` extracted
+    from evidence's `TestAPIDoc`, with the same rules (pulled forward from
+    7.8). Removing a field, changing a union value or editing a rejection
+    row in `evidence.md` still fails the test.
 
 ## Requested by the frontend
 

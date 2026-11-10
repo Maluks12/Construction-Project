@@ -192,6 +192,18 @@ func TestLoadFSRejects(t *testing.T) {
 				"cadence": "daily", "source_ref": "r", "items": []}]`),
 			"checklists[0]: needs at least one item",
 		},
+		"duplicate checklist version": {
+			with(validFS(), checklistsFile, entries(entry("scaffold_daily", 1, "A?"), entry("scaffold_daily", 1, "B?"))),
+			`checklists[1]: duplicate version 1 of "scaffold_daily"`,
+		},
+		"checklist versions newest first": {
+			with(validFS(), checklistsFile, entries(entry("scaffold_daily", 2, "B?"), entry("scaffold_daily", 1, "A?"))),
+			`checklists[1]: versions of "scaffold_daily" must be listed oldest first (1 after 2)`,
+		},
+		"checklist versions split apart": {
+			with(validFS(), checklistsFile, entries(entry("scaffold_daily", 1, "A?"), entry("ladder_check", 1, "L?"), entry("scaffold_daily", 2, "B?"))),
+			`checklists[2]: versions of "scaffold_daily" must be listed together`,
+		},
 		"key not snake case": {
 			with(validFS(), vocabularyFile, `[{"key": "Site-Diary", "label": "Site diary"}]`),
 			`key "Site-Diary" must be lower snake case`,

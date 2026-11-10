@@ -94,13 +94,30 @@ func (ds *DataSet) validate(dir string) error {
 		add(fileRegime, "regime: effective_from %q must be YYYY-MM-DD", r.EffectiveFrom)
 	}
 
-	seenChecklists := map[string]bool{}
+	// A key appears once per version: versions are append-only, so every
+	// shipped one stays. A key's versions sit together, oldest first.
+	seenVersions := map[string]bool{}
+	lastVersion := map[string]int{}
+	prevKey := ""
 	for i, c := range ds.Checklists {
 		where := fmt.Sprintf("checklists[%d]", i)
-		key(fileChecklists, where, c.Key, seenChecklists)
+		key(fileChecklists, where, c.Key, map[string]bool{})
 		if c.Version < 1 {
 			add(fileChecklists, "%s: version must be 1 or more", where)
 		}
+		id := fmt.Sprintf("%s@%d", c.Key, c.Version)
+		last, seenKey := lastVersion[c.Key]
+		switch {
+		case seenVersions[id]:
+			add(fileChecklists, "%s: duplicate version %d of %q", where, c.Version, c.Key)
+		case seenKey && c.Key != prevKey:
+			add(fileChecklists, "%s: versions of %q must be listed together", where, c.Key)
+		case seenKey && c.Version < last:
+			add(fileChecklists, "%s: versions of %q must be listed oldest first (%d after %d)", where, c.Key, c.Version, last)
+		}
+		seenVersions[id] = true
+		lastVersion[c.Key] = max(last, c.Version)
+		prevKey = c.Key
 		need(fileChecklists, where, "title", c.Title)
 		oneOf(fileChecklists, where, "cadence", c.Cadence, cadences)
 		need(fileChecklists, where, "source_ref", c.SourceRef)

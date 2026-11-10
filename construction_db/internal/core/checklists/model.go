@@ -2,6 +2,8 @@
 // from the site's regime, never from code.
 package checklists
 
+import "errors"
+
 // Finding severity is a fixed product scale, not regime data, so findings
 // compare across sites and regimes (decided 9 Nov 2026). Each level has a
 // definition the inspector sees when choosing; without one, two foremen use
@@ -52,15 +54,25 @@ type RegimeRef struct {
 }
 
 // ChecklistTemplate is the API's copy of a regime template, so a change to the
-// data files' shape can't silently change the API.
+// data files' shape can't silently change the API. SHA256 is the version's
+// content hash (regimes.ChecklistTemplate.ContentHash): the phone keeps it with
+// the wording it shows and sends it back when it starts an inspection.
 type ChecklistTemplate struct {
 	Key       string          `json:"key"`
 	Version   int             `json:"version"`
+	SHA256    string          `json:"sha256"`
 	Title     string          `json:"title"`
 	Cadence   string          `json:"cadence"`
 	SourceRef string          `json:"source_ref"`
 	Items     []ChecklistItem `json:"items"`
 }
+
+// Starting an inspection names the template version the phone showed and its
+// hash; resolveTemplate checks both against the site's regime.
+var (
+	ErrUnknownTemplateVersion = errors.New("unknown checklist template version")
+	ErrTemplateMismatch       = errors.New("checklist template does not match")
+)
 
 type ChecklistItem struct {
 	Key          string `json:"key"`

@@ -25,10 +25,17 @@ findings. 404 `"site not found"`.
 
 - Never hardcode a checklist: everything shown to an inspector comes from
   here.
-- A template is identified by `key` **and** `version`. Wording is only ever
-  changed by publishing a new `version`, so a stored inspection's version
-  tells you exactly which prompts the inspector saw. Refresh the catalogue
-  before starting an inspection offline.
+- A template is identified by `key` **and** `version`. Wording only ever
+  changes by publishing a new `version`, and every published version stays
+  valid, so a stored inspection's version tells you exactly which prompts
+  the inspector saw.
+- The catalogue lists only the **latest** version of each template. An
+  inspection started offline on an older version is still accepted after a
+  newer one ships, and is shown with its own prompts.
+- `sha256` identifies the exact wording of that version. Keep it with the
+  template you display, and send it back unchanged when you start an
+  inspection (coming in M7): the server refuses a start whose hash doesn't
+  match the version named.
 - `response_type` is `"pass_fail_na"` for every item today (pass, fail or
   not applicable). Other types will be added before any template uses them.
 - `source_ref` is the regulation the template or item comes from, e.g.
@@ -63,6 +70,8 @@ come later (M9).
 
 ## Types for `web/src/lib/types.ts`
 
+Hashes are lowercase hex (64 characters).
+
 <!-- types -->
 ```ts
 export type Severity = "low" | "medium" | "high" | "critical";
@@ -86,6 +95,7 @@ export interface RegimeRef {
 export interface ChecklistTemplate {
   key: string;
   version: number;
+  sha256: string;
   title: string;
   cadence: Cadence;
   source_ref: string;

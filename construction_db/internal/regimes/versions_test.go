@@ -1,76 +1,81 @@
 package regimes
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-// An inspection records (template key, version). If wording could change
-// without a version bump, the version would stop identifying the prompts the
-// inspector saw. So each template's content is locked in
-// testdata/shipped.json under its version.
-type lockedVersion struct {
-	Version int    `json:"version"`
-	SHA256  string `json:"sha256"`
-}
+// Template versions are append-only. An inspection records (key, version,
+// content hash), so a shipped version must never change or disappear, and a
+// wording fix is published as a new version. testdata/shipped.json holds
+// every shipped version's ContentHash.
 
-// templateContent is exactly what the lock covers: what an inspector reads.
-// It's a separate struct so adding a field to ChecklistTemplate doesn't
-// change every hash; a new field that inspectors see belongs here too, in the
-// same change that bumps the versions it affects.
-type templateContent struct {
-	Key       string        `json:"key"`
-	Title     string        `json:"title"`
-	Cadence   string        `json:"cadence"`
-	SourceRef string        `json:"source_ref"`
-	Items     []itemContent `json:"items"`
-}
-
-type itemContent struct {
-	Key          string `json:"key"`
-	Prompt       string `json:"prompt"`
-	ResponseType string `json:"response_type"`
-	SourceRef    string `json:"source_ref"`
-}
-
-func contentHash(t ChecklistTemplate) string {
-	c := templateContent{Key: t.Key, Title: t.Title, Cadence: t.Cadence, SourceRef: t.SourceRef, Items: []itemContent{}}
-	for _, it := range t.Items {
-		c.Items = append(c.Items, itemContent{Key: it.Key, Prompt: it.Prompt, ResponseType: it.ResponseType, SourceRef: it.SourceRef})
-	}
-	b, err := json.Marshal(c)
-	if err != nil {
-		panic(err) // plain strings and slices always marshal
-	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
-}
-
-// versionProblems returns one message per template, in every loaded regime,
-// whose version and content don't match the lock exactly. Each says what to do.
+// versionProblems returns one message per broken rule, in every loaded regime
+// and every locked one. Each says what to do.
 func versionProblems(reg *Registry, lock map[string]shippedKeys) []string {
 	var out []string
-	for _, code := range reg.Codes() {
-		ds, _ := reg.Get(code)
-		for _, t := range ds.Checklists {
-			hash := contentHash(t)
-			want := fmt.Sprintf(`{"version": %d, "sha256": "%s"}`, t.Version, hash)
-			l, ok := lock[code].ChecklistVersions[t.Key]
-			switch {
-			case !ok:
-				out = append(out, fmt.Sprintf("%s checklist %q is not in checklist_versions; add %q: %s when it ships", code, t.Key, t.Key, want))
-			case t.Version < l.Version:
-				out = append(out, fmt.Sprintf("%s checklist %q is version %d but %d has shipped; versions only go up", code, t.Key, t.Version, l.Version))
-			case t.Version == l.Version && hash != l.SHA256:
-				out = append(out, fmt.Sprintf("%s checklist %q changed without a version bump: bump its version past %d, then update the lock", code, t.Key, l.Version))
-			case t.Version != l.Version || hash != l.SHA256:
-				out = append(out, fmt.Sprintf("%s checklist %q is now version %d; update the lock to %s", code, t.Key, t.Version, want))
+	codes := slices.Sorted(maps.Keys(lock))
+	for _, c := range reg.Codes() {
+		if !slices.Contains(codes, c) {
+			codes = append(codes, c)
+		}
+	}
+
+	for _, code := range codes {
+		data := map[string]map[int]string{} // key → version → hash
+		if ds, ok := reg.Get(code); ok {
+			for _, t := range ds.Checklists {
+				if data[t.Key] == nil {
+					data[t.Key] = map[int]string{}
+				}
+				data[t.Key][t.Version] = t.ContentHash()
+			}
+		}
+		locked := map[string]map[int]string{}
+		for key, versions := range lock[code].ChecklistVersions {
+			locked[key] = map[int]string{}
+			for v, hash := range versions {
+				n, err := strconv.Atoi(v)
+				if err != nil {
+					out = append(out, fmt.Sprintf("%s checklist %q: lock version %q is not a number", code, key, v))
+					continue
+				}
+				locked[key][n] = hash
+			}
+		}
+
+		// Every locked version is still there, unchanged.
+		for key, versions := range locked {
+			for v, hash := range versions {
+				got, ok := data[key][v]
+				switch {
+				case !ok:
+					out = append(out, fmt.Sprintf("%s checklist %q version %d has shipped and was removed; put it back (versions are append-only)", code, key, v))
+				case got != hash:
+					out = append(out, fmt.Sprintf("%s checklist %q version %d has shipped and was changed; put it back and publish the change as version %d", code, key, v, slices.Max(slices.Collect(maps.Keys(versions)))+1))
+				}
+			}
+		}
+
+		// Every version in the data is locked, and new ones come after the shipped ones.
+		for key, versions := range data {
+			shipped := locked[key]
+			for v, hash := range versions {
+				if _, ok := shipped[v]; ok {
+					continue
+				}
+				if len(shipped) > 0 {
+					if top := slices.Max(slices.Collect(maps.Keys(shipped))); v < top {
+						out = append(out, fmt.Sprintf("%s checklist %q version %d is below shipped version %d; versions only go up, use %d", code, key, v, top, top+1))
+						continue
+					}
+				}
+				out = append(out, fmt.Sprintf("%s checklist %q version %d is not in checklist_versions; add \"%d\": %q under %q when it ships", code, key, v, v, hash, key))
 			}
 		}
 	}
@@ -93,25 +98,23 @@ func TestChecklistVersionsLocked(t *testing.T) {
 }
 
 func TestVersionProblems(t *testing.T) {
-	reg, err := LoadFS(validFS())
-	if err != nil {
-		t.Fatalf("LoadFS: %v", err)
+	load := func(t *testing.T, e ...string) *Registry {
+		t.Helper()
+		reg, err := LoadFS(with(validFS(), "test_regime/checklists.json", entries(e...)))
+		if err != nil {
+			t.Fatalf("LoadFS: %v", err)
+		}
+		return reg
 	}
-	ds, _ := reg.Get("test_regime")
-	current := ds.Checklists[0]
-	hash := contentHash(current)
-
-	// Edit a copy of the template, as a change to the data file would.
-	edited := func(change func(*ChecklistTemplate)) *Registry {
-		c := current
-		c.Items = slices.Clone(current.Items)
-		change(&c)
-		copyDS := *ds
-		copyDS.Checklists = []ChecklistTemplate{c}
-		return &Registry{byCode: map[string]*DataSet{"test_regime": &copyDS}}
+	hashOf := func(key string, version int, prompt string) string {
+		reg := load(t, entry(key, version, prompt))
+		ds, _ := reg.Get("test_regime")
+		return ds.Checklists[0].ContentHash()
 	}
-	locked := func(version int, sha string) map[string]shippedKeys {
-		return map[string]shippedKeys{"test_regime": {ChecklistVersions: map[string]lockedVersion{"scaffold_daily": {version, sha}}}}
+	v1 := hashOf("scaffold_daily", 1, "Base plates sound?")
+	v2 := hashOf("scaffold_daily", 2, "Base plates firm and level?")
+	lock := func(versions map[string]string) map[string]shippedKeys {
+		return map[string]shippedKeys{"test_regime": {ChecklistVersions: map[string]map[string]string{"scaffold_daily": versions}}}
 	}
 
 	tests := map[string]struct {
@@ -119,15 +122,33 @@ func TestVersionProblems(t *testing.T) {
 		lock map[string]shippedKeys
 		want string // a substring of the single problem; "" means none
 	}{
-		"locked and unchanged":          {reg, locked(1, hash), ""},
-		"not in the lock":               {reg, map[string]shippedKeys{}, `"scaffold_daily" is not in checklist_versions; add "scaffold_daily": {"version": 1, "sha256": "` + hash + `"}`},
-		"prompt reworded, same version": {edited(func(c *ChecklistTemplate) { c.Items[0].Prompt = "Base plates firm?" }), locked(1, hash), "changed without a version bump: bump its version past 1"},
-		"title changed, same version":   {edited(func(c *ChecklistTemplate) { c.Title = "Scaffold check" }), locked(1, hash), "changed without a version bump"},
-		"item added, same version": {edited(func(c *ChecklistTemplate) {
-			c.Items = append(c.Items, ChecklistItem{Key: "ties", Prompt: "Ties fixed?", ResponseType: "pass_fail_na"})
-		}), locked(1, hash), "changed without a version bump"},
-		"bumped, lock not updated": {edited(func(c *ChecklistTemplate) { c.Version = 2; c.Items[0].Prompt = "Base plates firm?" }), locked(1, hash), `is now version 2; update the lock to {"version": 2, "sha256": "`},
-		"version went down":        {edited(func(c *ChecklistTemplate) { c.Version = 1 }), locked(2, hash), "is version 1 but 2 has shipped; versions only go up"},
+		"v1 locked and unchanged": {
+			load(t, entry("scaffold_daily", 1, "Base plates sound?")), lock(map[string]string{"1": v1}), ""},
+		"v2 added and locked": {
+			load(t, entry("scaffold_daily", 1, "Base plates sound?"), entry("scaffold_daily", 2, "Base plates firm and level?")),
+			lock(map[string]string{"1": v1, "2": v2}), ""},
+		"v1 edited in place": {
+			load(t, entry("scaffold_daily", 1, "Base plates firm and level?")), lock(map[string]string{"1": v1}),
+			`"scaffold_daily" version 1 has shipped and was changed; put it back and publish the change as version 2`},
+		"v1 removed when v2 shipped": {
+			load(t, entry("scaffold_daily", 2, "Base plates firm and level?")), lock(map[string]string{"1": v1, "2": v2}),
+			`"scaffold_daily" version 1 has shipped and was removed; put it back`},
+		"v2 added, not locked": {
+			load(t, entry("scaffold_daily", 1, "Base plates sound?"), entry("scaffold_daily", 2, "Base plates firm and level?")),
+			lock(map[string]string{"1": v1}),
+			`"scaffold_daily" version 2 is not in checklist_versions; add "2": "` + v2 + `" under "scaffold_daily"`},
+		"new key, not locked": {
+			load(t, entry("scaffold_daily", 1, "Base plates sound?")), map[string]shippedKeys{},
+			`"scaffold_daily" version 1 is not in checklist_versions; add "1": "` + v1 + `"`},
+		"new version below a shipped one": {
+			load(t, entry("scaffold_daily", 1, "Base plates sound?"), entry("scaffold_daily", 3, "Base plates firm and level?")),
+			lock(map[string]string{"3": hashOf("scaffold_daily", 3, "Base plates firm and level?")}),
+			`"scaffold_daily" version 1 is below shipped version 3; versions only go up, use 4`},
+		"locked regime gone": {
+			load(t, entry("scaffold_daily", 1, "Base plates sound?")),
+			map[string]shippedKeys{"test_regime": lock(map[string]string{"1": v1})["test_regime"],
+				"gone_regime": {ChecklistVersions: map[string]map[string]string{"old": {"1": v1}}}},
+			`gone_regime checklist "old" version 1 has shipped and was removed`},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -139,15 +160,5 @@ func TestVersionProblems(t *testing.T) {
 				t.Errorf("problems %q, want exactly one containing %q", got, tc.want)
 			}
 		})
-	}
-
-	// The hash covers what inspectors read, and only that.
-	if contentHash(current) != hash {
-		t.Error("contentHash is not deterministic")
-	}
-	bumpedOnly := current
-	bumpedOnly.Version = 9
-	if contentHash(bumpedOnly) != hash {
-		t.Error("the version changed the content hash; it should cover content only")
 	}
 }

@@ -52,7 +52,14 @@ docker compose up -d --build api        # build and run the API on :8080
 gofmt -l .                              # must print nothing (CI fails otherwise)
 go vet ./...
 go test ./...                           # needs Docker Desktop running (testcontainers)
+go test -p 4 ./...                      # locally on Windows: at most 4 packages at once
 ```
+
+On Windows, run the tests locally with `-p 4`. Several packages each start
+their own Postgres (and MinIO) containers. With every package at once,
+Docker Desktop intermittently fails to start a container ("rootless Docker
+is not supported on Windows", which really means it couldn't connect), or
+stalls until requests time out. CI keeps the default.
 
 ## Layout
 
@@ -95,11 +102,18 @@ go test ./...                           # needs Docker Desktop running (testcont
   `Load()` validates them; `CheckDatabase` runs at startup and the API exits
   if a `regulatory_regimes` row has no data set with the same version and
   edition. `testdata/shipped.json` locks shipped keys: a test fails if one
-  disappears. Add new keys to it when they ship. It also locks each
-  checklist template's `version` and content hash
-  (`TestChecklistVersionsLocked`). Fix wording in place **and bump the
-  template's `version`**, then paste the lock entry the test prints. A
-  change of meaning still needs a new key.
+  disappears. Add new keys to it when they ship. **Checklist template
+  versions are append-only.**
+  - Never edit or remove a shipped version.
+  - To change wording, copy the latest entry in `checklists.json`, edit it,
+    give it the next `version`, and leave the old one in place. A key's
+    versions sit together, oldest first.
+  - `shipped.json` locks every shipped version's content hash, and
+    `TestChecklistVersionsLocked` prints the entry to paste.
+  - A change of meaning still needs a new key.
+  - `DataSet.Latest()` is what the catalogue offers;
+    `DataSet.Checklist(key, version)` finds any shipped version for the
+    inspection engine.
 - `internal/core/checklists`: the checklist engine (Rev 4 §2.4).
   `GET /v1/sites/:id/checklists` returns the site regime's templates
   (through `sites.Service.Regime`, never hardcoded) and the severity scale.
@@ -416,16 +430,16 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
       get, list and view all answer 500 with nothing else.
     - Two new DEPLOY tasks in BUILD_PLAN: S3 access logs, and
       `TRUSTED_PROXIES`.
-  - 7.3a (Wed 11 Nov), **done**: `internal/platform/apidoctest` extracted
+  - 7.3a (Tue 10 Nov), **done**: `internal/platform/apidoctest` extracted
     from evidence's `TestAPIDoc`, with the same rules (pulled forward from
     7.8). Removing a field, changing a union value or editing a rejection
     row in `evidence.md` still fails the test.
-  - 7.3b (Wed 11 Nov), **done**: `GET /v1/sites/:id/checklists`,
+  - 7.3b (Tue 10 Nov), **done**: `GET /v1/sites/:id/checklists`,
     `sites.Service.RegimeInTx`, the severity scale (below), and
     `docs/api/inspections.md`. `regimes.Cadences` is exported for the API
     doc. A test fails if a shipped template uses a response type other than
     `pass_fail_na`.
-  - 7.3c (Wed 11 Nov), **done**: template version lock in `shipped.json`
+  - 7.3c (Tue 10 Nov), **done**: template version lock in `shipped.json`
     (`checklist_versions`).
     - The hash covers what an inspector reads (key, title, cadence,
       source ref, items) through its own struct, so adding a field to
@@ -433,7 +447,33 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     - It fails on a content change without a version bump, a bump without
       a lock update, a version going down, or a template missing from the
       lock. Each message says what to do.
+  - 7.3d (Tue 10 Nov), **done**: template versions are append-only (see
+    Layout, `internal/regimes`).
+    - A wording fix used to replace v1 with v2, so a stored v1 inspection
+      could no longer be checked and an offline v1 start couldn't be
+      validated.
+    - The hash moved to `regimes.ChecklistTemplate.ContentHash`.
+    - The catalogue offers only the latest version of each key, with its
+      `sha256`.
+    - `checklists.resolveTemplate(ds, key, version, sha256)` accepts any
+      shipped version, but only with that version's hash: 400 `"unknown
+      checklist template version"` or `"checklist template does not
+      match"`. Start (7.5) uses it.
+    - **Contract change:** `ChecklistTemplate.sha256`.
     - **7.3 is done.**
+- **Decisions for inspections (10 Nov 2026):**
+  - **Template hash.** Start sends `template_sha256` from the catalogue,
+    and the server checks it against its own hash for (key, version). The
+    inspection stores key, version and hash, and responses are created
+    from that version's items.
+  - **Site status.**
+    - An **archived** site refuses new inspections with 409 `"site is
+      archived"` (checked on `Site.Status`; `GetSite` doesn't filter
+      archived sites).
+    - An inspection already in progress when its site is archived can
+      still be answered and completed.
+    - Reads (list, get, findings) stay allowed on archived sites.
+    - A **completed** site accepts new inspections (defects period).
 
 ## Finding severity
 

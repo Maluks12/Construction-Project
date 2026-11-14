@@ -6,16 +6,19 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"construction_db/internal/core/sites"
 	"construction_db/internal/regimes"
 )
 
 type Service struct {
+	pool  *pgxpool.Pool
 	sites *sites.Service
 }
 
-func NewService(sitesSvc *sites.Service) *Service {
-	return &Service{sites: sitesSvc}
+func NewService(pool *pgxpool.Pool, sitesSvc *sites.Service) *Service {
+	return &Service{pool: pool, sites: sitesSvc}
 }
 
 // Catalog returns the templates of the site's regime (sites.Service.Regime,

@@ -1,8 +1,9 @@
 # Inspections API
 
 For the dashboard and the mobile app: the checklists a site's regulations
-call for, and (coming in M7) inspections against them and the findings
-they raise. The backend keeps this file true: `TestAPIDoc` (in
+call for, and inspections against them. Starting and reading an inspection
+are here; listing, answering, completing and findings are coming in M7.
+The backend keeps this file true: `TestAPIDoc` (in
 `construction_db/internal/core/checklists`) fails if the types below stop
 matching the Go code, and `TestSeverityDefinitions` fails if the severity
 table changes without the code.
@@ -34,12 +35,55 @@ findings. 404 `"site not found"`.
   newer one ships, and is shown with its own prompts.
 - `sha256` identifies the exact wording of that version. Keep it with the
   template you display, and send it back unchanged when you start an
-  inspection (coming in M7): the server refuses a start whose hash doesn't
-  match the version named.
+  inspection: the server refuses a start whose hash doesn't match the
+  version named.
 - `response_type` is `"pass_fail_na"` for every item today (pass, fail or
   not applicable). Other types will be added before any template uses them.
 - `source_ref` is the regulation the template or item comes from, e.g.
   `"reg 13(2)(b)"`. Show it: it's what makes a checklist defensible.
+
+### `PUT /v1/sites/:siteId/inspections/:inspectionId` — start an inspection
+
+Body: `StartInspectionRequest`. Owner, SHE officer, supervisor. The client
+makes up `inspectionId` (a UUID v4) when the inspector starts, so it works
+offline and retrying after a lost connection is safe.
+
+Send the `key`, `version` and `sha256` of the template **as the inspector
+saw it**, and the device's clock time as `client_started_at`. The server
+copies that version's title and items into the inspection, so it reads the
+same forever, whatever is published later.
+
+| Status | When |
+|---|---|
+| 201 | Started. `Inspection` with `status: "in_progress"` and one unanswered item per template item, in order |
+| 200 | The same start again (every field identical, same person and site): the stored `Inspection`, unchanged |
+| 400 | `"inspection id must be a UUID"`, `"unknown checklist template version"` (no such key or version in the site's regime), `"checklist template does not match"` (the hash isn't that version's), `"corrects_id must be a completed inspection on this site"`, `"device_id must be 1-200 bytes"` (bytes, not characters), or a validator message for a missing field (`template_key`, `template_version` ≥ 1, `template_sha256`, `client_started_at`) |
+| 404 | `"site not found"` |
+| 409 | `"inspection id already used with different details"` (any field differs, or another person, site or organisation used it) or `"site is archived"` |
+
+- Any published version is accepted with its own hash, not only the latest.
+  An inspection started offline before a newer version shipped still syncs.
+- **Archived sites** refuse new inspections. Reading still works, and a
+  retry of a start that succeeded before the site was archived is still
+  200. Sites with status `completed` accept inspections.
+- **Corrections.** A completed inspection never changes. To correct one,
+  start a new inspection with `corrects_id` set to it. It must be completed
+  and on the same site.
+- `client_started_at` is kept to the microsecond. `started_at` is the
+  server's clock; show both when they differ noticeably.
+
+### `GET /v1/sites/:siteId/inspections/:inspectionId` — get an inspection
+
+Owner, SHE officer, supervisor. `Inspection` with its `items` in template
+order. 404 `"site not found"` or `"inspection not found"` (including a
+malformed id or the wrong site). Works on archived sites.
+
+- An item's `result`, `severity`, `comment`, `client_answered_at` and
+  `answered_at` are all `null` until it is answered (answering is coming
+  in M7).
+- An item's `source_ref` is `null` when the template gives none.
+- `client_completed_at` and `completed_at` are `null` while `status` is
+  `"in_progress"`.
 
 ## Finding severity
 
@@ -70,7 +114,8 @@ come later (M9).
 
 ## Types for `web/src/lib/types.ts`
 
-Hashes are lowercase hex (64 characters).
+Times are RFC 3339 strings in UTC with up to microsecond precision. Hashes
+are lowercase hex (64 characters). Ids are UUIDs.
 
 <!-- types -->
 ```ts
@@ -113,5 +158,51 @@ export interface SeverityLevel {
   key: Severity;
   label: string;
   definition: string;
+}
+
+export type InspectionStatus = "in_progress" | "completed";
+
+export type Result = "pass" | "fail" | "na";
+
+export interface StartInspectionRequest {
+  template_key: string;
+  template_version: number;
+  template_sha256: string;
+  client_started_at: string;
+  device_id?: string | null;
+  corrects_id?: string | null;
+}
+
+export interface Inspection {
+  id: string;
+  site_id: string;
+  status: InspectionStatus;
+  template_key: string;
+  template_version: number;
+  template_sha256: string;
+  template_title: string;
+  template_source_ref: string;
+  item_count: number;
+  started_by: string;
+  client_started_at: string;
+  started_at: string;
+  device_id: string | null;
+  corrects_id: string | null;
+  client_completed_at: string | null;
+  completed_at: string | null;
+  items: InspectionItem[];
+}
+
+export interface InspectionItem {
+  key: string;
+  position: number;
+  prompt: string;
+  source_ref: string | null;
+  response_type: ResponseType;
+  result: Result | null;
+  severity: Severity | null;
+  comment: string | null;
+  client_answered_at: string | null;
+  answered_at: string | null;
 }
 ```

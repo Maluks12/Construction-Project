@@ -119,6 +119,8 @@ stalls until requests time out. CI keeps the default.
   (through `sites.Service.Regime`, never hardcoded) and the severity scale.
   `sites.Service.RegimeInTx` resolves a site's regime, with its
   `regulatory_regimes.id`, inside the caller's transaction.
+  Inspections live here too (`inspections.go`, `repo.go`); their endpoints
+  are in `docs/api/inspections.md`.
 - `internal/platform/apidoctest`: checks a `docs/api/*.md` reference's
   TypeScript against the Go types (`Load`, `CheckStruct`, `CheckFields`,
   `CheckUnion`). Each feature's `TestAPIDoc` uses it.
@@ -511,6 +513,27 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
     - **RLS:** `rls_test.go` has a new `deleteFrozen` rule. Org C in
       `inspections_test.go` holds the committed fixtures the
       two-transaction tests need.
+  - 7.5a (Sat 14 Nov), **done**: start and get an inspection.
+    - `PUT /v1/sites/:id/inspections/:inspectionId` starts one under an
+      id the device chose. 201 when created; 200 for an identical repeat;
+      409 for the id with different details.
+    - **Order of checks in start:** site scope, then the existing id,
+      then the archived site (409), then the template version and hash
+      (400), then `corrects_id` (400). The id check comes before the
+      archived check so a retry after archiving still answers 200.
+    - It stores the server's own hash for the version, after checking the
+      client's equals it, and one response per item of that version.
+    - **Lost race:** an insert that hits the primary key retries once and
+      answers as a repeat (`errIDTaken`, as in evidence).
+      `TestInspectionStartLosesTheRace` forces it with an uncommitted
+      identical start; firing concurrent requests alone rarely hits the
+      window.
+    - `GET /v1/sites/:id/inspections/:inspectionId` returns it with its
+      items. It works on archived sites.
+    - `sites.StatusArchived` is new. `checklists.NewService` now takes the
+      pool.
+    - `TestAPIDoc` also checks that the reference quotes every error text.
+    - **Contract change:** two new endpoints.
 
 ## Finding severity
 

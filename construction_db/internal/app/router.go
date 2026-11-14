@@ -61,7 +61,7 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	evidenceSvc := evidence.NewService(pool, sitesSvc, store)
 	evidence.Register(router, evidenceSvc, authSvc)
 
-	checklists.Register(router, checklists.NewService(sitesSvc), authSvc)
+	checklists.Register(router, checklists.NewService(pool, sitesSvc), authSvc)
 
 	editionRoutes := router.Group("/v1/" + ed.Name())
 	editionRoutes.Use(auth.RequireAuth(authSvc))

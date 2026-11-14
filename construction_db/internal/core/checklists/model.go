@@ -2,7 +2,10 @@
 // from the site's regime, never from code.
 package checklists
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 // Finding severity is a fixed product scale, not regime data, so findings
 // compare across sites and regimes (decided 9 Nov 2026). Each level has a
@@ -79,4 +82,71 @@ type ChecklistItem struct {
 	Prompt       string `json:"prompt"`
 	ResponseType string `json:"response_type"`
 	SourceRef    string `json:"source_ref"`
+}
+
+// An inspection is one filling-in of one checklist template version.
+const (
+	StatusInProgress = "in_progress"
+	StatusCompleted  = "completed"
+
+	ResultPass = "pass"
+	ResultFail = "fail"
+	ResultNA   = "na"
+)
+
+var (
+	ErrInspectionNotFound = errors.New("inspection not found")
+	ErrBadInspectionID    = errors.New("inspection id must be a UUID")
+	ErrInspectionIDReused = errors.New("inspection id already used with different details")
+	ErrSiteArchived       = errors.New("site is archived")
+	ErrBadCorrectsID      = errors.New("corrects_id must be a completed inspection on this site")
+	ErrBadDeviceID        = errors.New("device_id must be 1-200 bytes")
+)
+
+// StartInspectionRequest names the template version the phone showed, with
+// the hash the catalogue gave for it.
+type StartInspectionRequest struct {
+	TemplateKey     string    `json:"template_key" binding:"required"`
+	TemplateVersion int       `json:"template_version" binding:"required,gte=1"`
+	TemplateSHA256  string    `json:"template_sha256" binding:"required"`
+	ClientStartedAt time.Time `json:"client_started_at" binding:"required"`
+	DeviceID        *string   `json:"device_id"`
+	CorrectsID      *string   `json:"corrects_id"`
+}
+
+// Inspection carries its own copy of the template version's wording, so it
+// reads the same whatever the regime data says later.
+type Inspection struct {
+	ID                string           `json:"id"`
+	SiteID            string           `json:"site_id"`
+	Status            string           `json:"status"`
+	TemplateKey       string           `json:"template_key"`
+	TemplateVersion   int              `json:"template_version"`
+	TemplateSHA256    string           `json:"template_sha256"` // lowercase hex
+	TemplateTitle     string           `json:"template_title"`
+	TemplateSourceRef string           `json:"template_source_ref"`
+	ItemCount         int              `json:"item_count"`
+	StartedBy         string           `json:"started_by"`
+	ClientStartedAt   time.Time        `json:"client_started_at"`
+	StartedAt         time.Time        `json:"started_at"`
+	DeviceID          *string          `json:"device_id"`
+	CorrectsID        *string          `json:"corrects_id"`
+	ClientCompletedAt *time.Time       `json:"client_completed_at"`
+	CompletedAt       *time.Time       `json:"completed_at"`
+	Items             []InspectionItem `json:"items"`
+}
+
+// InspectionItem is one template item with its answer; the answer fields are
+// null until the item is answered.
+type InspectionItem struct {
+	Key              string     `json:"key"`
+	Position         int        `json:"position"`
+	Prompt           string     `json:"prompt"`
+	SourceRef        *string    `json:"source_ref"`
+	ResponseType     string     `json:"response_type"`
+	Result           *string    `json:"result"`
+	Severity         *string    `json:"severity"`
+	Comment          *string    `json:"comment"`
+	ClientAnsweredAt *time.Time `json:"client_answered_at"`
+	AnsweredAt       *time.Time `json:"answered_at"`
 }

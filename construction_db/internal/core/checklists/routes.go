@@ -11,9 +11,16 @@ func Register(r *gin.Engine, svc *Service, authSvc *auth.Service) {
 
 	// The roles that do inspections (Rev 4 §2.12). Supervisors are further
 	// limited to their own sites by the service.
-	protected := r.Group("/v1/sites/:id/checklists")
-	protected.Use(auth.RequireAuth(authSvc))
-	protected.Use(auth.RequireRole(auth.RoleOwner, auth.RoleSHEOfficer, auth.RoleSupervisor))
+	inspectors := []gin.HandlerFunc{
+		auth.RequireAuth(authSvc),
+		auth.RequireRole(auth.RoleOwner, auth.RoleSHEOfficer, auth.RoleSupervisor),
+	}
 
-	protected.GET("", h.Catalog)
+	catalog := r.Group("/v1/sites/:id/checklists", inspectors...)
+	catalog.GET("", h.Catalog)
+
+	inspections := r.Group("/v1/sites/:id/inspections", inspectors...)
+	inspections.GET("/:inspectionId", h.Get)
+	// PUT: the device chooses the id, so repeating a start is safe.
+	inspections.PUT("/:inspectionId", h.Start)
 }

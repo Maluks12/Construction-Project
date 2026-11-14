@@ -15,6 +15,10 @@ var (
 	ErrLocationHasChildren = errors.New("location has active child locations")
 )
 
+// StatusArchived is Site.Status after DELETE /v1/sites/:id. Reads of an
+// archived site still work; features decide what may still be written.
+const StatusArchived = "archived"
+
 type SiteMember struct {
 	UserID   string  `json:"user_id"`
 	FullName string  `json:"full_name"`

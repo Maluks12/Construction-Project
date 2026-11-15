@@ -206,3 +206,13 @@ func InsertResponses(ctx context.Context, db DBTX, orgID, siteID, inspectionID s
 	}
 	return nil
 }
+
+// GetCorrection returns the id of the inspection that corrects correctedID,
+// or pgx.ErrNoRows if there is none.
+func GetCorrection(ctx context.Context, db DBTX, orgID, correctedID string) (string, error) {
+	var id string
+	if err := db.QueryRow(ctx, `SELECT id FROM inspections WHERE org_id = $1 AND corrects_id = $2`, orgID, correctedID).Scan(&id); err != nil {
+		return "", fmt.Errorf("get correction: %w", err)
+	}
+	return id, nil
+}

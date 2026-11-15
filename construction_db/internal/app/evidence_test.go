@@ -19,6 +19,7 @@ import (
 
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/evidence"
+	"construction_db/internal/platform/database"
 	"construction_db/internal/platform/storage"
 )
 
@@ -461,5 +462,51 @@ func TestEvidenceGetAndList(t *testing.T) {
 		t.Run("get "+name+" is 404", func(t *testing.T) {
 			wantStatus(t, do(t, f.router, http.MethodGet, path, f.owner, nil), http.StatusNotFound)
 		})
+	}
+}
+
+// The race declare's retry exists for, made deterministic (firing requests at
+// once rarely hits the window): an identical declaration is open but
+// uncommitted, so this request doesn't see it, inserts, and blocks on the
+// primary key. When the other commits, the insert fails; the request must
+// look again and answer as a repeat (200), not as a conflict.
+func TestEvidenceDeclareLosesTheRace(t *testing.T) {
+	ctx := context.Background()
+	f := newEvidenceFixture(t, "declarelost")
+	id := uuid.NewString()
+	body := declareBody("photo bytes")
+	sum := sha256.Sum256([]byte("photo bytes"))
+
+	winner, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer winner.Rollback(ctx)
+	if err := database.SetTenant(ctx, winner, database.Tenant{OrgID: f.ownerMe.OrgID}); err != nil {
+		t.Fatalf("set tenant: %v", err)
+	}
+	// The same details declareBody sends, as the service would store them.
+	tag, err := winner.Exec(ctx, `
+		INSERT INTO evidence (id, org_id, site_id, uploaded_by, content_sha256, size_bytes, content_type, client_captured_at, object_key)
+		VALUES ($1, $2, $3, $4, $5, $6, 'image/jpeg', '2026-11-02T08:15:30.123456Z', $7)`,
+		id, f.ownerMe.OrgID, f.siteA, f.ownerMe.UserID, sum[:], len("photo bytes"),
+		fmt.Sprintf("orgs/%s/sites/%s/evidence/%s", f.ownerMe.OrgID, f.siteA, id))
+	if err != nil || tag.RowsAffected() != 1 {
+		t.Fatalf("winner's insert: %v (%d rows)", err, tag.RowsAffected())
+	}
+
+	loser := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		loser <- do(t, f.router, http.MethodPut, evidencePath(f.siteA, id), f.owner, body)
+	}()
+	waitForLock(t, "INSERT INTO evidence (")
+	if err := winner.Commit(ctx); err != nil {
+		t.Fatalf("commit winner: %v", err)
+	}
+
+	rec := <-loser
+	wantStatus(t, rec, http.StatusOK)
+	if ev := decodeEvidence(t, rec); ev.ID != id || ev.Status != evidence.StatusPending || ev.Upload == nil {
+		t.Errorf("evidence %+v, want the winner's, pending, with a fresh upload URL", ev)
 	}
 }

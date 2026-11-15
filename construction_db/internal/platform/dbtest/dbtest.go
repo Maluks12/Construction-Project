@@ -11,6 +11,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"construction_db/internal/platform/containertest"
 	"construction_db/internal/platform/database"
 )
 
@@ -27,16 +28,20 @@ func Start(ctx context.Context) (app, admin *pgxpool.Pool, cleanup func(), err e
 		return nil, nil, nil, err
 	}
 
-	ctr, err := postgres.Run(ctx, "postgres:16-alpine",
-		postgres.WithDatabase("siteproof_test"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		postgres.WithOrderedInitScripts(files...),
-		postgres.BasicWaitStrategies(),
+	ctr, err := containertest.StartWithRetry(ctx, "postgres", containertest.RetryWait,
+		func(ctx context.Context) (*postgres.PostgresContainer, error) {
+			return postgres.Run(ctx, "postgres:16-alpine",
+				postgres.WithDatabase("siteproof_test"),
+				postgres.WithUsername("test"),
+				postgres.WithPassword("test"),
+				postgres.WithOrderedInitScripts(files...),
+				postgres.BasicWaitStrategies(),
+			)
+		},
+		func(c *postgres.PostgresContainer) { _ = testcontainers.TerminateContainer(c) },
 	)
 	if err != nil {
-		_ = testcontainers.TerminateContainer(ctr)
-		return nil, nil, nil, fmt.Errorf("start postgres: %w", err)
+		return nil, nil, nil, err
 	}
 
 	url, err := ctr.ConnectionString(ctx, "sslmode=disable")

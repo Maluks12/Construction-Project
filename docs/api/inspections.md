@@ -56,7 +56,7 @@ same forever, whatever is published later.
 |---|---|
 | 201 | Started. `Inspection` with `status: "in_progress"` and one unanswered item per template item, in order |
 | 200 | The same start again (every field identical, same person and site): the stored `Inspection`, unchanged |
-| 400 | `"inspection id must be a UUID"`, `"unknown checklist template version"` (no such key or version in the site's regime), `"checklist template does not match"` (the hash isn't that version's), `"corrects_id must be a completed inspection on this site"`, `"device_id must be 1-200 bytes"` (bytes, not characters), or a validator message for a missing field (`template_key`, `template_version` ≥ 1, `template_sha256`, `client_started_at`) |
+| 400 | `"inspection id must be a UUID"`, `"unknown checklist template version"` (no such key or version in the site's regime), `"checklist template does not match"` (the hash isn't that version's), `"corrects_id must be a completed inspection on this site"`, `"a correction must use the same checklist as the inspection it corrects"`, `"inspection already has a correction"`, `"device_id must be 1-200 bytes"` (bytes, not characters), or a validator message for a missing field (`template_key`, `template_version` ≥ 1, `template_sha256`, `client_started_at`) |
 | 404 | `"site not found"` |
 | 409 | `"inspection id already used with different details"` (any field differs, or another person, site or organisation used it) or `"site is archived"` |
 
@@ -66,8 +66,14 @@ same forever, whatever is published later.
   retry of a start that succeeded before the site was archived is still
   200. Sites with status `completed` accept inspections.
 - **Corrections.** A completed inspection never changes. To correct one,
-  start a new inspection with `corrects_id` set to it. It must be completed
-  and on the same site.
+  start a new inspection with `corrects_id` set to it. The rules:
+  - the corrected inspection must be completed and on the same site;
+  - the correction must use the same checklist (`template_key`); a newer
+    version of it is fine;
+  - each inspection has at most one correction, and the first one started
+    takes the place, even while it's still in progress;
+  - a correction can itself be corrected once it's completed, so
+    corrections form a chain.
 - `client_started_at` is kept to the microsecond. `started_at` is the
   server's clock; show both when they differ noticeably.
 

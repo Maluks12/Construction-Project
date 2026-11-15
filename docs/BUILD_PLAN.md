@@ -6,6 +6,36 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 
 **Checkpoint, Sun 22 Nov:** if the safety core isn't done, cut from the end in this order: JBCC delay claims, then the principal-contractor tier, then IOD form assembly. Keep the IOD lifecycle.
 
+**Decided Sun 15 Nov: no cuts.** The full scope stays, so **Sat 5 Dec is not reachable**. The forecast below puts v1.0.0 on **Wed 23 Dec**, 18 days late. The Sun 22 Nov checkpoint stays as a review point, not a cut.
+
+## Forecast (Sun 15 Nov)
+
+How the forecast is built:
+- **Recent pace:** M6 took 8 days against a planned 5. M7 grew from a 2-day plan to about 10 days, mostly from scope added along the way (access log, template versioning).
+- **Full-rigour milestones** (anything that seals, freezes or proves; see `construction_db/CLAUDE.md`) are estimated at about 1.5 times their planned days. **Light ones** (ordinary CRUD) are estimated as planned.
+- **Calendar:** one milestone after another, working every day, as so far.
+
+| Milestone | Rigour | Days | Forecast finish | Was due | Why it takes longer than planned |
+|---|---|---|---|---|---|
+| M7 Inspections & checklists | full | – | Wed 18 Nov | Tue 10 Nov | 7.6 answers and photos Mon 16, 7.7 completion and findings Tue 17, wrap-up Wed 18 |
+| M8 Incidents | full | 6 | Tue 24 Nov | Fri 13 Nov | Includes the deadline engine: holiday calendar table, working days, the Sunday-to-Monday rule (Rev 4 §2.3) |
+| M9 Corrective actions | full | 3 | Fri 27 Nov | Sun 15 Nov | |
+| M10 Toolbox talks & site diary | light | 2 | Sun 29 Nov | Tue 17 Nov | |
+| M11 People & documents | light, plus the worker | 4 | Thu 3 Dec | Fri 20 Nov | Reminders need `cmd/worker` and Redis, which are new infrastructure |
+| M12 Reports & audit pack | full | 3 | Sun 6 Dec | Sun 22 Nov | The audit pack may need to run in the worker |
+| SYNC Offline sync API | full | 4 | Thu 10 Dec | Wed 25 Nov | Conflict rules across every record type built by then |
+| BILL Billing | light; webhooks full | 3 | Sun 13 Dec | Fri 27 Nov | Needs Stitch sandbox access (external) |
+| DEPLOY | – | 2 | Tue 15 Dec | Sat 28 Nov | Needs an AWS account and a practitioner's call on the Object Lock mode (external) |
+| IOD Injury on duty | full | 3 | Fri 18 Dec | Tue 1 Dec | |
+| JBCC Delay claims | full | 2 | Sun 20 Dec | Wed 2 Dec | |
+| PC Principal contractor tier | full | 2 | Tue 22 Dec | Fri 4 Dec | |
+| V1 Release | – | 1 | **Wed 23 Dec** | Sat 5 Dec | |
+
+**Risks to the forecast:**
+- **External waits:** Stitch sandbox credentials, the AWS account, and a practitioner reviewing the Object Lock mode and the severity wording. Each one can stall a milestone on its own.
+- **Mobile sync:** the mobile app can't sync offline until SYNC lands (Thu 10 Dec, was Wed 25 Nov).
+- **No contingency:** the forecast has none. Anything that grows the way M7 did moves every date after it.
+
 **Done before this plan:** migrations 000001–000006, auth (signup, login, refresh with reuse detection, sessions), sites (CRUD, members, supervisor scoping, locations), integration tests, CI.
 
 ## Foundation (due Sun 1 Nov)
@@ -36,38 +66,38 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 - [x] Chain verification endpoint: walk a site's chain, report the first break (due Thu 5 Nov)
 - [x] Concurrency test: parallel uploads to one site give one unforked chain (due Fri 6 Nov)
 
-### M7: Inspections & checklists (due Tue 10 Nov)
+### M7: Inspections & checklists (due Tue 10 Nov; forecast Wed 18 Nov)
 
 - [x] Evidence access log: append-only (who, when, which evidence, from where; every view, export and share, Rev 4 §2.1 and A.2, P1). Then a short-lived presigned GET for evidence bytes that writes a log entry. No endpoint may serve evidence bytes before this (due Mon 9 Nov; done Tue 10 Nov)
-- [ ] Migration: inspections, responses, findings; templates come from the regime (due Sat 7 Nov)
+- [x] Migration: inspections, responses, findings; templates come from the regime (due Sat 7 Nov; done Tue 10 Nov)
 - [ ] Start and complete inspections, answer items, attach evidence (due Mon 9 Nov)
 - [ ] A failed item raises a finding with severity (due Mon 9 Nov)
 - [ ] Tests, including supervisor scoping (due Tue 10 Nov)
 
-### M8: Incidents (due Fri 13 Nov)
+### M8: Incidents (due Fri 13 Nov; forecast Tue 24 Nov)
 
 - [ ] Incident register, classified from the regime taxonomy (due Wed 11 Nov)
 - [ ] Reporting deadlines computed from regime deadline rules (OHS Act s24 reportable incidents) (due Thu 12 Nov)
 - [ ] Witness statements and evidence links; submitted incidents are amended by new version only (due Thu 12 Nov)
 - [ ] Incident tests (due Fri 13 Nov)
 
-### M9: Corrective actions (due Sun 15 Nov)
+### M9: Corrective actions (due Sun 15 Nov; forecast Fri 27 Nov)
 
 - [ ] Actions from findings and incidents: owner, due date, status (due Sat 14 Nov)
 - [ ] Close-out requires evidence; overdue query (due Sun 15 Nov)
 
-### M10: Toolbox talks & site diary (due Tue 17 Nov)
+### M10: Toolbox talks & site diary (due Tue 17 Nov; forecast Sun 29 Nov)
 
 - [ ] Toolbox talks with worker attendance sign-off (due Mon 16 Nov)
 - [ ] Daily site diary: headcount, weather, notes, evidence (due Tue 17 Nov)
 
-### M11: People & documents (due Fri 20 Nov)
+### M11: People & documents (due Fri 20 Nov; forecast Thu 3 Dec)
 
 - [ ] Worker register; competencies and appointments with expiry (due Wed 18 Nov)
 - [ ] H&S file document register with versions in S3 (due Thu 19 Nov)
 - [ ] Deadline and expiry reminders in cmd/worker (Redis-backed) (due Fri 20 Nov)
 
-### M12: Reports & audit pack (due Sun 22 Nov)
+### M12: Reports & audit pack (due Sun 22 Nov; forecast Sun 6 Dec)
 
 - [ ] Site compliance summary endpoint: open findings, overdue actions, expiring competencies (due Sat 21 Nov)
 - [ ] In the compliance summary, list each site's evidence still pending more than 24 hours after it was declared. A declared upload that's never completed stays pending forever, and any object it uploaded stays under Object Lock; this makes abandoned uploads visible rather than silent (due Sat 21 Nov)
@@ -76,19 +106,19 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 
 ## Sync, billing & deploy (due Sat 28 Nov)
 
-### SYNC: Offline sync API (due Wed 25 Nov)
+### SYNC: Offline sync API (due Wed 25 Nov; forecast Thu 10 Dec)
 
 - [x] Request deadlines and pool limits: replace RequireAuth's own 2s timeout with one request-level deadline set in middleware; a request that hits it or can't get a pool connection gets 503 with Retry-After, never 500; pool size (pgxpool MaxConns) set from config and documented. Found in M6: a burst larger than the pool (default max(4, CPUs)) made auth answer 500 after 2s (due Mon 23 Nov)
 - [ ] Client-generated UUIDs and idempotency keys on every create (due Mon 23 Nov)
 - [ ] Delta pull per site from a cursor (GET /v1/sync?since=) (due Tue 24 Nov)
 - [ ] Batch push with per-record results and conflict rules; evidence is never overwritten (due Wed 25 Nov)
 
-### BILL: Billing (due Fri 27 Nov)
+### BILL: Billing (due Fri 27 Nov; forecast Sun 13 Dec)
 
 - [ ] PaymentProvider interface, plans, seat limits, subscription states (due Thu 26 Nov)
 - [ ] Stitch DebiCheck provider (sandbox) and verified webhooks (due Fri 27 Nov)
 
-### DEPLOY: Deploy (due Sat 28 Nov)
+### DEPLOY: Deploy (due Sat 28 Nov; forecast Tue 15 Dec)
 
 - [ ] RLS on users: visible if it's you or shares an org with the tenant; login and invite lookups by email/mobile via SECURITY DEFINER functions (before the production deploy)
 - [ ] Create a LOGIN role for siteproof_app with its own password; the production API connects with it, never superuser credentials. The migration owner must be a superuser or have BYPASSRLS (the token lookups are SECURITY DEFINER) (before the production deploy)
@@ -103,21 +133,21 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 
 ## Claims & contractor tier (due Sat 5 Dec)
 
-### IOD: Injury on duty (COIDA) (due Tue 1 Dec)
+### IOD: Injury on duty (COIDA) (due Tue 1 Dec; forecast Fri 18 Dec)
 
 - [ ] IOD case linked to an incident, with the W.Cl.2–6 lifecycle (per Rev 3) (due Sun 29 Nov)
 - [ ] IOD deadlines and reminders from regime rules (due Mon 30 Nov)
 - [ ] Assemble form data for each stage (structured data first, PDF later) (due Tue 1 Dec)
 
-### JBCC: Delay claims (due Wed 2 Dec)
+### JBCC: Delay claims (due Wed 2 Dec; forecast Sun 20 Dec)
 
 - [ ] Delay event log, notice deadlines from regime data, evidence links (due Wed 2 Dec)
 
-### PC: Principal contractor tier (due Fri 4 Dec)
+### PC: Principal contractor tier (due Fri 4 Dec; forecast Tue 22 Dec)
 
 - [ ] Link subcontractor orgs to a site; the principal contractor sees their compliance (due Thu 3 Dec)
 - [ ] Tests for cross-org visibility under RLS (due Fri 4 Dec)
 
-### V1: Release (due Sat 5 Dec)
+### V1: Release (due Sat 5 Dec; forecast Wed 23 Dec)
 
 - [ ] Full regression, CI green, tag v1.0.0, deploy (due Sat 5 Dec)

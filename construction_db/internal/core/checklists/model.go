@@ -95,14 +95,16 @@ const (
 )
 
 var (
-	ErrInspectionNotFound = errors.New("inspection not found")
-	ErrBadInspectionID    = errors.New("inspection id must be a UUID")
-	ErrInspectionIDReused = errors.New("inspection id already used with different details")
-	ErrSiteArchived       = errors.New("site is archived")
-	ErrBadCorrectsID      = errors.New("corrects_id must be a completed inspection on this site")
-	ErrBadDeviceID        = errors.New("device_id must be 1-200 bytes")
-	ErrBadStatus          = errors.New("status must be in_progress or completed")
-	ErrBadLimit           = errors.New("limit must be 1-200")
+	ErrInspectionNotFound  = errors.New("inspection not found")
+	ErrBadInspectionID     = errors.New("inspection id must be a UUID")
+	ErrInspectionIDReused  = errors.New("inspection id already used with different details")
+	ErrSiteArchived        = errors.New("site is archived")
+	ErrBadCorrectsID       = errors.New("corrects_id must be a completed inspection on this site")
+	ErrBadDeviceID         = errors.New("device_id must be 1-200 bytes")
+	ErrAlreadyCorrected    = errors.New("inspection already has a correction")
+	ErrCorrectionChecklist = errors.New("a correction must use the same checklist as the inspection it corrects")
+	ErrBadStatus           = errors.New("status must be in_progress or completed")
+	ErrBadLimit            = errors.New("limit must be 1-200")
 )
 
 // StartInspectionRequest names the template version the phone showed, with

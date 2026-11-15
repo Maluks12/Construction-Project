@@ -361,6 +361,25 @@ func TestInspectionCorrections(t *testing.T) {
 	t.Run("retrying with the id in upper case is 200", func(t *testing.T) {
 		wantStatus(t, do(t, f.router, http.MethodPut, inspectionPath(f.siteA, correction), f.owner, correcting(strings.ToUpper(original))), http.StatusOK)
 	})
+	t.Run("a second correction is refused", func(t *testing.T) {
+		id := uuid.NewString()
+		wantError(t, do(t, f.router, http.MethodPut, inspectionPath(f.siteA, id), f.owner, correcting(original)), http.StatusBadRequest,
+			"inspection already has a correction")
+		if n := countRows(t, `SELECT count(*) FROM inspections WHERE id = $1`, id); n != 0 {
+			t.Errorf("%d rows stored for a refused start", n)
+		}
+	})
+	t.Run("a correction on another checklist is refused", func(t *testing.T) {
+		other := decodeCatalog(t, f.router, f.siteA, f.owner).Checklists[1]
+		completed := startInspection(t, f.router, f.owner, f.siteA, tmpl)
+		completeBySQL(t, f.ownerMe.OrgID, completed, len(tmpl.Items))
+		wantError(t, do(t, f.router, http.MethodPut, inspectionPath(f.siteA, uuid.NewString()), f.owner, with(startBody(other), "corrects_id", completed)),
+			http.StatusBadRequest, "a correction must use the same checklist as the inspection it corrects")
+	})
+	t.Run("a correction can itself be corrected", func(t *testing.T) {
+		completeBySQL(t, f.ownerMe.OrgID, correction, len(tmpl.Items))
+		wantStatus(t, do(t, f.router, http.MethodPut, inspectionPath(f.siteA, uuid.NewString()), f.owner, correcting(correction)), http.StatusCreated)
+	})
 
 	refused := map[string]struct{ site, corrects string }{
 		"one on another site": {f.siteB, original},
@@ -652,4 +671,52 @@ func TestInspectionList(t *testing.T) {
 			t.Errorf("other org sees %s", ids)
 		}
 	})
+}
+
+// Two corrections of the same inspection, made deterministic: one is open
+// but uncommitted, so this request's check doesn't see it, inserts, and
+// blocks on the unique corrects_id. When the other commits, the insert fails;
+// the request must answer 400 "already has a correction", not 500.
+func TestInspectionCorrectionLosesTheRace(t *testing.T) {
+	ctx := context.Background()
+	f := newEvidenceFixture(t, "corrrace")
+	tmpl := decodeCatalog(t, f.router, f.siteA, f.owner).Checklists[0]
+	original := startInspection(t, f.router, f.owner, f.siteA, tmpl)
+	completeBySQL(t, f.ownerMe.OrgID, original, len(tmpl.Items))
+	sum, err := hex.DecodeString(tmpl.SHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	winner, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer winner.Rollback(ctx)
+	if err := database.SetTenant(ctx, winner, database.Tenant{OrgID: f.ownerMe.OrgID}); err != nil {
+		t.Fatalf("set tenant: %v", err)
+	}
+	tag, err := winner.Exec(ctx, `
+		INSERT INTO inspections (id, org_id, site_id, regime_id, template_key, template_version, template_sha256,
+		                         template_title, template_source_ref, item_count, started_by, client_started_at, corrects_id)
+		SELECT $1, org_id, id, regime_id, $2, $3, $4, $5, $6, $7, $8, now(), $10 FROM sites WHERE id = $9`,
+		uuid.NewString(), tmpl.Key, tmpl.Version, sum, tmpl.Title, tmpl.SourceRef, len(tmpl.Items), f.ownerMe.UserID, f.siteA, original)
+	if err != nil || tag.RowsAffected() != 1 {
+		t.Fatalf("winner's insert: %v (%d rows)", err, tag.RowsAffected())
+	}
+
+	id := uuid.NewString()
+	loser := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		loser <- do(t, f.router, http.MethodPut, inspectionPath(f.siteA, id), f.owner, with(startBody(tmpl), "corrects_id", original))
+	}()
+	waitForLock(t, "INSERT INTO inspections")
+	if err := winner.Commit(ctx); err != nil {
+		t.Fatalf("commit winner: %v", err)
+	}
+
+	wantError(t, <-loser, http.StatusBadRequest, "inspection already has a correction")
+	if n := countRows(t, `SELECT count(*) FROM inspections WHERE id = $1`, id); n != 0 {
+		t.Errorf("%d rows stored for the loser", n)
+	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/minio"
 
+	"construction_db/internal/platform/containertest"
 	"construction_db/internal/platform/storage"
 )
 
@@ -33,10 +34,14 @@ type Env struct {
 // Start runs MinIO with Bucket created like production: Object Lock enabled
 // and a default retention (GOVERNANCE, 1 day).
 func Start(ctx context.Context) (*Env, func(), error) {
-	ctr, err := minio.Run(ctx, Image, minio.WithUsername(user), minio.WithPassword(password))
+	ctr, err := containertest.StartWithRetry(ctx, "minio", containertest.RetryWait,
+		func(ctx context.Context) (*minio.MinioContainer, error) {
+			return minio.Run(ctx, Image, minio.WithUsername(user), minio.WithPassword(password))
+		},
+		func(c *minio.MinioContainer) { _ = testcontainers.TerminateContainer(c) },
+	)
 	if err != nil {
-		_ = testcontainers.TerminateContainer(ctr)
-		return nil, nil, fmt.Errorf("start minio: %w", err)
+		return nil, nil, err
 	}
 	cleanup := func() { _ = testcontainers.TerminateContainer(ctr) }
 

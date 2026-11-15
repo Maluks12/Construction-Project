@@ -115,13 +115,22 @@ func (s *Service) startOnce(ctx context.Context, orgID, userID, role, siteID, id
 		}
 
 		if req.CorrectsID != nil {
-			// The insert trigger and the same-site foreign key enforce this
-			// too; checking here gives the client a 400 it can act on.
+			// The database enforces all of this too (insert trigger; the foreign
+			// key on site and template_key; the unique corrects_id). Checking
+			// here gives the client a 400 it can act on.
 			corrected, err := GetSiteInspection(ctx, tx, orgID, site.ID, *req.CorrectsID)
 			if isNotFound(err) || (err == nil && corrected.Status != StatusCompleted) {
 				return ErrBadCorrectsID
 			}
 			if err != nil {
+				return err
+			}
+			if corrected.TemplateKey != tmpl.Key {
+				return ErrCorrectionChecklist
+			}
+			if _, err := GetCorrection(ctx, tx, orgID, corrected.ID); err == nil {
+				return ErrAlreadyCorrected
+			} else if !isNotFound(err) {
 				return err
 			}
 		}
@@ -140,6 +149,11 @@ func (s *Service) startOnce(ctx context.Context, orgID, userID, role, siteID, id
 		})
 		if isUniqueViolation(err, "inspections_pkey") {
 			return errIDTaken
+		}
+		// Another correction of the same inspection committed after the check
+		// above: the unique key decides, and the loser gets the same 400.
+		if isUniqueViolation(err, "inspections_corrects_once") {
+			return ErrAlreadyCorrected
 		}
 		if err != nil {
 			return err
@@ -240,7 +254,7 @@ func withItems(ctx context.Context, db DBTX, orgID string, in *Inspection) (*Ins
 func isSentinel(err error) bool {
 	for _, s := range []error{
 		sites.ErrSiteNotFound, ErrInspectionNotFound, ErrInspectionIDReused, ErrSiteArchived,
-		ErrUnknownTemplateVersion, ErrTemplateMismatch, ErrBadCorrectsID,
+		ErrUnknownTemplateVersion, ErrTemplateMismatch, ErrBadCorrectsID, ErrAlreadyCorrected, ErrCorrectionChecklist,
 	} {
 		if errors.Is(err, s) {
 			return true

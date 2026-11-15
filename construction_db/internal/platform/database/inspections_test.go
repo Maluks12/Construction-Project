@@ -220,7 +220,12 @@ func TestInspectionRules(t *testing.T) {
 		refused(t, tx, "23514", "can only correct a completed inspection", startSQL, inspID(8), rlsOrgA, rlsSiteA, hash32(5), 1, rlsUserA, inspID(2))
 		refused(t, tx, "23514", "can only correct a completed inspection", startSQL, inspID(8), rlsOrgA, rlsSiteA, hash32(5), 1, rlsUserA, inspID(8))
 		refused(t, tx, "23503", "inspections_corrects_fkey", startSQL, inspID(8), rlsOrgA, otherSite, hash32(5), 1, rlsUserA, inspID(6))
+		// Another checklist: startSQL's template_key with one letter changed.
+		otherChecklist := strings.Replace(startSQL, "'test_check'", "'other_check'", 1)
+		refused(t, tx, "23503", "inspections_corrects_fkey", otherChecklist, inspID(8), rlsOrgA, rlsSiteA, hash32(5), 1, rlsUserA, inspID(6))
 		must(t, tx, 1, startSQL, inspID(8), rlsOrgA, rlsSiteA, hash32(5), 1, rlsUserA, inspID(6))
+		// One correction per inspection, even while the first is in progress.
+		refused(t, tx, "23505", "inspections_corrects_once", startSQL, inspID(9), rlsOrgA, rlsSiteA, hash32(5), 1, rlsUserA, inspID(6))
 	})
 }
 

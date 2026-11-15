@@ -41,6 +41,7 @@ func TestAPIDoc(t *testing.T) {
 	for _, e := range []error{
 		ErrInspectionNotFound, ErrBadInspectionID, ErrInspectionIDReused, ErrSiteArchived, ErrBadCorrectsID,
 		ErrBadDeviceID, ErrUnknownTemplateVersion, ErrTemplateMismatch, ErrBadStatus, ErrBadLimit,
+		ErrAlreadyCorrected, ErrCorrectionChecklist,
 	} {
 		if quoted := `"` + e.Error() + `"`; !strings.Contains(doc.Text, quoted) {
 			t.Errorf("the reference doesn't quote the error %s", quoted)

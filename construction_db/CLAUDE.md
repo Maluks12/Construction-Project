@@ -59,7 +59,10 @@ On Windows, run the tests locally with `-p 4`. Several packages each start
 their own Postgres (and MinIO) containers. With every package at once,
 Docker Desktop intermittently fails to start a container ("rootless Docker
 is not supported on Windows", which really means it couldn't connect), or
-stalls until requests time out. CI keeps the default.
+stalls until requests time out. CI keeps the default. `dbtest.Start` and
+`storagetest.Start` also retry a failed container start once, after 2s
+(`containertest.StartWithRetry`). A real fault fails twice and reports
+both errors.
 
 ## Layout
 
@@ -232,6 +235,31 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
   the presigned URL's signature and the phone can't reach `localhost`. Allow
   inbound TCP 9000 in Windows Firewall and keep the phone on the same Wi-Fi.
 
+## Two levels of rigour (decided Sun 15 Nov)
+
+Pick the level when planning a step, and say which in the plan.
+
+**Full rigour** is for anything that seals, freezes or proves: evidence,
+inspections, findings, incidents, deadlines, corrective actions, and the
+audit pack. These records end up in front of an inspector or a court, so
+a bug can't be fixed after the fact.
+- The database enforces the rules (constraints, triggers, grants), not just
+  the API.
+- Mutation checks: break each rule on purpose, show a test fails, then
+  restore it.
+- Race tests wherever two requests can meet. Prefer a forced, deterministic
+  collision (hold a transaction open) over firing requests and hoping.
+- The API doc is checked by `TestAPIDoc`, including every error text.
+- Full status notes in Status.
+
+**Light rigour** is for ordinary CRUD: the worker register, toolbox talks,
+the site diary, settings.
+- Tests cover the happy path, scoping and RLS, and validation.
+- The API doc is updated and checked by `TestAPIDoc`.
+- No mutation checks unless something is subtle; say so in the plan when
+  one is.
+- Short status notes: what was added and any contract change.
+
 ## Conventions (learned the hard way)
 
 - **Tenant transactions (RLS):** every query on a tenant table runs inside
@@ -305,8 +333,26 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
 - Full plan: `docs/BUILD_PLAN.md`. Tick tasks there as they're done. When a
   step changes the plan or a decision, update this section.
 - Foundation (M4, M5) due Sun 1 Nov. Safety core (M6–M12) due Sun 22 Nov,
-  which is the checkpoint: if behind, cut JBCC delay claims, then
-  principal-contractor tier, then IOD form assembly.
+  which is the checkpoint.
+- **Forecast (Sun 15 Nov; no cuts decided, full scope stays).** Sat 5 Dec
+  is not reachable. Reasons and risks are in `docs/BUILD_PLAN.md`
+  ("Forecast").
+
+  | Milestone | Rigour | Forecast finish | Was due |
+  |---|---|---|---|
+  | M7 Inspections & checklists | full | Wed 18 Nov | Tue 10 Nov |
+  | M8 Incidents (with the deadline engine) | full | Tue 24 Nov | Fri 13 Nov |
+  | M9 Corrective actions | full | Fri 27 Nov | Sun 15 Nov |
+  | M10 Toolbox talks & site diary | light | Sun 29 Nov | Tue 17 Nov |
+  | M11 People & documents | light | Thu 3 Dec | Fri 20 Nov |
+  | M12 Reports & audit pack | full | Sun 6 Dec | Sun 22 Nov |
+  | SYNC Offline sync API | full | Thu 10 Dec | Wed 25 Nov |
+  | BILL Billing | light; webhooks full | Sun 13 Dec | Fri 27 Nov |
+  | DEPLOY | – | Tue 15 Dec | Sat 28 Nov |
+  | IOD Injury on duty | full | Fri 18 Dec | Tue 1 Dec |
+  | JBCC Delay claims | full | Sun 20 Dec | Wed 2 Dec |
+  | PC Principal contractor tier | full | Tue 22 Dec | Fri 4 Dec |
+  | V1 Release | – | **Wed 23 Dec** | Sat 5 Dec |
 - **Done:** migrations 000001–000007; auth (email and mobile login, refresh
   rotation with reuse detection, sessions); sites, site members, supervisor
   scoping, locations; invites (send, list, revoke, preview, accept);
@@ -550,6 +596,29 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
       which `encoding/json` sends under its Go name. It now follows
       `encoding/json`'s rules, and has its first unit tests.
     - **Contract change:** one new endpoint.
+  - **Corrections tightened (Sun 15 Nov):** migration 000013.
+    - **One correction per inspection:** `UNIQUE (corrects_id)`.
+    - **Same checklist:** `template_key` joins the correction's foreign key
+      (`inspections_corrects_fkey`), with a new
+      `UNIQUE (org_id, site_id, id, template_key)` as its target.
+    - The API checks both first: 400 `"inspection already has a
+      correction"` and `"a correction must use the same checklist as the
+      inspection it corrects"`. A lost race on the unique key gets the same
+      400 (`TestInspectionCorrectionLosesTheRace`, forced with an
+      uncommitted correction).
+    - **Trade-off:** a correction started by mistake holds the place until
+      it's completed, because in-progress inspections can't be abandoned
+      yet.
+    - Mutation checks: dropping either constraint, or either API check,
+      fails a test.
+    - **Contract change:** two new 400 texts on start.
+  - **Evidence declare race test (Sun 15 Nov):**
+    `TestEvidenceDeclareLosesTheRace` forces the lost race with an
+    uncommitted identical declaration, as 7.5a does for inspections.
+    - It's a test for existing code; no change to declare itself.
+    - Removing declare's retry now fails it with 409. The existing
+      concurrent-declare test still passed without the retry, so until now
+      nothing covered it.
 
 ## Finding severity
 

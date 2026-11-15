@@ -811,6 +811,32 @@ the site diary, settings.
       rules, so reg 3 and reg 4 can never attach to an incident.
     - Mutation checks: dropping the basis check or the taxonomy check each
       fails a test.
+  - 8.1 (Sun 15 Nov), **done**: migration 000015, the holiday calendar.
+    - `public_holidays` holds one row per day off from 2024 to 2030: 84
+      statutory, 8 Sunday substitutes, 2 proclaimed. `kind` and
+      `source_ref` say why. A substitute must be a Monday (CHECK).
+      `holiday_calendar_coverage` says which dates are complete.
+    - Both are read-only to the app and on the RLS allowlist (no `org_id`).
+    - `deadline_due(basis_at, period, unit, direction, time_zone,
+      jurisdiction)` is the engine's only date arithmetic. It returns
+      `due_at`, `due_on`, `excluded_days`, `legal_latest_on` and
+      `legal_latest_at`. A day outside the coverage raises `22000`, never
+      "no holiday", with one message for a day before it (an old incident:
+      the API answers 400) and another for a day after it (the calendar
+      needs extending: 500). An unknown zone raises `22023`.
+    - Tests in `internal/core/deadlines/calendar_test.go`:
+      - 15 worked examples covering each unit and direction, the local
+        date, Christmas, a Saturday, a Sunday, the proclaimed 4 Nov 2026,
+        a Sunday holiday with its Monday, Easter, and both reg 3/4
+        parameter sets.
+      - `TestHolidayCalendarFollowsTheAct` regenerates Schedule 1, Easter
+        and the Sunday rule in Go, and compares them with the table.
+      - `TestHolidayCalendarCoverageAhead` fails when coverage ends less
+        than two years from now.
+    - Mutation checks: each of 10 is caught (first-day exclusion, Sunday,
+      Saturday, holiday extension, coverage, working days, local date, a
+      missing substitute row, the grant, the Monday CHECK). Up, down and
+      up again verified on a throwaway Postgres.
 
 ## Finding severity
 

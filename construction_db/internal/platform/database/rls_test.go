@@ -312,9 +312,11 @@ func TestRLSWrites(t *testing.T) {
 
 // Tables that are deliberately outside RLS.
 var rlsAllowlist = []string{
-	"users",              // no org_id; accepted risk, see BUILD_PLAN DEPLOY
-	"regulatory_regimes", // public system data, read-only to siteproof_app
-	"schema_migrations",  // golang-migrate's bookkeeping (absent in tests)
+	"users",                     // no org_id; accepted risk, see BUILD_PLAN DEPLOY
+	"regulatory_regimes",        // public system data, read-only to siteproof_app
+	"public_holidays",           // the holiday calendar (000015): public data, read-only to siteproof_app
+	"holiday_calendar_coverage", // the calendar's date range (000015): same
+	"schema_migrations",         // golang-migrate's bookkeeping (absent in tests)
 }
 
 type tableRLS struct {

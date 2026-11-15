@@ -167,6 +167,10 @@ both errors.
   - `DataSet.Latest()` is what the catalogue offers;
     `DataSet.Checklist(key, version)` finds any shipped version for the
     inspection engine.
+- `internal/core/deadlines`: the deadline engine (Rev 4 §2.3). Pure Go
+  rule selection and planning (`engine.go`), storage (`repo.go`). Due
+  dates are computed only by Postgres's `deadline_due` (000015), from the
+  `public_holidays` table. Tests here start their own Postgres.
 - `internal/core/checklists`: the checklist engine (Rev 4 §2.4).
   `GET /v1/sites/:id/checklists` returns the site regime's templates
   (through `sites.Service.Regime`, never hardcoded) and the severity scale.
@@ -896,6 +900,18 @@ the site diary, settings.
       move (for the M11 worker).
     - Mutation checks: all 27 caught. Forced races: two satisfactions of one
       duty; a satisfaction against a row being withdrawn.
+  - 8.3 (Sun 15 Nov), **done**: `internal/core/deadlines`.
+    - `Applicable(ds, facts, duties)` reads `applies_when` (union of the
+      types' rules; COIDA for an injured or dead employee, from
+      `employer_aware_at`; GAR 8(2) for a death later than a met GAR 8(1)
+      notice, from the earliest such death; never `site_work`).
+    - `Plan(clocks, duties)`: carry (same basis at microseconds),
+      supersede (new basis), withdraw, add (a new duty, or one withdrawn
+      before, which keeps its satisfaction).
+    - `State(...)`: open, due_now, overdue, satisfied, satisfied_late,
+      superseded, withdrawn. A forthwith duty is met by any satisfaction.
+    - `repo.go` stores plans (`Apply`) and reads rows with the duty's
+      current satisfaction.
 
 ## Finding severity
 

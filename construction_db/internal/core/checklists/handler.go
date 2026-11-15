@@ -56,7 +56,7 @@ func writeError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrBadInspectionID), errors.Is(err, ErrBadDeviceID), errors.Is(err, ErrBadCorrectsID),
 		errors.Is(err, ErrUnknownTemplateVersion), errors.Is(err, ErrTemplateMismatch),
-		errors.Is(err, ErrBadStatus), errors.Is(err, ErrBadLimit),
+		errors.Is(err, ErrBadStatus), errors.Is(err, ErrBadLimit), errors.Is(err, ErrBadCoverage),
 		errors.Is(err, ErrAlreadyCorrected), errors.Is(err, ErrCorrectionChecklist):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
@@ -168,7 +168,7 @@ func (h *Handler) Findings(c *gin.Context) {
 		limit = n
 	}
 	out, err := h.svc.Findings(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c),
-		c.Param("id"), c.Query("severity"), limit)
+		c.Param("id"), c.Query("severity"), c.Query("coverage"), limit)
 	if err != nil {
 		writeError(c, err)
 		return

@@ -216,6 +216,7 @@ var (
 	ErrSeverityRequired    = errors.New("severity is required for a fail")
 	ErrSeverityNotAllowed  = errors.New("severity is only given for a fail")
 	ErrBadSeverity         = errors.New("severity must be low, medium, high or critical")
+	ErrBadCoverage         = errors.New("coverage must be unactioned, actioned, waived or superseded")
 	ErrCommentTooLong      = errors.New("comment must be at most 2000 characters")
 	ErrBadEvidenceIDs      = errors.New("evidence_ids must be UUIDs")
 	ErrRepeatedEvidence    = errors.New("evidence_ids must not repeat")
@@ -278,7 +279,24 @@ type Finding struct {
 	// The completed correction of its inspection, which supersedes it; null
 	// while there is none, or it is in progress or abandoned.
 	CorrectedBy *string `json:"corrected_by"`
+	// How the finding is addressed (D1, D7): superseded, actioned, waived or
+	// unactioned, from the database's finding_coverage (000019).
+	Coverage string `json:"coverage"`
+	// The actions that cover it (its own, or carried from the same item
+	// earlier in its correction chain), and the waiver that does.
+	CoveredBy []string `json:"covered_by"`
+	WaiverID  *string  `json:"waiver_id"`
 }
+
+// The values of Finding.Coverage.
+const (
+	CoverageUnactioned = "unactioned"
+	CoverageActioned   = "actioned"
+	CoverageWaived     = "waived"
+	CoverageSuperseded = "superseded"
+)
+
+var Coverages = []string{CoverageUnactioned, CoverageActioned, CoverageWaived, CoverageSuperseded}
 
 var (
 	// Sent with the item keys concerned (IncompleteError).

@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"construction_db/internal/core/actions"
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/checklists"
 	"construction_db/internal/core/edition"
@@ -64,6 +65,7 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 
 	checklists.Register(router, checklists.NewService(pool, sitesSvc), authSvc)
 	incidents.Register(router, incidents.NewService(pool, sitesSvc), authSvc)
+	actions.Register(router, actions.NewService(pool, sitesSvc), authSvc)
 
 	editionRoutes := router.Group("/v1/" + ed.Name())
 	editionRoutes.Use(auth.RequireAuth(authSvc))

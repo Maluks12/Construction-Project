@@ -85,9 +85,12 @@ func (s *Service) Complete(ctx context.Context, orgID, userID, role, siteID, ins
 
 // Findings lists a site's findings, newest first. It works on an archived
 // site. The query is checked before the site, so a bad one is 400 anywhere.
-func (s *Service) Findings(ctx context.Context, orgID, userID, role, siteID, severity string, limit int) ([]Finding, error) {
+func (s *Service) Findings(ctx context.Context, orgID, userID, role, siteID, severity, coverage string, limit int) ([]Finding, error) {
 	if severity != "" && !slices.ContainsFunc(Severities, func(l SeverityLevel) bool { return l.Key == severity }) {
 		return nil, ErrBadSeverity
+	}
+	if coverage != "" && !slices.Contains(Coverages, coverage) {
+		return nil, ErrBadCoverage
 	}
 	if limit < 1 || limit > 200 {
 		return nil, ErrBadLimit
@@ -99,7 +102,7 @@ func (s *Service) Findings(ctx context.Context, orgID, userID, role, siteID, sev
 		if err != nil {
 			return err
 		}
-		out, err = ListSiteFindings(ctx, tx, orgID, site.ID, severity, limit)
+		out, err = ListSiteFindings(ctx, tx, orgID, site.ID, severity, coverage, limit)
 		return err
 	})
 	if isSentinel(err) {

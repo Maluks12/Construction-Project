@@ -8,10 +8,12 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -61,13 +63,17 @@ func putUpload(t *testing.T, up *evidence.Upload, content []byte) {
 	for k, v := range up.Headers {
 		req.Header.Set(k, v)
 	}
+	start := time.Now()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("upload to %s after %s: %v", up.URL, time.Since(start).Round(time.Millisecond), err)
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("upload: %d", resp.StatusCode)
+		// MinIO's own reason (e.g. SlowDown, a signature mismatch), so a stall
+		// under load can't be mistaken for an API fault.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		t.Fatalf("upload: %d after %s, headers %v, body %s", resp.StatusCode, time.Since(start).Round(time.Millisecond), resp.Header, body)
 	}
 }
 

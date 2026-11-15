@@ -28,6 +28,8 @@ const (
 	rlsEvidenceB = "28000000-0000-0000-0000-00000000000b"
 	rlsInspA     = "2a000000-0000-0000-0000-00000000000a" // completed, one failed item with a photo
 	rlsInspB     = "2a000000-0000-0000-0000-00000000000b"
+	rlsIncA      = "2e000000-0000-0000-0000-00000000000a" // version 1: one injured employee, one photo, one statement
+	rlsIncB      = "2e000000-0000-0000-0000-00000000000b"
 )
 
 // What an unfiltered DELETE as tenant A does to a table.
@@ -49,6 +51,11 @@ type rlsTable struct {
 
 // In foreign-key-safe delete order.
 var rlsTables = []rlsTable{
+	{"witness_statements", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"incident_version_evidence", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"incident_people", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"incident_versions", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"incidents", "org_id", rlsOrgA, rlsOrgB, "latest_version", deleteDenied},
 	{"inspection_findings", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"inspection_response_evidence", "org_id", rlsOrgA, rlsOrgB, "", deleteFrozen},
 	{"inspection_responses", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
@@ -103,6 +110,7 @@ var seedOnce = sync.OnceValue(func() error {
 	for _, x := range []string{"a", "b"} {
 		id := func(prefix string) string { return prefix + "000000-0000-0000-0000-00000000000" + x }
 		org, user, site, loc, sess, inv, ev, insp := id("20"), id("21"), id("22"), id("23"), id("24"), id("26"), id("28"), id("2a")
+		inc, stmt := id("2e"), id("2f")
 
 		stmts := []struct {
 			sql  string
@@ -134,6 +142,19 @@ var seedOnce = sync.OnceValue(func() error {
 			{`INSERT INTO inspection_response_evidence (org_id, site_id, inspection_id, item_key, evidence_id) VALUES ($1, $2, $3, 'item', $4)`,
 				[]any{org, site, insp, ev}},
 			{`UPDATE inspections SET status = 'completed', completed_at = now(), client_completed_at = now() WHERE id = $1`, []any{insp}},
+			// One incident, version 1, with its person, photo and a statement.
+			{`INSERT INTO incidents (id, org_id, site_id, regime_id, reported_by) SELECT $1, $2, $3, id, $4 FROM regulatory_regimes LIMIT 1`,
+				[]any{inc, org, site, user}},
+			{`INSERT INTO incident_versions (org_id, site_id, incident_id, version, taxonomy_codes, occurred_at, employer_aware_at,
+			                                 submitted_by, client_submitted_at, people_count, evidence_count)
+			  VALUES ($1, $2, $3, 1, ARRAY['loss_of_limb'], now() - interval '1 hour', now() - interval '1 hour', $4, now(), 1, 1)`,
+				[]any{org, site, inc, user}},
+			{`INSERT INTO incident_people (org_id, site_id, incident_id, version, position, employee_of_org, injured) VALUES ($1, $2, $3, 1, 1, true, true)`,
+				[]any{org, site, inc}},
+			{`INSERT INTO incident_version_evidence (org_id, site_id, incident_id, version, evidence_id) VALUES ($1, $2, $3, 1, $4)`,
+				[]any{org, site, inc, ev}},
+			{`INSERT INTO witness_statements (id, org_id, site_id, incident_id, witness_name, statement, taken_by, taken_at)
+			  VALUES ($1, $2, $3, $4, 'RLS witness', 'Saw it.', $5, now())`, []any{stmt, org, site, inc, user}},
 		}
 		for _, s := range stmts {
 			if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
@@ -221,6 +242,17 @@ func TestRLSWrites(t *testing.T) {
 			  VALUES ($1, $2, $3, 'smuggled', 2, 'P?', 'pass_fail_na')`, []any{rlsOrgB, rlsSiteB, rlsInspB}},
 			"inspection_response_evidence": {`INSERT INTO inspection_response_evidence (org_id, site_id, inspection_id, item_key, evidence_id)
 			  VALUES ($1, $2, $3, 'item', $4)`, []any{rlsOrgB, rlsSiteB, rlsInspB, rlsEvidenceB}},
+			"incidents": {`INSERT INTO incidents (id, org_id, site_id, regime_id, reported_by)
+			  SELECT '2e000000-0000-0000-0000-0000000000bb', $1, $2, id, $3 FROM regulatory_regimes LIMIT 1`, []any{rlsOrgB, rlsSiteB, rlsUserB}},
+			"incident_versions": {`INSERT INTO incident_versions (org_id, site_id, incident_id, version, taxonomy_codes, occurred_at,
+			                                                      submitted_by, client_submitted_at, amend_reason, people_count, evidence_count)
+			  VALUES ($1, $2, $3, 2, ARRAY['near_miss'], now(), $4, now(), 'Smuggled', 0, 0)`, []any{rlsOrgB, rlsSiteB, rlsIncB, rlsUserB}},
+			"incident_people": {`INSERT INTO incident_people (org_id, site_id, incident_id, version, position, employee_of_org, injured)
+			  VALUES ($1, $2, $3, 1, 2, false, false)`, []any{rlsOrgB, rlsSiteB, rlsIncB}},
+			"incident_version_evidence": {`INSERT INTO incident_version_evidence (org_id, site_id, incident_id, version, evidence_id)
+			  VALUES ($1, $2, $3, 1, $4)`, []any{rlsOrgB, rlsSiteB, rlsIncB, rlsEvidenceA}},
+			"witness_statements": {`INSERT INTO witness_statements (id, org_id, site_id, incident_id, witness_name, statement, taken_by, taken_at)
+			  VALUES ('2f000000-0000-0000-0000-0000000000bb', $1, $2, $3, 'W', 'Smuggled.', $4, now())`, []any{rlsOrgB, rlsSiteB, rlsIncB, rlsUserB}},
 			"inspection_findings": {`INSERT INTO inspection_findings (org_id, site_id, inspection_id, item_key, severity)
 			  VALUES ($1, $2, $3, 'item', 'high')`, []any{rlsOrgB, rlsSiteB, rlsInspB}},
 		}

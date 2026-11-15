@@ -837,6 +837,34 @@ the site diary, settings.
       Saturday, holiday extension, coverage, working days, local date, a
       missing substitute row, the grant, the Monday CHECK). Up, down and
       up again verified on a throwaway Postgres.
+  - 8.2a (Sun 15 Nov), **done**: migration 000016, incidents.
+    - `incidents` (header: never changes except `latest_version`),
+      `incident_versions`, `incident_people`, `incident_version_evidence`,
+      `witness_statements`. All append-only for every role; TRUNCATE
+      refused; RLS forced.
+    - **Version order:** the version's AFTER INSERT trigger advances
+      `incidents.latest_version` with `UPDATE … WHERE latest_version =
+      version - 1`. A gap or a stale number fails. Two submissions of
+      the same number queue on the primary key and the second gets 23505.
+      A v3 while v2 is open fails at once: Postgres skips the row (its
+      committed `latest_version` doesn't match) without waiting.
+    - **Frozen at commit:** deferred constraint triggers check
+      `people_count`, `evidence_count`, `employer_aware_at` for an
+      injured employee, and that a new incident has a version. A row
+      added to a committed version breaks its count.
+    - Also enforced: `taxonomy_codes` 1+ distinct keys; `amend_reason`
+      exactly when version > 1; times not ahead of the server by more
+      than 5 minutes; `died_at` not before the incident; a death is an
+      injury; no incident on an archived site dated after it was
+      archived; photos verified and on the site (FKs); one correction per
+      statement, on the same incident. `submitted_at`, `recorded_at`,
+      `created_at` are the server's.
+    - Tests: `internal/platform/database/incidents_test.go`, including
+      forced races. **`SET CONSTRAINTS ALL IMMEDIATE` outlives a savepoint
+      rollback**: the test helper resets it.
+    - Mutation checks: all 21 caught, including each layer of a guard on its own
+      (the advance trigger disabled inside a rolled-back test) and each
+      table's truncate trigger with its neighbours' off.
 
 ## Finding severity
 

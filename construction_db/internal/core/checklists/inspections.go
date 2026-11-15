@@ -216,7 +216,7 @@ func (s *Service) Get(ctx context.Context, orgID, userID, role, siteID, inspecti
 // List returns a site's inspections, newest first. It works on an archived
 // site. The query is checked before the site, so a bad one is 400 anywhere.
 func (s *Service) List(ctx context.Context, orgID, userID, role, siteID, status string, limit int) ([]InspectionSummary, error) {
-	if status != "" && status != StatusInProgress && status != StatusCompleted {
+	if status != "" && status != StatusInProgress && status != StatusCompleted && status != StatusAbandoned {
 		return nil, ErrBadStatus
 	}
 	if limit < 1 || limit > 200 {
@@ -241,12 +241,16 @@ func (s *Service) List(ctx context.Context, orgID, userID, role, siteID, status 
 	return items, nil
 }
 
+// withItems loads an inspection's items (with their photos) and findings.
 func withItems(ctx context.Context, db DBTX, orgID string, in *Inspection) (*Inspection, error) {
 	items, err := ListItems(ctx, db, orgID, in.ID)
 	if err != nil {
 		return nil, err
 	}
 	in.Items = items
+	if in.Findings, err = ListInspectionFindings(ctx, db, orgID, in.ID); err != nil {
+		return nil, err
+	}
 	return in, nil
 }
 
@@ -255,6 +259,13 @@ func isSentinel(err error) bool {
 	for _, s := range []error{
 		sites.ErrSiteNotFound, ErrInspectionNotFound, ErrInspectionIDReused, ErrSiteArchived,
 		ErrUnknownTemplateVersion, ErrTemplateMismatch, ErrBadCorrectsID, ErrAlreadyCorrected, ErrCorrectionChecklist,
+		ErrNotInspector, ErrInspectionCompleted, ErrItemNotFound,
+		ErrAnswerInFuture,
+		// EvidenceError and StaleAnswerError unwrap to these.
+		ErrEvidenceNotFound, ErrEvidenceRejected, ErrEvidenceNotVerified, ErrNewerAnswer, ErrDifferentAnswer,
+		// IncompleteError unwraps to these.
+		ErrItemsNotAnswered, ErrFailNeedsPhoto,
+		ErrInspectionAbandoned, ErrCantAbandon, ErrAbandonNeedsLead,
 	} {
 		if errors.Is(err, s) {
 			return true

@@ -20,12 +20,20 @@ func TestAPIDoc(t *testing.T) {
 		"ChecklistCatalog": ChecklistCatalog{}, "RegimeRef": RegimeRef{}, "ChecklistTemplate": ChecklistTemplate{},
 		"ChecklistItem": ChecklistItem{}, "SeverityLevel": SeverityLevel{},
 		"Inspection": Inspection{}, "InspectionItem": InspectionItem{}, "InspectionSummary": InspectionSummary{},
+		"AttachedEvidence": AttachedEvidence{}, "InspectionFinding": InspectionFinding{}, "Finding": Finding{},
 	} {
 		t.Run(name, func(t *testing.T) { doc.CheckStruct(t, name, v, false) })
 	}
 	t.Run("StartInspectionRequest", func(t *testing.T) { doc.CheckStruct(t, "StartInspectionRequest", StartInspectionRequest{}, true) })
+	t.Run("AnswerRequest", func(t *testing.T) { doc.CheckStruct(t, "AnswerRequest", AnswerRequest{}, true) })
+	t.Run("CompleteRequest", func(t *testing.T) { doc.CheckStruct(t, "CompleteRequest", CompleteRequest{}, true) })
+	t.Run("AbandonRequest", func(t *testing.T) { doc.CheckStruct(t, "AbandonRequest", AbandonRequest{}, true) })
 	// Built inline by the handler.
 	doc.CheckFields(t, "InspectionList", []string{"inspections"})
+	doc.CheckFields(t, "EvidenceProblem", []string{"error", "evidence_ids"})
+	doc.CheckFields(t, "StaleAnswer", []string{"error", "stored"})
+	doc.CheckFields(t, "IncompleteInspection", []string{"error", "item_keys"})
+	doc.CheckFields(t, "FindingList", []string{"findings"})
 
 	var keys []string
 	for _, s := range Severities {
@@ -34,7 +42,7 @@ func TestAPIDoc(t *testing.T) {
 	doc.CheckUnion(t, "Severity", keys)
 	doc.CheckUnion(t, "Cadence", regimes.Cadences)
 	doc.CheckUnion(t, "ResponseType", SupportedResponseTypes)
-	doc.CheckUnion(t, "InspectionStatus", []string{StatusInProgress, StatusCompleted})
+	doc.CheckUnion(t, "InspectionStatus", []string{StatusInProgress, StatusCompleted, StatusAbandoned})
 	doc.CheckUnion(t, "Result", []string{ResultPass, ResultFail, ResultNA})
 
 	// Every error text the handlers send is quoted in the reference.
@@ -42,6 +50,12 @@ func TestAPIDoc(t *testing.T) {
 		ErrInspectionNotFound, ErrBadInspectionID, ErrInspectionIDReused, ErrSiteArchived, ErrBadCorrectsID,
 		ErrBadDeviceID, ErrUnknownTemplateVersion, ErrTemplateMismatch, ErrBadStatus, ErrBadLimit,
 		ErrAlreadyCorrected, ErrCorrectionChecklist,
+		ErrNotInspector, ErrInspectionCompleted, ErrItemNotFound, ErrSeverityRequired, ErrSeverityNotAllowed, ErrBadSeverity,
+		ErrCommentTooLong, ErrBadEvidenceIDs, ErrRepeatedEvidence, ErrTooManyPhotos, ErrEvidenceNotFound, ErrEvidenceRejected,
+		ErrEvidenceNotVerified, ErrNewerAnswer, ErrDifferentAnswer,
+		ErrItemsNotAnswered, ErrFailNeedsPhoto,
+		ErrInspectionAbandoned, ErrCantAbandon, ErrAbandonNeedsLead, ErrBadReason,
+		ErrAnswerInFuture,
 	} {
 		if quoted := `"` + e.Error() + `"`; !strings.Contains(doc.Text, quoted) {
 			t.Errorf("the reference doesn't quote the error %s", quoted)

@@ -1,8 +1,8 @@
 # Inspections API
 
 For the dashboard and the mobile app: the checklists a site's regulations
-call for, and inspections against them. Starting, reading and listing
-inspections are here; answering, completing and findings are coming in M7.
+call for, and inspections against them: starting, reading, listing,
+answering, completing and abandoning them, and the findings they raise.
 The backend keeps this file true: `TestAPIDoc` (in
 `construction_db/internal/core/checklists`) fails if the types below stop
 matching the Go code, and `TestSeverityDefinitions` fails if the severity
@@ -84,18 +84,126 @@ order. 404 `"site not found"` or `"inspection not found"` (including a
 malformed id or the wrong site). Works on archived sites.
 
 - An item's `result`, `severity`, `comment`, `client_answered_at` and
-  `answered_at` are all `null` until it is answered (answering is coming
-  in M7).
+  `answered_at` are all `null` until it is answered. `evidence` is `[]`
+  until a photo is attached.
 - An item's `source_ref` is `null` when the template gives none.
 - `client_completed_at` and `completed_at` are `null` while `status` is
   `"in_progress"`.
+
+### `PUT /v1/sites/:siteId/inspections/:inspectionId/items/:itemKey` — answer an item
+
+Body: `AnswerRequest`. **Only the inspector who started the inspection.**
+Send the item's whole answer: `result`, a `severity` exactly when the
+result is `"fail"`, an optional `comment`, the attached photos as
+`evidence_ids` (send `[]` for none), and the device's clock time as
+`client_answered_at`. Sending it again **replaces** the answer, photos
+included. That's how to answer first and attach photos once they're
+verified.
+
+| Status | When |
+|---|---|
+| 200 | Answered. The `InspectionItem`, with its photos |
+| 400 | `"severity is required for a fail"`, `"severity is only given for a fail"`, `"severity must be low, medium, high or critical"`, `"comment must be at most 2000 characters"`, `"evidence_ids must be UUIDs"`, `"evidence_ids must not repeat"`, `"at most 20 photos per item"`, `"client_answered_at is in the future; check the device clock"` (more than 5 minutes ahead of the server), a validator message for a missing or unknown field (`result` must be `pass`, `fail` or `na`; `client_answered_at` is required), or an `EvidenceProblem`: `"evidence not found on this site"` (unknown, or another site's) or `"evidence was rejected"` |
+| 403 | `"only the inspector who started this inspection can change it"` |
+| 404 | `"site not found"`, `"inspection not found"` or `"item not found"` |
+| 409 | `"inspection is completed; start a new inspection to correct it"` or `"inspection is abandoned"`; an `EvidenceProblem` `"evidence not verified yet"` (the photo is still uploading: complete it, then answer again); or a `StaleAnswer` (below) |
+
+- **Photos** must be verified evidence on the same site. An
+  `EvidenceProblem` names the offending ids in `evidence_ids`.
+- **Out-of-order answers.** Phones may send answers late or twice. The
+  server keeps the newest by `client_answered_at`, and answers with a
+  `StaleAnswer` (409, carrying the `stored` answer so you can show it):
+  - `"a newer answer is already stored"`: this answer is older than the
+    stored one;
+  - `"a different answer is already stored for this time"`: the same
+    `client_answered_at` but a different result, severity, comment or
+    photo set.
+
+  The exact same answer again is 200 and changes nothing, so a retry is
+  safe.
+- **Photo capture times.** Each photo shows `client_captured_at` and
+  `captured_before_start`, which is true when the photo was taken before
+  the inspection started (both by the device's clock). Show it: it's how a
+  reviewer spots an old photo reused. Seeing the photo itself goes through
+  `POST /v1/sites/:siteId/evidence/:evidenceId/view` (see evidence.md),
+  which is logged; these times aren't.
+- **Archived sites.** Answering still works on an archived site.
+
+### `POST /v1/sites/:siteId/inspections/:inspectionId/complete` — complete an inspection
+
+Body: `CompleteRequest` (the device's clock time as `client_completed_at`).
+**Only the inspector who started the inspection.** Once completed, nothing
+about the inspection changes: to correct it, start a new one with
+`corrects_id` (above).
+
+| Status | When |
+|---|---|
+| 201 | Completed. `Inspection` with `status: "completed"` and its `findings`, one per failed item |
+| 200 | Already completed (a retry is safe): the stored `Inspection`, unchanged |
+| 400 | A validator message (`client_completed_at` is required) |
+| 403 | `"only the inspector who started this inspection can change it"` |
+| 404 | `"site not found"` or `"inspection not found"` |
+| 409 | An `IncompleteInspection`: `"items not answered"` or `"a failed item needs a photo"`, with the `item_keys` to fix in template order; or `"inspection is abandoned"` |
+
+- An inspection is complete when every item has a result and every
+  `"fail"` has at least one photo (Rev 4 §2.4: photo mandatory on fail).
+  Offline, keep the complete request queued until the photos are uploaded
+  and verified, and attached with an answer.
+- Each `"fail"` raises one finding with the answer's severity, shown in
+  `findings` in template order. Findings never change.
+- Archived sites still accept completion.
+
+### `POST /v1/sites/:siteId/inspections/:inspectionId/abandon` — abandon an inspection
+
+Body: `AbandonRequest` with a `reason` (required, 1–500 characters, kept).
+For an inspection started by mistake, or whose inspector has left.
+Abandoning is final, like completing:
+- **the inspection stays:** its answers are kept, it stays in lists and on
+  get, marked `status: "abandoned"` with `abandoned_at`, `abandoned_by` and
+  `abandon_reason`;
+- **no findings:** it raises none;
+- **corrections:** if it was a correction, another correction of the same
+  inspection can now be started. An abandoned inspection can't itself be
+  corrected.
+
+**Who may abandon it:**
+- the inspector who started it, an owner or a SHE officer;
+- **if any item is answered `"fail"`, only an owner or a SHE officer**, so
+  a failed item can't be made to disappear by abandoning instead of
+  completing.
+
+| Status | When |
+|---|---|
+| 201 | Abandoned. The `Inspection`, with its answers |
+| 200 | Already abandoned (a retry is safe): the stored `Inspection`, unchanged |
+| 400 | `"reason must be 1-500 characters"` (missing, blank or too long) |
+| 403 | `"only the inspector who started this inspection, an owner or a SHE officer can abandon it"` or `"an inspection with a failed item can only be abandoned by an owner or a SHE officer"` |
+| 404 | `"site not found"` or `"inspection not found"` |
+| 409 | `"inspection is completed; start a new inspection to correct it"` |
+
+Answering or completing an abandoned inspection is 409
+`"inspection is abandoned"`. Archived sites still accept abandoning.
+
+### `GET /v1/sites/:siteId/findings?severity=&limit=` — a site's findings
+
+Owner, SHE officer, supervisor. Newest first, then by inspection and
+template order, as `FindingList` (`{"findings": []}` when empty, never
+`null`). Each `Finding` carries its inspection's template and the item's
+prompt, so it can be shown without fetching the inspection. Works on
+archived sites.
+
+- `severity` is optional and must be on the scale above. `limit` is
+  1–200, default 50. There is no paging yet.
+- 400 `"severity must be low, medium, high or critical"` or `"limit must be
+  1-200"`; 404 `"site not found"`.
+- Corrective actions for findings come with M9.
 
 ### `GET /v1/sites/:siteId/inspections?status=&limit=` — list a site's inspections
 
 Owner, SHE officer, supervisor. Newest started first, as `InspectionList`
 (`{"inspections": []}` when empty, never `null`). Works on archived sites.
 
-- `status` is optional: `in_progress` or `completed`.
+- `status` is optional: `in_progress`, `completed` or `abandoned`. Without it, every status is listed.
 - `limit` is 1–200, default 50. There is no paging yet (it comes with
   sync).
 - Each entry is an `InspectionSummary`: the inspection without its
@@ -105,7 +213,7 @@ Owner, SHE officer, supervisor. Newest started first, as `InspectionList`
 | Status | When |
 |---|---|
 | 200 | `InspectionList` |
-| 400 | `"status must be in_progress or completed"` or `"limit must be 1-200"` (also for a `limit` that isn't a number) |
+| 400 | `"status must be in_progress, completed or abandoned"` or `"limit must be 1-200"` (also for a `limit` that isn't a number) |
 | 404 | `"site not found"` |
 
 ## Finding severity
@@ -183,7 +291,7 @@ export interface SeverityLevel {
   definition: string;
 }
 
-export type InspectionStatus = "in_progress" | "completed";
+export type InspectionStatus = "in_progress" | "completed" | "abandoned";
 
 export type Result = "pass" | "fail" | "na";
 
@@ -213,7 +321,46 @@ export interface Inspection {
   corrects_id: string | null;
   client_completed_at: string | null;
   completed_at: string | null;
+  abandoned_at: string | null;
+  abandoned_by: string | null;
+  abandon_reason: string | null;
   items: InspectionItem[];
+  findings: InspectionFinding[];
+}
+
+export interface InspectionFinding {
+  item_key: string;
+  severity: Severity;
+  raised_at: string;
+}
+
+export interface CompleteRequest {
+  client_completed_at: string;
+}
+
+export interface AbandonRequest {
+  reason: string;
+}
+
+export interface IncompleteInspection {
+  error: string;
+  item_keys: string[];
+}
+
+export interface Finding {
+  inspection_id: string;
+  site_id: string;
+  item_key: string;
+  severity: Severity;
+  raised_at: string;
+  template_key: string;
+  template_version: number;
+  template_title: string;
+  prompt: string;
+}
+
+export interface FindingList {
+  findings: Finding[];
 }
 
 export interface InspectionItem {
@@ -227,6 +374,32 @@ export interface InspectionItem {
   comment: string | null;
   client_answered_at: string | null;
   answered_at: string | null;
+  evidence: AttachedEvidence[];
+}
+
+export interface AttachedEvidence {
+  evidence_id: string;
+  client_captured_at: string;
+  captured_before_start: boolean;
+  attached_at: string;
+}
+
+export interface AnswerRequest {
+  result: Result;
+  severity?: Severity | null;
+  comment?: string | null;
+  evidence_ids: string[];
+  client_answered_at: string;
+}
+
+export interface EvidenceProblem {
+  error: string;
+  evidence_ids: string[];
+}
+
+export interface StaleAnswer {
+  error: string;
+  stored: InspectionItem;
 }
 
 export interface InspectionSummary {
@@ -246,6 +419,9 @@ export interface InspectionSummary {
   corrects_id: string | null;
   client_completed_at: string | null;
   completed_at: string | null;
+  abandoned_at: string | null;
+  abandoned_by: string | null;
+  abandon_reason: string | null;
   answered_count: number;
   failed_count: number;
 }

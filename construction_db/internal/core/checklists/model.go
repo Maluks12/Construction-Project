@@ -88,6 +88,7 @@ type ChecklistItem struct {
 const (
 	StatusInProgress = "in_progress"
 	StatusCompleted  = "completed"
+	StatusAbandoned  = "abandoned"
 
 	ResultPass = "pass"
 	ResultFail = "fail"
@@ -103,7 +104,7 @@ var (
 	ErrBadDeviceID         = errors.New("device_id must be 1-200 bytes")
 	ErrAlreadyCorrected    = errors.New("inspection already has a correction")
 	ErrCorrectionChecklist = errors.New("a correction must use the same checklist as the inspection it corrects")
-	ErrBadStatus           = errors.New("status must be in_progress or completed")
+	ErrBadStatus           = errors.New("status must be in_progress, completed or abandoned")
 	ErrBadLimit            = errors.New("limit must be 1-200")
 )
 
@@ -138,6 +139,9 @@ type InspectionHeader struct {
 	CorrectsID        *string    `json:"corrects_id"`
 	ClientCompletedAt *time.Time `json:"client_completed_at"`
 	CompletedAt       *time.Time `json:"completed_at"`
+	AbandonedAt       *time.Time `json:"abandoned_at"`
+	AbandonedBy       *string    `json:"abandoned_by"`
+	AbandonReason     *string    `json:"abandon_reason"`
 }
 
 // Inspection carries its own copy of the template version's wording, so it
@@ -145,6 +149,9 @@ type InspectionHeader struct {
 type Inspection struct {
 	InspectionHeader
 	Items []InspectionItem `json:"items"`
+	// One per failed item, raised by the database when the inspection is
+	// completed; [] until then.
+	Findings []InspectionFinding `json:"findings"`
 }
 
 // InspectionSummary is one inspection in a list: no items, but how far it
@@ -158,14 +165,145 @@ type InspectionSummary struct {
 // InspectionItem is one template item with its answer; the answer fields are
 // null until the item is answered.
 type InspectionItem struct {
-	Key              string     `json:"key"`
-	Position         int        `json:"position"`
-	Prompt           string     `json:"prompt"`
-	SourceRef        *string    `json:"source_ref"`
-	ResponseType     string     `json:"response_type"`
-	Result           *string    `json:"result"`
-	Severity         *string    `json:"severity"`
-	Comment          *string    `json:"comment"`
-	ClientAnsweredAt *time.Time `json:"client_answered_at"`
-	AnsweredAt       *time.Time `json:"answered_at"`
+	Key              string             `json:"key"`
+	Position         int                `json:"position"`
+	Prompt           string             `json:"prompt"`
+	SourceRef        *string            `json:"source_ref"`
+	ResponseType     string             `json:"response_type"`
+	Result           *string            `json:"result"`
+	Severity         *string            `json:"severity"`
+	Comment          *string            `json:"comment"`
+	ClientAnsweredAt *time.Time         `json:"client_answered_at"`
+	AnsweredAt       *time.Time         `json:"answered_at"`
+	Evidence         []AttachedEvidence `json:"evidence"`
 }
+
+// AttachedEvidence is a photo on an answer. It shows the photo's id and
+// capture time, not the photo: seeing it goes through the logged
+// POST …/evidence/:evidenceId/view. CapturedBeforeStart compares two device
+// times (photo captured, inspection started), so a reviewer can spot an old
+// photo reused.
+type AttachedEvidence struct {
+	EvidenceID          string    `json:"evidence_id"`
+	ClientCapturedAt    time.Time `json:"client_captured_at"`
+	CapturedBeforeStart bool      `json:"captured_before_start"`
+	AttachedAt          time.Time `json:"attached_at"`
+}
+
+// AnswerRequest is an item's whole answer: sending it again replaces the
+// result, severity, comment and photos together.
+type AnswerRequest struct {
+	Result           string    `json:"result" binding:"required,oneof=pass fail na"`
+	Severity         *string   `json:"severity"`
+	Comment          *string   `json:"comment"`
+	EvidenceIDs      []string  `json:"evidence_ids"`
+	ClientAnsweredAt time.Time `json:"client_answered_at" binding:"required"`
+}
+
+const (
+	maxCommentChars  = 2000 // the column's CHECK
+	maxPhotosPerItem = 20
+	// How far ahead of the server a device clock may be. The newest answer
+	// wins by client_answered_at, so a phone with a fast clock would
+	// otherwise block every later correction of that item.
+	maxClockSkew = 5 * time.Minute
+)
+
+var (
+	ErrNotInspector        = errors.New("only the inspector who started this inspection can change it")
+	ErrInspectionCompleted = errors.New("inspection is completed; start a new inspection to correct it")
+	ErrItemNotFound        = errors.New("item not found")
+	ErrSeverityRequired    = errors.New("severity is required for a fail")
+	ErrSeverityNotAllowed  = errors.New("severity is only given for a fail")
+	ErrBadSeverity         = errors.New("severity must be low, medium, high or critical")
+	ErrCommentTooLong      = errors.New("comment must be at most 2000 characters")
+	ErrBadEvidenceIDs      = errors.New("evidence_ids must be UUIDs")
+	ErrRepeatedEvidence    = errors.New("evidence_ids must not repeat")
+	ErrTooManyPhotos       = errors.New("at most 20 photos per item")
+	ErrAnswerInFuture      = errors.New("client_answered_at is in the future; check the device clock")
+
+	// Sent with the offending ids (EvidenceError).
+	ErrEvidenceNotFound    = errors.New("evidence not found on this site")
+	ErrEvidenceRejected    = errors.New("evidence was rejected")
+	ErrEvidenceNotVerified = errors.New("evidence not verified yet")
+
+	// Sent with the stored answer (StaleAnswerError).
+	ErrNewerAnswer     = errors.New("a newer answer is already stored")
+	ErrDifferentAnswer = errors.New("a different answer is already stored for this time")
+)
+
+// EvidenceError is a photo that can't be attached, with the ids concerned.
+type EvidenceError struct {
+	Err error // ErrEvidenceNotFound, ErrEvidenceRejected or ErrEvidenceNotVerified
+	IDs []string
+}
+
+func (e *EvidenceError) Error() string { return e.Err.Error() }
+func (e *EvidenceError) Unwrap() error { return e.Err }
+
+// StaleAnswerError refuses an answer that would overwrite a newer or a
+// different one sent at the same time; Stored is what the server keeps.
+type StaleAnswerError struct {
+	Err    error // ErrNewerAnswer or ErrDifferentAnswer
+	Stored InspectionItem
+}
+
+func (e *StaleAnswerError) Error() string { return e.Err.Error() }
+func (e *StaleAnswerError) Unwrap() error { return e.Err }
+
+// CompleteRequest closes an inspection; nothing about it changes afterwards.
+type CompleteRequest struct {
+	ClientCompletedAt time.Time `json:"client_completed_at" binding:"required"`
+}
+
+// InspectionFinding is a finding as part of its inspection.
+type InspectionFinding struct {
+	ItemKey  string    `json:"item_key"`
+	Severity string    `json:"severity"`
+	RaisedAt time.Time `json:"raised_at"`
+}
+
+// Finding is a finding in a site's list, with enough of its inspection and
+// item to show without fetching them.
+type Finding struct {
+	InspectionID    string    `json:"inspection_id"`
+	SiteID          string    `json:"site_id"`
+	ItemKey         string    `json:"item_key"`
+	Severity        string    `json:"severity"`
+	RaisedAt        time.Time `json:"raised_at"`
+	TemplateKey     string    `json:"template_key"`
+	TemplateVersion int       `json:"template_version"`
+	TemplateTitle   string    `json:"template_title"`
+	Prompt          string    `json:"prompt"`
+}
+
+var (
+	// Sent with the item keys concerned (IncompleteError).
+	ErrItemsNotAnswered = errors.New("items not answered")
+	ErrFailNeedsPhoto   = errors.New("a failed item needs a photo")
+)
+
+// IncompleteError refuses a completion, naming the items to fix, in
+// template order.
+type IncompleteError struct {
+	Err      error // ErrItemsNotAnswered or ErrFailNeedsPhoto
+	ItemKeys []string
+}
+
+func (e *IncompleteError) Error() string { return e.Err.Error() }
+func (e *IncompleteError) Unwrap() error { return e.Err }
+
+// AbandonRequest gives up an inspection still in progress. The reason is
+// kept, with who abandoned it and when.
+type AbandonRequest struct {
+	Reason string `json:"reason" binding:"required"`
+}
+
+const maxReasonChars = 500 // the column's CHECK
+
+var (
+	ErrInspectionAbandoned = errors.New("inspection is abandoned")
+	ErrCantAbandon         = errors.New("only the inspector who started this inspection, an owner or a SHE officer can abandon it")
+	ErrAbandonNeedsLead    = errors.New("an inspection with a failed item can only be abandoned by an owner or a SHE officer")
+	ErrBadReason           = errors.New("reason must be 1-500 characters")
+)

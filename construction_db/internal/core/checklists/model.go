@@ -275,6 +275,9 @@ type Finding struct {
 	TemplateVersion int       `json:"template_version"`
 	TemplateTitle   string    `json:"template_title"`
 	Prompt          string    `json:"prompt"`
+	// The completed correction of its inspection, which supersedes it; null
+	// while there is none, or it is in progress or abandoned.
+	CorrectedBy *string `json:"corrected_by"`
 }
 
 var (

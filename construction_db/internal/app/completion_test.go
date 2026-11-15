@@ -190,6 +190,85 @@ func findingKeys(fs []checklists.Finding) string {
 	return strings.Join(out, ",")
 }
 
+// completeWithFails starts an inspection (a correction when corrects is set),
+// fails the given items and completes it as the supervisor.
+func completeWithFails(t *testing.T, a answerFixture, corrects string, fails map[string]string) string {
+	t.Helper()
+	id := uuid.NewString()
+	body := startBody(a.tmpl)
+	if corrects != "" {
+		body = with(body, "corrects_id", corrects)
+	}
+	wantStatus(t, do(t, a.router, http.MethodPut, inspectionPath(a.siteA, id), a.supervisor, body), http.StatusCreated)
+	answerAllBySQL(t, a.ownerMe.OrgID, id, len(a.tmpl.Items))
+	for key, sev := range fails {
+		wantStatus(t, do(t, a.router, http.MethodPut, itemPath(a.siteA, id, key), a.supervisor, answerBody("fail", sev, t1, a.photo)), http.StatusOK)
+	}
+	wantStatus(t, do(t, a.router, http.MethodPost, completePathFor(a.siteA, id), a.supervisor, completeBody()), http.StatusCreated)
+	return id
+}
+
+// correctedBy maps each finding's inspection to its corrected_by ("" for null).
+func correctedBy(t *testing.T, a answerFixture) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, f := range listFindings(t, a.router, a.owner, a.siteA, "") {
+		out[f.InspectionID] = ""
+		if f.CorrectedBy != nil {
+			out[f.InspectionID] = *f.CorrectedBy
+		}
+	}
+	return out
+}
+
+func TestFindingsCorrectedBy(t *testing.T) {
+	a := newAnswerFixture(t, "correctedby")
+	k0 := a.tmpl.Items[0].Key
+	original := completeWithFails(t, a, "", map[string]string{k0: "high"})
+
+	if got := correctedBy(t, a); got[original] != "" {
+		t.Fatalf("corrected_by %q without a correction, want null", got[original])
+	}
+
+	inProgress := startCorrection(t, a, original)
+	t.Run("a correction in progress supersedes nothing", func(t *testing.T) {
+		if got := correctedBy(t, a); got[original] != "" {
+			t.Errorf("corrected_by %q, want null", got[original])
+		}
+	})
+
+	wantStatus(t, do(t, a.router, http.MethodPost, abandonPath(a.siteA, inProgress), a.supervisor, reason("Started by mistake")), http.StatusCreated)
+	t.Run("an abandoned correction supersedes nothing", func(t *testing.T) {
+		if got := correctedBy(t, a); got[original] != "" {
+			t.Errorf("corrected_by %q, want null", got[original])
+		}
+	})
+
+	correction := completeWithFails(t, a, original, map[string]string{k0: "critical"})
+	t.Run("a completed correction supersedes", func(t *testing.T) {
+		got := correctedBy(t, a)
+		if got[original] != correction || got[correction] != "" {
+			t.Errorf("corrected_by %v, want %s for the original and null for the correction", got, correction)
+		}
+	})
+
+	// A correction with no fails raises no findings, but still supersedes.
+	second := completeWithFails(t, a, correction, nil)
+	t.Run("a chain: each finding points at its own correction", func(t *testing.T) {
+		got := correctedBy(t, a)
+		if got[original] != correction || got[correction] != second {
+			t.Errorf("corrected_by %v, want original→%s and correction→%s", got, correction, second)
+		}
+	})
+}
+
+func startCorrection(t *testing.T, a answerFixture, corrects string) string {
+	t.Helper()
+	id := uuid.NewString()
+	wantStatus(t, do(t, a.router, http.MethodPut, inspectionPath(a.siteA, id), a.supervisor, with(startBody(a.tmpl), "corrects_id", corrects)), http.StatusCreated)
+	return id
+}
+
 func TestSiteFindings(t *testing.T) {
 	a := newAnswerFixture(t, "findings")
 	org := a.ownerMe.OrgID

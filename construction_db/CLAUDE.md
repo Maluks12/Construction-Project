@@ -41,6 +41,37 @@ Known spec issues:
     Annexure 1 is the GAR 9 incident record.
   - §3.5: late COIDA reporting is no longer "an offence". Since 1 Apr 2026,
     s39(6) and (8) impose administrative penalties instead.
+- Found in M7 (Nov 2026):
+  - **Access log phase.** Rev 3 A.9 makes the evidence access log P2;
+    Rev 4 §2.1 and A.2 make it P1. We follow Rev 4.
+  - **Records before photos versus photo on fail.** Rev 4 §2.2 sends
+    records before photos, while §2.4 makes a photo mandatory on a fail.
+    Resolved: answers sync before photos; only completion waits for
+    verified photos. The phone keeps "complete" queued until then.
+  - **No severity scale.** Rev 4 §2.5 gives corrective actions a severity
+    with no scale; Rev 3 put a severity on each template item. We use a
+    fixed core scale with one-sentence definitions (Finding severity,
+    below). A practitioner has yet to review the wording.
+  - **No finding entity.** Rev 4 goes from a failed item straight to "can
+    raise a corrective action"; Rev 3 says every fail generates one.
+    BUILD_PLAN adds findings in between. M9 decides whether every finding
+    needs an action.
+  - **Naming.** Rev 4 §5.3 says `checklist_instances` and `responses`;
+    BUILD_PLAN says inspections. The tables are `inspection*`, in package
+    `internal/core/checklists` (Rev 4 §5.2).
+  - **Template versions.** Rev 4 promises a 2027 checklist reproducible in
+    2030. Satisfied: versions are append-only in the data and locked by
+    hash, and each inspection copies its wording.
+  - **Off-instance audit log.** Rev 4 §2.13 wants the audit log shipped
+    off-instance. The access log is append-only against every role, but a
+    superuser could still drop its trigger. Shipping it off-instance is
+    DEPLOY/P2 work, like the chain anchor.
+  - **Rev 4 §2.4 items not built in M7** (not in BUILD_PLAN):
+    - reference photos per item;
+    - scheduling and cadence enforcement;
+    - organisation-specific templates and the custom builder (A.5, P1);
+    - housekeeping "scored by zone" (§3.3);
+    - response types other than pass/fail/N-A.
 
 ## Commands
 
@@ -319,9 +350,21 @@ the site diary, settings.
   Mounting under `/v1/construction` doesn't guarantee that by itself.
 - Org, user and role always come from the token (`auth.OrgID(c)` etc.), never
   the body.
-- **Evidence reads are logged.** Any code that returns evidence details or
-  bytes writes an `evidence_access_log` row (`evidence.InsertAccess`) in
-  the same transaction as the read, so a failed log write fails the read.
+- **Evidence reads are logged.** These count as a view of evidence, and
+  each writes an `evidence_access_log` row (`evidence.InsertAccess`) in the
+  same transaction as the read, so a failed log write fails the read:
+  - **the bytes:** `POST …/evidence/:evidenceId/view`, a `view_bytes` row;
+  - **the full evidence record:** `GET …/evidence/:evidenceId`, a
+    `view_record` row;
+  - **a list:** `GET …/evidence`, one `list` row per request;
+  - later, exports and shares (M12).
+
+  **Not a view** (decided 15 Nov): an inspection showing an attached
+  photo's `evidence_id`, `client_captured_at` and `captured_before_start`
+  (`checklists.ListAttached`). The photo itself still goes through the
+  logged `view`. Any new code that returns more of an evidence record than
+  those three fields counts as a view and must log it.
+
   Take the client from `clientOf(c)`. `c.ClientIP()` believes
   `X-Forwarded-For` only from `TRUSTED_PROXIES` (default none; Gin's own
   default trusts every proxy).
@@ -334,25 +377,26 @@ the site diary, settings.
   step changes the plan or a decision, update this section.
 - Foundation (M4, M5) due Sun 1 Nov. Safety core (M6–M12) due Sun 22 Nov,
   which is the checkpoint.
-- **Forecast (Sun 15 Nov; no cuts decided, full scope stays).** Sat 5 Dec
-  is not reachable. Reasons and risks are in `docs/BUILD_PLAN.md`
-  ("Forecast").
+- **Forecast (Sun 15 Nov, revised after M7 finished that day; no cuts
+  decided, full scope stays).** Sat 5 Dec is not reachable. The dates are
+  recomputed from M8 starting Mon 16 Nov, with the per-milestone estimates
+  unchanged. Reasons and risks are in `docs/BUILD_PLAN.md` ("Forecast").
 
   | Milestone | Rigour | Forecast finish | Was due |
   |---|---|---|---|
-  | M7 Inspections & checklists | full | Wed 18 Nov | Tue 10 Nov |
-  | M8 Incidents (with the deadline engine) | full | Tue 24 Nov | Fri 13 Nov |
-  | M9 Corrective actions | full | Fri 27 Nov | Sun 15 Nov |
-  | M10 Toolbox talks & site diary | light | Sun 29 Nov | Tue 17 Nov |
-  | M11 People & documents | light | Thu 3 Dec | Fri 20 Nov |
-  | M12 Reports & audit pack | full | Sun 6 Dec | Sun 22 Nov |
-  | SYNC Offline sync API | full | Thu 10 Dec | Wed 25 Nov |
-  | BILL Billing | light; webhooks full | Sun 13 Dec | Fri 27 Nov |
-  | DEPLOY | – | Tue 15 Dec | Sat 28 Nov |
-  | IOD Injury on duty | full | Fri 18 Dec | Tue 1 Dec |
-  | JBCC Delay claims | full | Sun 20 Dec | Wed 2 Dec |
-  | PC Principal contractor tier | full | Tue 22 Dec | Fri 4 Dec |
-  | V1 Release | – | **Wed 23 Dec** | Sat 5 Dec |
+  | M7 Inspections & checklists | full | **done Sun 15 Nov** | Tue 10 Nov |
+  | M8 Incidents (with the deadline engine) | full | Sat 21 Nov | Fri 13 Nov |
+  | M9 Corrective actions | full | Tue 24 Nov | Sun 15 Nov |
+  | M10 Toolbox talks & site diary | light | Thu 26 Nov | Tue 17 Nov |
+  | M11 People & documents | light | Mon 30 Nov | Fri 20 Nov |
+  | M12 Reports & audit pack | full | Thu 3 Dec | Sun 22 Nov |
+  | SYNC Offline sync API | full | Mon 7 Dec | Wed 25 Nov |
+  | BILL Billing | light; webhooks full | Thu 10 Dec | Fri 27 Nov |
+  | DEPLOY | – | Sat 12 Dec | Sat 28 Nov |
+  | IOD Injury on duty | full | Tue 15 Dec | Tue 1 Dec |
+  | JBCC Delay claims | full | Thu 17 Dec | Wed 2 Dec |
+  | PC Principal contractor tier | full | Sat 19 Dec | Fri 4 Dec |
+  | V1 Release | – | **Sun 20 Dec** | Sat 5 Dec |
 - **Done:** migrations 000001–000007; auth (email and mobile login, refresh
   rotation with reuse detection, sessions); sites, site members, supervisor
   scoping, locations; invites (send, list, revoke, preview, accept);
@@ -439,8 +483,25 @@ the site diary, settings.
     due date. M7 starts with the evidence access log (it was due Mon 9 Nov)
     and runs about three days behind; decide any cuts at the Sun 22 Nov
     checkpoint.
-- **Milestone 7, Inspections and checklists** (due Tue 10 Nov). Plan
-  approved Mon 9 Nov; expected done Mon 16 Nov, six days late. Decisions:
+- **Milestone 7, Inspections and checklists** (due Tue 10 Nov): **done Sun
+  15 Nov**, five days late.
+  - **What it delivers:**
+    - the evidence access log and logged photo viewing;
+    - checklist templates from the site's regime, versioned append-only and
+      locked by hash;
+    - inspections that can be started, answered (photos attached),
+      completed, corrected (once, on the same checklist) and abandoned;
+    - findings with a severity, one per failed item, raised by the
+      database at completion.
+  - **The database enforces every rule.** Completed and abandoned
+    inspections never change for any role. Mutation checks and forced race
+    tests cover each step.
+  - **End-to-end walk** on the real API, Postgres and MinIO passed twice
+    (sign up → photo → inspection → refused completion → late resend
+    refused → completion with a finding → photo view → abandon). The
+    script is not in the repo; repeat it by hand as in the plan.
+  - **Frontend handover:** `docs/api/m7-handover.md`.
+  - Plan approved Mon 9 Nov. Decisions:
   - Access log rows for byte views, single-record reads, and one row per
     list request.
   - Fixed core severity list with one-sentence definitions.
@@ -619,6 +680,72 @@ the site diary, settings.
     - Removing declare's retry now fails it with 409. The existing
       concurrent-declare test still passed without the retry, so until now
       nothing covered it.
+  - 7.6 (Sun 15 Nov), **done**: answer an item,
+    `PUT …/inspections/:inspectionId/items/:itemKey`.
+    - Only the starter may answer (403), while the inspection is in
+      progress (409). An archived site doesn't stop it.
+    - The request is the whole answer and replaces the photos. The
+      inspection row is locked `FOR UPDATE` first, so answers and
+      completion take turns.
+    - **Newest answer wins** by `client_answered_at`:
+      - older → 409 `"a newer answer is already stored"`;
+      - same time, different content → 409 `"a different answer is
+        already stored for this time"`;
+      - both 409 bodies carry `stored`;
+      - an exact repeat → 200, with nothing rewritten.
+    - **Device clock:** a `client_answered_at` more than 5 minutes ahead of
+      the server is 400 `"client_answered_at is in the future; check the
+      device clock"`. Otherwise one phone with a fast clock would block
+      every later correction of that item, since the newest answer wins.
+    - **Photos** must be verified and on the site. The errors carry
+      `evidence_ids`: unknown or another site's → 400, rejected → 400,
+      pending → 409.
+    - Items show `evidence: [{evidence_id, client_captured_at,
+      captured_before_start, attached_at}]`, not access-logged (see
+      Conventions).
+    - Mutation checks: the starter check, the stale check, the photo check
+      and the row lock are each caught.
+    - **Contract change:** a new endpoint, `InspectionItem.evidence`, and
+      the `AnswerRequest`, `AttachedEvidence`, `EvidenceProblem` and
+      `StaleAnswer` types.
+  - 7.7 (Sun 15 Nov), **done**: complete an inspection, and see findings.
+    - `POST …/inspections/:inspectionId/complete`: only the starter. 201
+      when completed, 200 if it already was.
+    - Under the row lock it checks every item is answered and every fail
+      has a photo. Otherwise 409 with `item_keys`, in template order. The
+      000012 trigger checks the same and raises the findings.
+    - `Inspection.findings` lists them in template order, `[]` until
+      completed.
+    - `GET /v1/sites/:id/findings?severity=&limit=`: newest first, each with
+      its template and prompt. Works on archived sites.
+    - Mutation checks: the completeness pre-check (without it the trigger
+      gives a 500), the starter check, and the severity filter are each
+      caught. A second completion waits on the lock, then answers 200.
+    - **Contract change:** two new endpoints, `Inspection.findings`, and the
+      `CompleteRequest`, `InspectionFinding`, `IncompleteInspection`,
+      `Finding` and `FindingList` types.
+  - 7.8 (Sun 15 Nov), **done**: abandon an inspection, migration 000014.
+    - **Status `abandoned`:** final like completed, with
+      `abandoned_at`/`abandoned_by`/`abandon_reason` (all set together;
+      the reason is 1–500 characters). Answers are kept, no findings are
+      raised, and it stays in lists and on get.
+    - **Corrections:** `inspections_corrects_once` is now a partial unique
+      index (`WHERE status <> 'abandoned'`), so abandoning a correction
+      frees its place. An abandoned inspection can't be corrected.
+    - **Who:** the starter, an owner or a SHE officer. With a fail, only an
+      owner or a SHE officer. `inspections_guard` enforces the fail rule
+      too, by reading the abandoner's role in `org_members`.
+    - `POST …/abandon`: 201 when abandoned, 200 if it already was, 409 if
+      completed. Answer and complete answer 409 `"inspection is
+      abandoned"`.
+    - Mutation checks: the partial index, the frozen guard, the trigger's
+      fail rule, and the API's who-may and fail checks are each caught.
+      `TestAPIDoc` caught an error text the doc had wrapped across two
+      lines.
+    - **Contract change:** a new endpoint; `abandoned` in
+      `InspectionStatus` and the list filter (its bad-status text changed);
+      `abandoned_at`, `abandoned_by` and `abandon_reason` on `Inspection`
+      and `InspectionSummary`; the `AbandonRequest` type.
 
 ## Finding severity
 

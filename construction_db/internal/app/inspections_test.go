@@ -631,8 +631,8 @@ func TestInspectionList(t *testing.T) {
 	})
 
 	bad := map[string]string{
-		"?status=bogus": "status must be in_progress or completed",
-		"?status=open":  "status must be in_progress or completed",
+		"?status=bogus": "status must be in_progress, completed or abandoned",
+		"?status=open":  "status must be in_progress, completed or abandoned",
 		"?limit=0":      "limit must be 1-200",
 		"?limit=201":    "limit must be 1-200",
 		"?limit=many":   "limit must be 1-200",

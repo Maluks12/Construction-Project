@@ -238,8 +238,8 @@ func TestInspectionsFrozenForEveryRole(t *testing.T) {
 	start(t, tx, rlsOrgA, rlsSiteA, rlsUserA, inspID(20), nil, "a")
 	t.Run("in progress, only the answer and the completion change", func(t *testing.T) {
 		refused(t, tx, "23514", "only the answer can change", `UPDATE inspection_responses SET prompt = 'Changed?' WHERE inspection_id = $1`, inspID(20))
-		refused(t, tx, "23514", "the only change allowed is completing it", `UPDATE inspections SET template_title = 'X' WHERE id = $1`, inspID(20))
-		refused(t, tx, "23514", "the only change allowed is completing it", `UPDATE inspections SET status = 'in_progress' WHERE id = $1`, inspID(20))
+		refused(t, tx, "23514", "the only change allowed is completing or abandoning it", `UPDATE inspections SET template_title = 'X' WHERE id = $1`, inspID(20))
+		refused(t, tx, "23514", "the only change allowed is completing or abandoning it", `UPDATE inspections SET status = 'in_progress' WHERE id = $1`, inspID(20))
 	})
 
 	answer(t, tx, inspID(20), "a", "fail", "critical")
@@ -503,4 +503,78 @@ func TestAnswersRacingCompletion(t *testing.T) {
 		t.Errorf("%d answers stored, %d succeeded; a refused answer must leave nothing behind", stored, succeeded)
 	}
 	t.Logf("%d of %d answers landed before the completion", succeeded, n)
+}
+
+const abandonSQL = `
+	UPDATE inspections SET status = 'abandoned', abandoned_at = now(), abandoned_by = $2, abandon_reason = $3 WHERE id = $1`
+
+// Abandoning (000014): final like completing, keeps the answers, raises no
+// findings, frees the correction slot, and with a fail takes an owner or a
+// SHE officer, even in raw SQL.
+func TestInspectionAbandon(t *testing.T) {
+	seedRLS(t)
+	tx := beginAs(t, pool, rlsOrgA)
+	const supervisorA = "21000000-0000-0000-0000-0000000000a5"
+	must(t, tx, 1, `INSERT INTO users (id, email, full_name) VALUES ($1, 'abandon-sup@rls.test', 'Supervisor')`, supervisorA)
+	must(t, tx, 1, `INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'supervisor')`, rlsOrgA, supervisorA)
+
+	t.Run("with a fail, only an owner or a SHE officer", func(t *testing.T) {
+		start(t, tx, rlsOrgA, rlsSiteA, supervisorA, inspID(50), nil, "a", "b")
+		answer(t, tx, inspID(50), "a", "fail", "high")
+		refused(t, tx, "23514", "can only be abandoned by an owner or a SHE officer", abandonSQL, inspID(50), supervisorA, "Started by mistake")
+		must(t, tx, 1, abandonSQL, inspID(50), rlsUserA, "Started by mistake")
+	})
+
+	t.Run("an abandoned inspection never changes and keeps its answers", func(t *testing.T) {
+		const abandoned = "is abandoned"
+		refused(t, tx, "23514", abandoned, answerSQL, inspID(50), "b", "pass", nil)
+		refused(t, tx, "23514", abandoned, attachSQL, inspID(50), "a", rlsEvidenceA)
+		refused(t, tx, "23514", abandoned, completeSQL, inspID(50))
+		refused(t, tx, "23514", abandoned, `UPDATE inspections SET abandon_reason = 'Other' WHERE id = $1`, inspID(50))
+		var result string
+		if err := tx.QueryRow(context.Background(), `SELECT result FROM inspection_responses WHERE inspection_id = $1 AND item_key = 'a'`, inspID(50)).Scan(&result); err != nil || result != "fail" {
+			t.Errorf("answer after abandoning: %q, err %v; want fail", result, err)
+		}
+		var findings int
+		if err := tx.QueryRow(context.Background(), `SELECT count(*) FROM inspection_findings WHERE inspection_id = $1`, inspID(50)).Scan(&findings); err != nil || findings != 0 {
+			t.Errorf("%d findings, err %v; want none", findings, err)
+		}
+	})
+
+	t.Run("without a fail, the database leaves who to the API", func(t *testing.T) {
+		start(t, tx, rlsOrgA, rlsSiteA, supervisorA, inspID(51), nil, "a")
+		must(t, tx, 1, abandonSQL, inspID(51), supervisorA, "Wrong checklist")
+	})
+
+	t.Run("who, when and why are all required", func(t *testing.T) {
+		start(t, tx, rlsOrgA, rlsSiteA, rlsUserA, inspID(56), nil, "a")
+		refused(t, tx, "23514", "inspections_abandonment", abandonSQL, inspID(56), rlsUserA, nil)
+		refused(t, tx, "23514", "inspections_abandon_reason_check", abandonSQL, inspID(56), rlsUserA, "")
+		refused(t, tx, "23514", "inspections_abandonment", `UPDATE inspections SET status = 'abandoned', abandoned_at = now(), abandon_reason = 'x' WHERE id = $1`, inspID(56))
+		refused(t, tx, "23514", "inspections_completion", `UPDATE inspections SET status = 'abandoned', abandoned_at = now(), abandoned_by = $2, abandon_reason = 'x',
+			completed_at = now(), client_completed_at = now() WHERE id = $1`, inspID(56), rlsUserA)
+		refused(t, tx, "23503", "inspections_abandoned_by_fkey", abandonSQL, inspID(56), rlsUserB, "Not a member")
+	})
+
+	t.Run("abandoning a correction frees the slot; an abandoned one can't be corrected", func(t *testing.T) {
+		start(t, tx, rlsOrgA, rlsSiteA, rlsUserA, inspID(52), nil, "a")
+		answer(t, tx, inspID(52), "a", "pass", nil)
+		must(t, tx, 1, completeSQL, inspID(52))
+		must(t, tx, 1, startSQL, inspID(53), rlsOrgA, rlsSiteA, hash32(5), 1, rlsUserA, inspID(52))
+		refused(t, tx, "23505", "inspections_corrects_once", startSQL, inspID(54), rlsOrgA, rlsSiteA, hash32(5), 1, rlsUserA, inspID(52))
+		must(t, tx, 1, abandonSQL, inspID(53), rlsUserA, "Wrong site walk")
+		must(t, tx, 1, startSQL, inspID(54), rlsOrgA, rlsSiteA, hash32(5), 1, rlsUserA, inspID(52))
+		refused(t, tx, "23514", "can only correct a completed inspection", startSQL, inspID(55), rlsOrgA, rlsSiteA, hash32(5), 1, rlsUserA, inspID(53))
+	})
+}
+
+// A superuser can't change an abandoned inspection either.
+func TestAbandonedFrozenForEveryRole(t *testing.T) {
+	seedRLS(t)
+	tx := beginAs(t, admin, "")
+	start(t, tx, rlsOrgA, rlsSiteA, rlsUserA, inspID(60), nil, "a")
+	must(t, tx, 1, abandonSQL, inspID(60), rlsUserA, "Test")
+	refused(t, tx, "23514", "is abandoned", `UPDATE inspections SET status = 'in_progress', abandoned_at = NULL, abandoned_by = NULL, abandon_reason = NULL WHERE id = $1`, inspID(60))
+	refused(t, tx, "23514", "is abandoned", `DELETE FROM inspections WHERE id = $1`, inspID(60))
+	refused(t, tx, "23514", "is abandoned", answerSQL, inspID(60), "a", "pass", nil)
 }

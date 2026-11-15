@@ -24,4 +24,13 @@ func Register(r *gin.Engine, svc *Service, authSvc *auth.Service) {
 	inspections.GET("/:inspectionId", h.Get)
 	// PUT: the device chooses the id, so repeating a start is safe.
 	inspections.PUT("/:inspectionId", h.Start)
+	// PUT: the whole answer, so sending it again is safe.
+	inspections.PUT("/:inspectionId/items/:itemKey", h.Answer)
+	// POST, but safe to repeat: completing a completed inspection is 200.
+	inspections.POST("/:inspectionId/complete", h.Complete)
+	// POST, but safe to repeat: abandoning an abandoned inspection is 200.
+	inspections.POST("/:inspectionId/abandon", h.Abandon)
+
+	findings := r.Group("/v1/sites/:id/findings", inspectors...)
+	findings.GET("", h.Findings)
 }

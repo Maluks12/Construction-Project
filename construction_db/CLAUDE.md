@@ -402,26 +402,27 @@ the site diary, settings.
   step changes the plan or a decision, update this section.
 - Foundation (M4, M5) due Sun 1 Nov. Safety core (M6–M12) due Sun 22 Nov,
   which is the checkpoint.
-- **Forecast (Sun 15 Nov, revised after M7 finished that day; no cuts
-  decided, full scope stays).** Sat 5 Dec is not reachable. The dates are
-  recomputed from M8 starting Mon 16 Nov, with the per-milestone estimates
-  unchanged. Reasons and risks are in `docs/BUILD_PLAN.md` ("Forecast").
+- **Forecast (Sun 15 Nov, revised after M7 and again after M8 finished
+  that day; no cuts decided, full scope stays).** Sat 5 Dec is not
+  reachable. The dates are recomputed from M9 starting Mon 16 Nov, with the
+  per-milestone estimates unchanged; REG4 is not scheduled yet. Reasons
+  and risks are in `docs/BUILD_PLAN.md` ("Forecast").
 
   | Milestone | Rigour | Forecast finish | Was due |
   |---|---|---|---|
   | M7 Inspections & checklists | full | **done Sun 15 Nov** | Tue 10 Nov |
-  | M8 Incidents (with the deadline engine) | full | Sat 21 Nov | Fri 13 Nov |
-  | M9 Corrective actions | full | Tue 24 Nov | Sun 15 Nov |
-  | M10 Toolbox talks & site diary | light | Thu 26 Nov | Tue 17 Nov |
-  | M11 People & documents | light | Mon 30 Nov | Fri 20 Nov |
-  | M12 Reports & audit pack | full | Thu 3 Dec | Sun 22 Nov |
-  | SYNC Offline sync API | full | Mon 7 Dec | Wed 25 Nov |
-  | BILL Billing | light; webhooks full | Thu 10 Dec | Fri 27 Nov |
-  | DEPLOY | – | Sat 12 Dec | Sat 28 Nov |
-  | IOD Injury on duty | full | Tue 15 Dec | Tue 1 Dec |
-  | JBCC Delay claims | full | Thu 17 Dec | Wed 2 Dec |
-  | PC Principal contractor tier | full | Sat 19 Dec | Fri 4 Dec |
-  | V1 Release | – | **Sun 20 Dec** | Sat 5 Dec |
+  | M8 Incidents (with the deadline engine) | full | **done Sun 15 Nov** | Fri 13 Nov |
+  | M9 Corrective actions | full | Wed 18 Nov | Sun 15 Nov |
+  | M10 Toolbox talks & site diary | light | Fri 20 Nov | Tue 17 Nov |
+  | M11 People & documents | light | Tue 24 Nov | Fri 20 Nov |
+  | M12 Reports & audit pack | full | Fri 27 Nov | Sun 22 Nov |
+  | SYNC Offline sync API | full | Tue 1 Dec | Wed 25 Nov |
+  | BILL Billing | light; webhooks full | Fri 4 Dec | Fri 27 Nov |
+  | DEPLOY | – | Sun 6 Dec | Sat 28 Nov |
+  | IOD Injury on duty | full | Wed 9 Dec | Tue 1 Dec |
+  | JBCC Delay claims | full | Fri 11 Dec | Wed 2 Dec |
+  | PC Principal contractor tier | full | Sun 13 Dec | Fri 4 Dec |
+  | V1 Release | – | **Mon 14 Dec** | Sat 5 Dec |
 - **Done:** migrations 000001–000007; auth (email and mobile login, refresh
   rotation with reuse detection, sessions); sites, site members, supervisor
   scoping, locations; invites (send, list, revoke, preview, accept);
@@ -771,8 +772,9 @@ the site diary, settings.
       `InspectionStatus` and the list filter (its bad-status text changed);
       `abandoned_at`, `abandoned_by` and `abandon_reason` on `Inspection`
       and `InspectionSummary`; the `AbandonRequest` type.
-- **Milestone 8, Incidents and the deadline engine** (due Fri 13 Nov): in
-  progress. Full rigour. Plan approved Sun 15 Nov.
+- **Milestone 8, Incidents and the deadline engine** (due Fri 13 Nov):
+  **done Sun 15 Nov**, two days late against the due date, six days
+  ahead of the forecast. Full rigour. Plan approved Sun 15 Nov.
   - **Decisions (15 Nov):**
     - **Counting:** "within N days" excludes the basis's local date and is
       due by the end of the last day in the regime's `time_zone`. `due` is
@@ -943,6 +945,40 @@ the site diary, settings.
       conflict). Mutation checks on the API's own checks are caught.
     - **Contract change:** eight new endpoints and their types (see
       `docs/api/m8-handover.md`).
+  - 8.7 (Sun 15 Nov), **done**: `docs/api/incidents.md` with `TestAPIDoc`
+    (every error text, every state, and the incident-type table against
+    the regime data); `docs/api/m8-handover.md` for the frontend.
+    - **End-to-end walk** on the real API, Postgres and MinIO (a separate
+      compose project, `-p siteproof-m8walk`, removed afterwards): sign
+      up and invite a supervisor → photo to MinIO and sealed → near miss
+      (retry 200) → injury 9 days ago (COIDA and investigation overdue
+      when computed) → reclassified to 14 days off (written notice added)
+      → loss of a limb today (due end of Sun 22 Nov, legal latest Mon 23
+      Nov) → forthwith call recorded → death after the call (GAR 8(2)
+      added) → supervisor's downgrade 403 → owner's downgrade withdraws 4,
+      kept with who, when and why → statement with the photo → register
+      and overdue list → logged photo view. The script is not in the repo.
+    - Making `time_zone` required meant adding it to the in-memory test
+      regimes in `internal/app/regime_test.go`.
+    - One API check is deliberately redundant: refusing a second
+      correction of a witness statement. Without it the unique constraint
+      gives the same 409 (its mutation survives; the constraint's is
+      caught in 8.2a). Likewise the weakening and archived-site checks
+      have database twins that answer the same.
+  - Review fixes (Sun 15 Nov), each in the step it belongs to:
+    - **Satisfy against Submit race** (a 500): both lock the incident; two
+      forced tests (`TestSatisfactionAndAmendmentQueue`,
+      `TestAmendmentWaitsForSatisfaction`) stop one request with a held
+      lock while the other arrives.
+    - **Incident before the calendar** (a 500): 400 with its own text,
+      checked against `holiday_calendar_coverage`.
+    - `recorded_after_due`; a repeated satisfaction answers with the live
+      row; rows added by a satisfaction aren't in a version's `changes`.
+    - Docs: retracting a GAR 8(1) satisfaction means the next amendment
+      withdraws GAR 8(2) and needs a lead (also tested); the s4 open
+      question in SOURCES; the forecast recomputed (v1 Mon 14 Dec).
+    - Mutation checks: 5 of 5 caught (each lock, the 400 mapping, the
+      distinct SQL message, the before-calendar check).
 
 ## Finding severity
 

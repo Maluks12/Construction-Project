@@ -196,6 +196,11 @@ archived sites.
   1–200, default 50. There is no paging yet.
 - 400 `"severity must be low, medium, high or critical"` or `"limit must be
   1-200"`; 404 `"site not found"`.
+- `corrected_by` is the id of the **completed** correction of the
+  finding's inspection, or null. A finding with `corrected_by` set is
+  superseded: the correction's findings are the current ones. A correction
+  still in progress, or abandoned, supersedes nothing, so it leaves
+  `corrected_by` null.
 - Corrective actions for findings come with M9.
 
 ### `GET /v1/sites/:siteId/inspections?status=&limit=` — list a site's inspections
@@ -357,6 +362,7 @@ export interface Finding {
   template_version: number;
   template_title: string;
   prompt: string;
+  corrected_by: string | null;
 }
 
 export interface FindingList {

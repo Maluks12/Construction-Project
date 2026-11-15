@@ -412,10 +412,13 @@ func ListInspectionFindings(ctx context.Context, db DBTX, orgID, inspectionID st
 func ListSiteFindings(ctx context.Context, db DBTX, orgID, siteID, severity string, limit int) ([]Finding, error) {
 	rows, err := db.Query(ctx, `
 		SELECT f.inspection_id, f.site_id, f.item_key, f.severity, f.raised_at,
-		       i.template_key, i.template_version, i.template_title, r.prompt
+		       i.template_key, i.template_version, i.template_title, r.prompt, c.id
 		FROM inspection_findings f
 		JOIN inspections i ON i.id = f.inspection_id
 		JOIN inspection_responses r ON r.inspection_id = f.inspection_id AND r.item_key = f.item_key
+		-- At most one: inspections_corrects_once allows one correction that
+		-- isn't abandoned, and only a completed one supersedes.
+		LEFT JOIN inspections c ON c.corrects_id = f.inspection_id AND c.status = 'completed'
 		WHERE f.org_id = $1 AND f.site_id = $2 AND ($3 = '' OR f.severity = $3)
 		ORDER BY f.raised_at DESC, f.inspection_id, r.position
 		LIMIT $4
@@ -428,7 +431,7 @@ func ListSiteFindings(ctx context.Context, db DBTX, orgID, siteID, severity stri
 	for rows.Next() {
 		var f Finding
 		if err := rows.Scan(&f.InspectionID, &f.SiteID, &f.ItemKey, &f.Severity, &f.RaisedAt,
-			&f.TemplateKey, &f.TemplateVersion, &f.TemplateTitle, &f.Prompt); err != nil {
+			&f.TemplateKey, &f.TemplateVersion, &f.TemplateTitle, &f.Prompt, &f.CorrectedBy); err != nil {
 			return nil, fmt.Errorf("scan site finding: %w", err)
 		}
 		f.RaisedAt = f.RaisedAt.UTC()

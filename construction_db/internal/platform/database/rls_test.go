@@ -26,7 +26,7 @@ const (
 	rlsSessB     = "24000000-0000-0000-0000-00000000000b"
 	rlsEvidenceA = "28000000-0000-0000-0000-00000000000a"
 	rlsEvidenceB = "28000000-0000-0000-0000-00000000000b"
-	rlsInspA     = "2a000000-0000-0000-0000-00000000000a" // completed, one failed item with a photo
+	rlsInspA     = "2a000000-0000-0000-0000-00000000000a" // completed, one failed item (medium) with a photo
 	rlsInspB     = "2a000000-0000-0000-0000-00000000000b"
 	rlsIncA      = "2e000000-0000-0000-0000-00000000000a" // version 1: one injured employee, one photo, one statement
 	rlsIncB      = "2e000000-0000-0000-0000-00000000000b"
@@ -34,7 +34,23 @@ const (
 	rlsDutyB     = "30000000-0000-0000-0000-00000000000b"
 	rlsDeadA     = "31000000-0000-0000-0000-00000000000a"
 	rlsDeadB     = "31000000-0000-0000-0000-00000000000b"
+	rlsActionA   = "33000000-0000-0000-0000-00000000000a" // on rlsInspA's finding, owned by its user, due tomorrow
+	rlsActionB   = "33000000-0000-0000-0000-00000000000b"
 )
+
+// Inserts an open action on a finding; its raise must follow. $1 id, $2 org, $3 site,
+// $4 inspection, $5 item, $6 severity, $7 raiser and owner, $8 days from today (local).
+const actionOnFindingSQL = `
+	INSERT INTO corrective_actions (id, org_id, site_id, inspection_id, item_key, severity, title, raised_by, client_raised_at,
+	                                time_zone, owner_id, due_on)
+	VALUES ($1, $2, $3, $4, $5, $6, 'Fix it', $7, now(), 'Africa/Johannesburg', $7,
+	        (now() AT TIME ZONE 'Africa/Johannesburg')::date + $8::int)`
+
+// The raise of an action inserted by actionOnFindingSQL: $1 event id, $2 org, $3 site,
+// $4 action, $5 raiser and owner, $6 days from today (local).
+const raiseOwnSQL = `
+	INSERT INTO corrective_action_events (id, org_id, site_id, action_id, seq, kind, actor_id, client_at, status, owner_id, due_on)
+	VALUES ($1, $2, $3, $4, 1, 'raised', $5, now(), 'open', $5, (now() AT TIME ZONE 'Africa/Johannesburg')::date + $6::int)`
 
 // Inserts a live deadline: $1 id, $2 org, $3 site, $4 duty, $5 incident, $6
 // rule, $7 kind, $8 period, $9 unit, $10 basis_at, $11 computed_in_version.
@@ -65,6 +81,8 @@ type rlsTable struct {
 
 // In foreign-key-safe delete order.
 var rlsTables = []rlsTable{
+	{"corrective_action_events", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"corrective_actions", "org_id", rlsOrgA, rlsOrgB, "status", deleteDenied},
 	{"deadline_satisfaction_retractions", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"deadline_satisfactions", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"deadlines", "org_id", rlsOrgA, rlsOrgB, "closed_as", deleteDenied},
@@ -128,7 +146,7 @@ var seedOnce = sync.OnceValue(func() error {
 	for _, x := range []string{"a", "b"} {
 		id := func(prefix string) string { return prefix + "000000-0000-0000-0000-00000000000" + x }
 		org, user, site, loc, sess, inv, ev, insp := id("20"), id("21"), id("22"), id("23"), id("24"), id("26"), id("28"), id("2a")
-		inc, stmt, duty, dl, sat := id("2e"), id("2f"), id("30"), id("31"), id("32")
+		inc, stmt, duty, dl, sat, act, ev1 := id("2e"), id("2f"), id("30"), id("31"), id("32"), id("33"), id("34")
 
 		stmts := []struct {
 			sql  string
@@ -156,7 +174,7 @@ var seedOnce = sync.OnceValue(func() error {
 				[]any{insp, org, site, user, hash32(4)}},
 			{`INSERT INTO inspection_responses (org_id, site_id, inspection_id, item_key, position, prompt, response_type,
 			                                    result, severity, client_answered_at, answered_at)
-			  VALUES ($1, $2, $3, 'item', 1, 'OK?', 'pass_fail_na', 'fail', 'high', now(), now())`, []any{org, site, insp}},
+			  VALUES ($1, $2, $3, 'item', 1, 'OK?', 'pass_fail_na', 'fail', 'medium', now(), now())`, []any{org, site, insp}},
 			{`INSERT INTO inspection_response_evidence (org_id, site_id, inspection_id, item_key, evidence_id) VALUES ($1, $2, $3, 'item', $4)`,
 				[]any{org, site, insp, ev}},
 			{`UPDATE inspections SET status = 'completed', completed_at = now(), client_completed_at = now() WHERE id = $1`, []any{insp}},
@@ -181,6 +199,9 @@ var seedOnce = sync.OnceValue(func() error {
 			  VALUES ($1, $2, $3, $4, $5, '2026-11-10T10:05:00Z', 'phone', $6)`, []any{sat, org, site, duty, dl, user}},
 			{`INSERT INTO deadline_satisfaction_retractions (satisfaction_id, org_id, site_id, duty_id, retracted_by, reason)
 			  VALUES ($1, $2, $3, $4, $5, 'Recorded on the wrong incident')`, []any{sat, org, site, duty, user}},
+			// An action on the inspection's finding, with its raise.
+			{actionOnFindingSQL, []any{act, org, site, insp, "item", "medium", user, 1}},
+			{raiseOwnSQL, []any{ev1, org, site, act, user, 1}},
 		}
 		for _, s := range stmts {
 			if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
@@ -290,6 +311,10 @@ func TestRLSWrites(t *testing.T) {
 			  VALUES ('32000000-0000-0000-0000-00000000000b', $1, $2, $3, $4, 'Smuggled')`, []any{rlsOrgB, rlsSiteB, rlsDutyB, rlsUserB}},
 			"inspection_findings": {`INSERT INTO inspection_findings (org_id, site_id, inspection_id, item_key, severity)
 			  VALUES ($1, $2, $3, 'item', 'high')`, []any{rlsOrgB, rlsSiteB, rlsInspB}},
+			"corrective_actions": {actionOnFindingSQL, []any{"33000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, rlsInspB, "item", "high", rlsUserB, 1}},
+			"corrective_action_events": {`INSERT INTO corrective_action_events (id, org_id, site_id, action_id, seq, kind, actor_id, client_at, reason, status, owner_id, due_on)
+			  VALUES ('34000000-0000-0000-0000-0000000000bb', $1, $2, $3, 2, 'cancelled', $4, now(), 'Smuggled', 'cancelled', $4, current_date + 1)`,
+				[]any{rlsOrgB, rlsSiteB, rlsActionB, rlsUserB}},
 		}
 		for _, tb := range rlsTables {
 			t.Run(tb.name, func(t *testing.T) {

@@ -20,6 +20,7 @@ func Register(r *gin.Engine, svc *Service, authSvc *auth.Service) {
 	catalog.GET("", h.Catalog)
 
 	inspections := r.Group("/v1/sites/:id/inspections", inspectors...)
+	inspections.GET("", h.List)
 	inspections.GET("/:inspectionId", h.Get)
 	// PUT: the device chooses the id, so repeating a start is safe.
 	inspections.PUT("/:inspectionId", h.Start)

@@ -86,12 +86,39 @@ func (d *Doc) CheckStruct(t testing.TB, tsName string, v any, request bool) {
 		return
 	}
 	want := map[string]Field{}
-	typ := reflect.TypeOf(v)
+	jsonFields(reflect.TypeOf(v), request, want)
+	if !maps.Equal(got, want) {
+		t.Errorf("%s: doc fields %v,\nGo sends %v", tsName, got, want)
+	}
+}
+
+// jsonFields collects the fields encoding/json sends for typ, by the same
+// rules: an untagged embedded struct is flattened into its parent, and an
+// exported field without a tag is sent under its Go name. Skipping either
+// would let a field reach the wire unchecked.
+func jsonFields(typ reflect.Type, request bool, out map[string]Field) {
 	for i := range typ.NumField() {
 		f := typ.Field(i)
 		tag, opts, _ := strings.Cut(f.Tag.Get("json"), ",")
-		if tag == "-" || tag == "" {
+		if tag == "-" {
 			continue
+		}
+		if f.Anonymous && tag == "" {
+			ft := f.Type
+			if ft.Kind() == reflect.Pointer {
+				ft = ft.Elem()
+			}
+			if ft.Kind() == reflect.Struct {
+				jsonFields(ft, request, out)
+				continue
+			}
+		}
+		if !f.IsExported() {
+			continue
+		}
+		name := tag
+		if name == "" {
+			name = f.Name
 		}
 		pointer := f.Type.Kind() == reflect.Pointer
 		omitempty := strings.Contains(opts, "omitempty")
@@ -99,10 +126,7 @@ func (d *Doc) CheckStruct(t testing.TB, tsName string, v any, request bool) {
 		if request {
 			optional = pointer
 		}
-		want[tag] = Field{Optional: optional, Nullable: pointer && !omitempty}
-	}
-	if !maps.Equal(got, want) {
-		t.Errorf("%s: doc fields %v,\nGo sends %v", tsName, got, want)
+		out[name] = Field{Optional: optional, Nullable: pointer && !omitempty}
 	}
 }
 

@@ -123,7 +123,10 @@ stalls until requests time out. CI keeps the default.
   are in `docs/api/inspections.md`.
 - `internal/platform/apidoctest`: checks a `docs/api/*.md` reference's
   TypeScript against the Go types (`Load`, `CheckStruct`, `CheckFields`,
-  `CheckUnion`). Each feature's `TestAPIDoc` uses it.
+  `CheckUnion`). Each feature's `TestAPIDoc` uses it. It reads fields by
+  `encoding/json`'s rules: an untagged embedded struct is flattened, and
+  an untagged exported field counts under its Go name
+  (`TestFieldsMatchEncodingJSON`).
 - `internal/app/router.go` wires everything; `internal/app/*_test.go` are the
   HTTP integration tests (testcontainers Postgres, migrations applied
   automatically).
@@ -534,6 +537,19 @@ encoding and test vectors are in `internal/core/evidence/CHAIN.md`.
       pool.
     - `TestAPIDoc` also checks that the reference quotes every error text.
     - **Contract change:** two new endpoints.
+  - 7.5b (Sun 15 Nov), **done**: `GET /v1/sites/:id/inspections?status=&limit=`.
+    - Newest first; each summary has `answered_count` and `failed_count`,
+      counted in one query. Works on archived sites. The query is
+      validated before the site lookup, as evidence's list is.
+    - `InspectionHeader` holds the fields `Inspection` and
+      `InspectionSummary` share. It's embedded untagged in both, and its
+      JSON is unchanged (7.5a's tests compare whole bodies).
+    - **Doc-checker gap fixed.** `apidoctest.CheckStruct` used to skip
+      every field without a `json` tag. So it would have skipped the
+      embedded header, and also an exported field with a forgotten tag,
+      which `encoding/json` sends under its Go name. It now follows
+      `encoding/json`'s rules, and has its first unit tests.
+    - **Contract change:** one new endpoint.
 
 ## Finding severity
 

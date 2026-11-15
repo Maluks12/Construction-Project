@@ -101,6 +101,8 @@ var (
 	ErrSiteArchived       = errors.New("site is archived")
 	ErrBadCorrectsID      = errors.New("corrects_id must be a completed inspection on this site")
 	ErrBadDeviceID        = errors.New("device_id must be 1-200 bytes")
+	ErrBadStatus          = errors.New("status must be in_progress or completed")
+	ErrBadLimit           = errors.New("limit must be 1-200")
 )
 
 // StartInspectionRequest names the template version the phone showed, with
@@ -114,26 +116,41 @@ type StartInspectionRequest struct {
 	CorrectsID      *string   `json:"corrects_id"`
 }
 
+// InspectionHeader is what an inspection says about itself: the fields a
+// full inspection and a list summary share. Embedded untagged, encoding/json
+// flattens it into both.
+type InspectionHeader struct {
+	ID                string     `json:"id"`
+	SiteID            string     `json:"site_id"`
+	Status            string     `json:"status"`
+	TemplateKey       string     `json:"template_key"`
+	TemplateVersion   int        `json:"template_version"`
+	TemplateSHA256    string     `json:"template_sha256"` // lowercase hex
+	TemplateTitle     string     `json:"template_title"`
+	TemplateSourceRef string     `json:"template_source_ref"`
+	ItemCount         int        `json:"item_count"`
+	StartedBy         string     `json:"started_by"`
+	ClientStartedAt   time.Time  `json:"client_started_at"`
+	StartedAt         time.Time  `json:"started_at"`
+	DeviceID          *string    `json:"device_id"`
+	CorrectsID        *string    `json:"corrects_id"`
+	ClientCompletedAt *time.Time `json:"client_completed_at"`
+	CompletedAt       *time.Time `json:"completed_at"`
+}
+
 // Inspection carries its own copy of the template version's wording, so it
 // reads the same whatever the regime data says later.
 type Inspection struct {
-	ID                string           `json:"id"`
-	SiteID            string           `json:"site_id"`
-	Status            string           `json:"status"`
-	TemplateKey       string           `json:"template_key"`
-	TemplateVersion   int              `json:"template_version"`
-	TemplateSHA256    string           `json:"template_sha256"` // lowercase hex
-	TemplateTitle     string           `json:"template_title"`
-	TemplateSourceRef string           `json:"template_source_ref"`
-	ItemCount         int              `json:"item_count"`
-	StartedBy         string           `json:"started_by"`
-	ClientStartedAt   time.Time        `json:"client_started_at"`
-	StartedAt         time.Time        `json:"started_at"`
-	DeviceID          *string          `json:"device_id"`
-	CorrectsID        *string          `json:"corrects_id"`
-	ClientCompletedAt *time.Time       `json:"client_completed_at"`
-	CompletedAt       *time.Time       `json:"completed_at"`
-	Items             []InspectionItem `json:"items"`
+	InspectionHeader
+	Items []InspectionItem `json:"items"`
+}
+
+// InspectionSummary is one inspection in a list: no items, but how far it
+// got and how many items failed.
+type InspectionSummary struct {
+	InspectionHeader
+	AnsweredCount int `json:"answered_count"`
+	FailedCount   int `json:"failed_count"`
 }
 
 // InspectionItem is one template item with its answer; the answer fields are

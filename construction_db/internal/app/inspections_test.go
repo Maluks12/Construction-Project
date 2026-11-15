@@ -517,3 +517,139 @@ func TestInspectionStartLosesTheRace(t *testing.T) {
 		t.Errorf("%d inspections with the id, want 1", n)
 	}
 }
+
+func listInspections(t *testing.T, router http.Handler, token, site, query string) []checklists.InspectionSummary {
+	t.Helper()
+	rec := do(t, router, http.MethodGet, "/v1/sites/"+site+"/inspections"+query, token, nil)
+	wantStatus(t, rec, http.StatusOK)
+	if strings.Contains(rec.Body.String(), `"items"`) {
+		t.Errorf("list body carries items: %s", rec.Body.String())
+	}
+	var resp struct {
+		Inspections []checklists.InspectionSummary `json:"inspections"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode list: %v (body: %s)", err, rec.Body.String())
+	}
+	return resp.Inspections
+}
+
+func summaryIDs(items []checklists.InspectionSummary) string {
+	ids := []string{}
+	for _, s := range items {
+		ids = append(ids, s.ID)
+	}
+	return strings.Join(ids, ",")
+}
+
+func TestInspectionList(t *testing.T) {
+	f := newEvidenceFixture(t, "inslist")
+	org := f.ownerMe.OrgID
+	tmpl := decodeCatalog(t, f.router, f.siteA, f.owner).Checklists[0]
+
+	// Started in this order, so listed newest first as third, second, first.
+	first := startInspection(t, f.router, f.owner, f.siteA, tmpl)
+	second := startInspection(t, f.router, f.supervisor, f.siteA, tmpl)
+	third := startInspection(t, f.router, f.owner, f.siteA, tmpl)
+	onB := startInspection(t, f.router, f.owner, f.siteB, tmpl)
+
+	completeBySQL(t, org, first, len(tmpl.Items))
+	execAsTenant(t, org, 1, `UPDATE inspection_responses SET result = 'pass', client_answered_at = now(), answered_at = now()
+		WHERE inspection_id = $1 AND position = 1`, second)
+	execAsTenant(t, org, 1, `UPDATE inspection_responses SET result = 'fail', severity = 'high', client_answered_at = now(), answered_at = now()
+		WHERE inspection_id = $1 AND position = 2`, second)
+
+	t.Run("newest first, with each inspection's progress", func(t *testing.T) {
+		got := listInspections(t, f.router, f.owner, f.siteA, "")
+		if ids := summaryIDs(got); ids != strings.Join([]string{third, second, first}, ",") {
+			t.Fatalf("ids %s, want third, second, first; site B's inspection must not appear", ids)
+		}
+		want := []struct {
+			status           string
+			answered, failed int
+			startedBy        string
+		}{
+			{checklists.StatusInProgress, 0, 0, f.ownerMe.UserID},
+			{checklists.StatusInProgress, 2, 1, me(t, f.router, f.supervisor).UserID},
+			{checklists.StatusCompleted, len(tmpl.Items), 0, f.ownerMe.UserID},
+		}
+		for i, w := range want {
+			s := got[i]
+			if s.Status != w.status || s.AnsweredCount != w.answered || s.FailedCount != w.failed || s.StartedBy != w.startedBy {
+				t.Errorf("summary %d = status %s, answered %d, failed %d, started by %s; want %+v",
+					i, s.Status, s.AnsweredCount, s.FailedCount, s.StartedBy, w)
+			}
+			if s.TemplateKey != tmpl.Key || s.TemplateVersion != tmpl.Version || s.ItemCount != len(tmpl.Items) || s.SiteID != f.siteA {
+				t.Errorf("summary %d = %+v, want the template and site recorded", i, s.InspectionHeader)
+			}
+		}
+		if got[2].CompletedAt == nil || got[0].CompletedAt != nil {
+			t.Errorf("completed_at: completed %v, in progress %v", got[2].CompletedAt, got[0].CompletedAt)
+		}
+	})
+
+	queries := map[string]struct{ query, want string }{
+		"in progress only": {"?status=in_progress", third + "," + second},
+		"completed only":   {"?status=completed", first},
+		"limit":            {"?limit=2", third + "," + second},
+		"limit and status": {"?status=in_progress&limit=1", third},
+	}
+	for name, q := range queries {
+		t.Run(name, func(t *testing.T) {
+			if ids := summaryIDs(listInspections(t, f.router, f.owner, f.siteA, q.query)); ids != q.want {
+				t.Errorf("ids %s, want %s", ids, q.want)
+			}
+		})
+	}
+
+	t.Run("a site with none lists [] not null", func(t *testing.T) {
+		empty := createSite(t, f.router, f.owner, "Empty Site")
+		rec := do(t, f.router, http.MethodGet, "/v1/sites/"+empty+"/inspections", f.owner, nil)
+		wantStatus(t, rec, http.StatusOK)
+		if rec.Body.String() != `{"inspections":[]}` {
+			t.Errorf("body %s, want {\"inspections\":[]}", rec.Body.String())
+		}
+	})
+
+	bad := map[string]string{
+		"?status=bogus": "status must be in_progress or completed",
+		"?status=open":  "status must be in_progress or completed",
+		"?limit=0":      "limit must be 1-200",
+		"?limit=201":    "limit must be 1-200",
+		"?limit=many":   "limit must be 1-200",
+	}
+	for query, msg := range bad {
+		t.Run("bad query "+query, func(t *testing.T) {
+			wantError(t, do(t, f.router, http.MethodGet, "/v1/sites/"+f.siteA+"/inspections"+query, f.owner, nil), http.StatusBadRequest, msg)
+		})
+	}
+
+	t.Run("an archived site still lists its inspections", func(t *testing.T) {
+		wantStatus(t, do(t, f.router, http.MethodDelete, "/v1/sites/"+f.siteB, f.owner, nil), http.StatusNoContent)
+		if ids := summaryIDs(listInspections(t, f.router, f.owner, f.siteB, "")); ids != onB {
+			t.Errorf("ids %s, want %s", ids, onB)
+		}
+	})
+
+	access := []struct {
+		name, token, site string
+		want              int
+	}{
+		{"supervisor on own site", f.supervisor, f.siteA, http.StatusOK},
+		{"supervisor elsewhere", f.supervisor, f.siteB, http.StatusNotFound},
+		{"bookkeeper", f.bookkeeper, f.siteA, http.StatusForbidden},
+		{"other org", f.other, f.siteA, http.StatusNotFound},
+		{"malformed site id", f.owner, "not-a-uuid", http.StatusNotFound},
+		{"no token", "", f.siteA, http.StatusUnauthorized},
+	}
+	for _, tt := range access {
+		t.Run(tt.name, func(t *testing.T) {
+			wantStatus(t, do(t, f.router, http.MethodGet, "/v1/sites/"+tt.site+"/inspections", tt.token, nil), tt.want)
+		})
+	}
+	t.Run("other org's list shows only its own", func(t *testing.T) {
+		if ids := summaryIDs(listInspections(t, f.router, f.other, f.otherSite, "")); ids != "" {
+			t.Errorf("other org sees %s", ids)
+		}
+	})
+}

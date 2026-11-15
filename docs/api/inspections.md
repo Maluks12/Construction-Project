@@ -1,8 +1,8 @@
 # Inspections API
 
 For the dashboard and the mobile app: the checklists a site's regulations
-call for, and inspections against them. Starting and reading an inspection
-are here; listing, answering, completing and findings are coming in M7.
+call for, and inspections against them. Starting, reading and listing
+inspections are here; answering, completing and findings are coming in M7.
 The backend keeps this file true: `TestAPIDoc` (in
 `construction_db/internal/core/checklists`) fails if the types below stop
 matching the Go code, and `TestSeverityDefinitions` fails if the severity
@@ -12,8 +12,7 @@ All endpoints need `Authorization: Bearer <access token>`. Errors are
 `{"error": "<message>"}`.
 
 Roles: owner and SHE officer on any site of their organisation; supervisor
-only on sites they've been added to (any other site is 404 `"site not
-found"`). Other roles get 403 `"forbidden"`.
+only on sites they've been added to (any other site is 404 `"site not found"`). Other roles get 403 `"forbidden"`.
 
 ## Endpoints
 
@@ -84,6 +83,24 @@ malformed id or the wrong site). Works on archived sites.
 - An item's `source_ref` is `null` when the template gives none.
 - `client_completed_at` and `completed_at` are `null` while `status` is
   `"in_progress"`.
+
+### `GET /v1/sites/:siteId/inspections?status=&limit=` — list a site's inspections
+
+Owner, SHE officer, supervisor. Newest started first, as `InspectionList`
+(`{"inspections": []}` when empty, never `null`). Works on archived sites.
+
+- `status` is optional: `in_progress` or `completed`.
+- `limit` is 1–200, default 50. There is no paging yet (it comes with
+  sync).
+- Each entry is an `InspectionSummary`: the inspection without its
+  `items`, plus `answered_count` (items with a result) and `failed_count`
+  (items whose result is `fail`). Get the inspection for its items.
+
+| Status | When |
+|---|---|
+| 200 | `InspectionList` |
+| 400 | `"status must be in_progress or completed"` or `"limit must be 1-200"` (also for a `limit` that isn't a number) |
+| 404 | `"site not found"` |
 
 ## Finding severity
 
@@ -204,5 +221,30 @@ export interface InspectionItem {
   comment: string | null;
   client_answered_at: string | null;
   answered_at: string | null;
+}
+
+export interface InspectionSummary {
+  id: string;
+  site_id: string;
+  status: InspectionStatus;
+  template_key: string;
+  template_version: number;
+  template_sha256: string;
+  template_title: string;
+  template_source_ref: string;
+  item_count: number;
+  started_by: string;
+  client_started_at: string;
+  started_at: string;
+  device_id: string | null;
+  corrects_id: string | null;
+  client_completed_at: string | null;
+  completed_at: string | null;
+  answered_count: number;
+  failed_count: number;
+}
+
+export interface InspectionList {
+  inspections: InspectionSummary[];
 }
 ```

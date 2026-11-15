@@ -3,6 +3,7 @@ package checklists
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -28,7 +29,8 @@ func writeError(c *gin.Context, err error) {
 	case errors.Is(err, ErrInspectionIDReused), errors.Is(err, ErrSiteArchived):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrBadInspectionID), errors.Is(err, ErrBadDeviceID), errors.Is(err, ErrBadCorrectsID),
-		errors.Is(err, ErrUnknownTemplateVersion), errors.Is(err, ErrTemplateMismatch):
+		errors.Is(err, ErrUnknownTemplateVersion), errors.Is(err, ErrTemplateMismatch),
+		errors.Is(err, ErrBadStatus), errors.Is(err, ErrBadLimit):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
 		httpapi.WriteUnexpected(c, "request failed", err)
@@ -72,4 +74,24 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, in)
+}
+
+func (h *Handler) List(c *gin.Context) {
+	limit := 50
+	if s := c.Query("limit"); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			writeError(c, ErrBadLimit)
+			return
+		}
+		limit = n
+	}
+
+	items, err := h.svc.List(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c),
+		c.Param("id"), c.Query("status"), limit)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"inspections": items})
 }

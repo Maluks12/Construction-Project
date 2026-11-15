@@ -34,33 +34,78 @@ type newResponse struct {
 	SourceRef                 *string
 }
 
-const selectInspection = `
-	SELECT id, site_id, status, template_key, template_version, template_sha256, template_title,
-	       template_source_ref, item_count, started_by, client_started_at, started_at, device_id,
-	       corrects_id, client_completed_at, completed_at
-	FROM inspections
+// headerColumns are InspectionHeader's columns, in scanHeader's order. The
+// "i." prefix lets a query join inspections to its responses.
+const headerColumns = `
+	i.id, i.site_id, i.status, i.template_key, i.template_version, i.template_sha256, i.template_title,
+	i.template_source_ref, i.item_count, i.started_by, i.client_started_at, i.started_at, i.device_id,
+	i.corrects_id, i.client_completed_at, i.completed_at`
+
+const selectInspection = `SELECT` + headerColumns + `
+	FROM inspections i
 `
 
+// scanHeader scans headerColumns into h, then any extra columns the query
+// selects after them.
+func scanHeader(row pgx.Row, h *InspectionHeader, extra ...any) error {
+	var sum []byte
+	dest := append([]any{
+		&h.ID, &h.SiteID, &h.Status, &h.TemplateKey, &h.TemplateVersion, &sum, &h.TemplateTitle,
+		&h.TemplateSourceRef, &h.ItemCount, &h.StartedBy, &h.ClientStartedAt, &h.StartedAt, &h.DeviceID,
+		&h.CorrectsID, &h.ClientCompletedAt, &h.CompletedAt,
+	}, extra...)
+	if err := row.Scan(dest...); err != nil {
+		return err
+	}
+	h.TemplateSHA256 = hex.EncodeToString(sum)
+	h.ClientStartedAt = h.ClientStartedAt.UTC()
+	h.StartedAt = h.StartedAt.UTC()
+	h.ClientCompletedAt = utc(h.ClientCompletedAt)
+	h.CompletedAt = utc(h.CompletedAt)
+	return nil
+}
+
 func scanInspection(row pgx.Row) (*Inspection, error) {
-	var (
-		in  Inspection
-		sum []byte
-	)
-	err := row.Scan(
-		&in.ID, &in.SiteID, &in.Status, &in.TemplateKey, &in.TemplateVersion, &sum, &in.TemplateTitle,
-		&in.TemplateSourceRef, &in.ItemCount, &in.StartedBy, &in.ClientStartedAt, &in.StartedAt, &in.DeviceID,
-		&in.CorrectsID, &in.ClientCompletedAt, &in.CompletedAt,
-	)
-	if err != nil {
+	in := Inspection{Items: []InspectionItem{}}
+	if err := scanHeader(row, &in.InspectionHeader); err != nil {
 		return nil, err
 	}
-	in.TemplateSHA256 = hex.EncodeToString(sum)
-	in.ClientStartedAt = in.ClientStartedAt.UTC()
-	in.StartedAt = in.StartedAt.UTC()
-	in.ClientCompletedAt = utc(in.ClientCompletedAt)
-	in.CompletedAt = utc(in.CompletedAt)
-	in.Items = []InspectionItem{}
 	return &in, nil
+}
+
+// ListInspections returns a site's inspections, newest first, with how many
+// items each has answered and failed. status "" means any.
+//
+// LEFT JOIN and GROUP BY i.id: one row per inspection, counting its
+// responses. count(r.result) skips NULLs, so it counts answered items only.
+// Grouping by the primary key lets the other inspection columns be selected.
+func ListInspections(ctx context.Context, db DBTX, orgID, siteID, status string, limit int) ([]InspectionSummary, error) {
+	rows, err := db.Query(ctx, `SELECT`+headerColumns+`,
+		       count(r.result), count(*) FILTER (WHERE r.result = 'fail')
+		FROM inspections i
+		LEFT JOIN inspection_responses r ON r.inspection_id = i.id
+		WHERE i.org_id = $1 AND i.site_id = $2 AND ($3 = '' OR i.status = $3)
+		GROUP BY i.id
+		ORDER BY i.started_at DESC, i.id
+		LIMIT $4
+	`, orgID, siteID, status, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list inspections: %w", err)
+	}
+	defer rows.Close()
+
+	items := []InspectionSummary{}
+	for rows.Next() {
+		var s InspectionSummary
+		if err := scanHeader(rows, &s.InspectionHeader, &s.AnsweredCount, &s.FailedCount); err != nil {
+			return nil, fmt.Errorf("scan inspection summary: %w", err)
+		}
+		items = append(items, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list inspections: %w", err)
+	}
+	return items, nil
 }
 
 func utc(t *time.Time) *time.Time {
@@ -74,7 +119,7 @@ func utc(t *time.Time) *time.Time {
 // GetInspection looks across the whole organisation, so a start can tell an
 // id reused on another site from a new one. Items are not loaded.
 func GetInspection(ctx context.Context, db DBTX, orgID, id string) (*Inspection, error) {
-	in, err := scanInspection(db.QueryRow(ctx, selectInspection+`WHERE org_id = $1 AND id = $2`, orgID, id))
+	in, err := scanInspection(db.QueryRow(ctx, selectInspection+`WHERE i.org_id = $1 AND i.id = $2`, orgID, id))
 	if err != nil {
 		return nil, fmt.Errorf("get inspection: %w", err)
 	}
@@ -83,7 +128,7 @@ func GetInspection(ctx context.Context, db DBTX, orgID, id string) (*Inspection,
 
 // GetSiteInspection is one inspection on one site. Items are not loaded.
 func GetSiteInspection(ctx context.Context, db DBTX, orgID, siteID, id string) (*Inspection, error) {
-	in, err := scanInspection(db.QueryRow(ctx, selectInspection+`WHERE org_id = $1 AND site_id = $2 AND id = $3`, orgID, siteID, id))
+	in, err := scanInspection(db.QueryRow(ctx, selectInspection+`WHERE i.org_id = $1 AND i.site_id = $2 AND i.id = $3`, orgID, siteID, id))
 	if err != nil {
 		return nil, fmt.Errorf("get site inspection: %w", err)
 	}

@@ -199,6 +199,34 @@ func (s *Service) Get(ctx context.Context, orgID, userID, role, siteID, inspecti
 	return in, nil
 }
 
+// List returns a site's inspections, newest first. It works on an archived
+// site. The query is checked before the site, so a bad one is 400 anywhere.
+func (s *Service) List(ctx context.Context, orgID, userID, role, siteID, status string, limit int) ([]InspectionSummary, error) {
+	if status != "" && status != StatusInProgress && status != StatusCompleted {
+		return nil, ErrBadStatus
+	}
+	if limit < 1 || limit > 200 {
+		return nil, ErrBadLimit
+	}
+
+	var items []InspectionSummary
+	err := s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
+		site, err := s.sites.GetInTx(ctx, tx, orgID, userID, role, siteID)
+		if err != nil {
+			return err
+		}
+		items, err = ListInspections(ctx, tx, orgID, site.ID, status, limit)
+		return err
+	})
+	if isSentinel(err) {
+		return nil, err
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list inspections: %w", err)
+	}
+	return items, nil
+}
+
 func withItems(ctx context.Context, db DBTX, orgID string, in *Inspection) (*Inspection, error) {
 	items, err := ListItems(ctx, db, orgID, in.ID)
 	if err != nil {

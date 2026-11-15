@@ -19,11 +19,13 @@ func TestAPIDoc(t *testing.T) {
 	for name, v := range map[string]any{
 		"ChecklistCatalog": ChecklistCatalog{}, "RegimeRef": RegimeRef{}, "ChecklistTemplate": ChecklistTemplate{},
 		"ChecklistItem": ChecklistItem{}, "SeverityLevel": SeverityLevel{},
-		"Inspection": Inspection{}, "InspectionItem": InspectionItem{},
+		"Inspection": Inspection{}, "InspectionItem": InspectionItem{}, "InspectionSummary": InspectionSummary{},
 	} {
 		t.Run(name, func(t *testing.T) { doc.CheckStruct(t, name, v, false) })
 	}
 	t.Run("StartInspectionRequest", func(t *testing.T) { doc.CheckStruct(t, "StartInspectionRequest", StartInspectionRequest{}, true) })
+	// Built inline by the handler.
+	doc.CheckFields(t, "InspectionList", []string{"inspections"})
 
 	var keys []string
 	for _, s := range Severities {
@@ -38,7 +40,7 @@ func TestAPIDoc(t *testing.T) {
 	// Every error text the handlers send is quoted in the reference.
 	for _, e := range []error{
 		ErrInspectionNotFound, ErrBadInspectionID, ErrInspectionIDReused, ErrSiteArchived, ErrBadCorrectsID,
-		ErrBadDeviceID, ErrUnknownTemplateVersion, ErrTemplateMismatch,
+		ErrBadDeviceID, ErrUnknownTemplateVersion, ErrTemplateMismatch, ErrBadStatus, ErrBadLimit,
 	} {
 		if quoted := `"` + e.Error() + `"`; !strings.Contains(doc.Text, quoted) {
 			t.Errorf("the reference doesn't quote the error %s", quoted)

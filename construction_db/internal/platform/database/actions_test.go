@@ -351,7 +351,7 @@ func TestActionEventRules(t *testing.T) {
 
 	t.Run("cancelling", func(t *testing.T) {
 		no("only an owner or a SHE officer can cancel it", "cancelled", supOnSite2, "Duplicate", state{"cancelled", supOnSite2, "ABC Scaffolding", 0})
-		refusedBatch(t, tx, "23514", "corrective_action_events_cancel_reason",
+		refusedBatch(t, tx, "23514", "corrective_action_events_reason",
 			event(a, seq, "cancelled", rlsUserA, nil, state{"cancelled", supOnSite2, "ABC Scaffolding", 0}))
 		no("changes the status to cancelled, and nothing else", "cancelled", rlsUserA, "Duplicate", state{"cancelled", rlsUserA, "ABC Scaffolding", 0})
 		ok("cancelled", rlsUserA, "Duplicate", state{"cancelled", supOnSite2, "ABC Scaffolding", 0})
@@ -408,7 +408,16 @@ func TestActionsFrozenForEveryRole(t *testing.T) {
 	// that skips a number still fails, on the header's sequence.
 	must(t, tx, 0, `ALTER TABLE corrective_action_events ENABLE TRIGGER corrective_action_events_advance`)
 	must(t, tx, 0, `ALTER TABLE corrective_action_events DISABLE TRIGGER corrective_action_events_insert`)
-	refused(t, tx, "23514", "event 4 is not the next event", eventSQL, evID(2), rlsOrgA, rlsSiteA, rlsActionA, 4, "due_changed", rlsUserA, nil, "open", rlsUserA, nil, 0)
+	refused(t, tx, "23514", "event 5 is not the next event", eventSQL, evID(2), rlsOrgA, rlsSiteA, rlsActionA, 5, "due_changed", rlsUserA, nil, "awaiting_verification", rlsUserA, nil, 0)
+
+	// The once-only indexes on their own, with both event triggers off.
+	must(t, tx, 0, `ALTER TABLE corrective_action_events DISABLE TRIGGER corrective_action_events_advance`)
+	refused(t, tx, "23505", "corrective_action_events_submitted_once", closeoutEventSQL, evID(3), rlsOrgA, rlsSiteA, rlsActionA, 4,
+		"closeout_submitted", rlsUserA, nil, "awaiting_verification", rlsUserA, nil, 0, "37000000-0000-0000-0000-00000000000a", nil)
+	must(t, tx, 1, closeoutEventSQL, evID(4), rlsOrgA, rlsSiteA, rlsActionA, 4,
+		"verified", rlsUserA, nil, "closed", rlsUserA, nil, 0, "37000000-0000-0000-0000-00000000000a", true)
+	refused(t, tx, "23505", "corrective_action_events_decided_once", closeoutEventSQL, evID(5), rlsOrgA, rlsSiteA, rlsActionA, 5,
+		"rejected", rlsUserA, "No", "open", rlsUserA, nil, 0, "37000000-0000-0000-0000-00000000000a", nil)
 }
 
 // refuseTruncatesOf is refuseTruncates for tables whose trigger says msg.

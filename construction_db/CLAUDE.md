@@ -91,6 +91,36 @@ Known spec issues:
   - **Reg 4 has no task.** Rev 4's construction pack makes "Regulation 4
     notification" P1, but BUILD_PLAN had no task for it; one is now
     proposed there.
+- Found in M9 (Nov 2026):
+  - **Every fail: generates, or can raise?** Rev 3 §2.3.2: "Every fail
+    generates a corrective action". Rev 4 §2.4: "Every fail can raise a
+    corrective action". Resolved by D1: raising is a person's choice, but
+    a finding with no action and no waiver is unactioned and counted.
+  - **No severity scale for actions.** Rev 4 §2.5 gives an action a
+    "severity" with no scale. Actions use the finding severity scale; a
+    finding's action takes the finding's, an incident's raiser picks one.
+  - **One action per response.** Rev 3 §2.3.1's schema has
+    `checklist_responses.corrective_action_id`. We allow several actions per
+    finding, each pointing at its source.
+  - **"Before and after photographs"** (Rev 4 §2.5): the before photo is
+    the source's own (the fail photo or the incident's), not a separate
+    upload; a close-out refuses those.
+  - **Shifted rows in Rev 4 A.5**, as in §1.4: the "Corrective action
+    register" row reads "Versioned". Read correctly: "Owner, due date,
+    before/after photos, verification".
+  - **Escalation isn't in M9.** Rev 3's "Open-items ageing: visible ageing
+    and escalation of overdue actions" and Rev 4 A.4's "Escalation up the
+    role hierarchy" are P1. M9 exposes `state=overdue` and
+    `awaiting_since`; escalating is M11 worker work (added to its task).
+  - **One table in §5.3.** Rev 4 §5.3 has one `corrective_actions` table.
+    Append-only history needs events, close-outs and waivers beside it.
+  - **Root cause is P2** (Rev 4 A.6 "Investigation workflow"). Incident
+    actions don't model it, and an action doesn't satisfy GAR 9(2)'s
+    investigation deadline.
+  - **No law found for action deadlines.** Nothing in the regime's quoted
+    sources sets them, so the severity defaults are a product choice, like
+    the severity wording, and need the same practitioner review. Not
+    researched beyond `SOURCES_za_construction_2014.md`.
 
 ## Commands
 
@@ -173,6 +203,13 @@ both errors.
   `public_holidays` table. Tests here start their own Postgres.
 - `internal/core/incidents`: the incident register, witness statements,
   and the deadline endpoints (`docs/api/incidents.md`).
+- `internal/core/actions`: the corrective action register (Rev 4 §2.5):
+  raise, events (reassign, move due, verify, reject, reopen, cancel),
+  close-outs, waivers, and the registers (`docs/api/actions.md`). Every
+  date rule calls the migration's SQL (`action_local_date`,
+  `action_default_due_days`); `DefaultDueDays` mirrors it for the
+  reference, and `TestActionRulesMatchDatabase` compares them. Finding
+  coverage is `finding_coverage` (000019), which the findings list reads.
 - `internal/core/checklists`: the checklist engine (Rev 4 §2.4).
   `GET /v1/sites/:id/checklists` returns the site regime's templates
   (through `sites.Service.Regime`, never hardcoded) and the severity scale.
@@ -402,27 +439,28 @@ the site diary, settings.
   step changes the plan or a decision, update this section.
 - Foundation (M4, M5) due Sun 1 Nov. Safety core (M6–M12) due Sun 22 Nov,
   which is the checkpoint.
-- **Forecast (Sun 15 Nov, revised after M7 and again after M8 finished
-  that day; no cuts decided, full scope stays).** Sat 5 Dec is not
-  reachable. The dates are recomputed from M9 starting Mon 16 Nov, with the
-  per-milestone estimates unchanged; REG4 is not scheduled yet. Reasons
-  and risks are in `docs/BUILD_PLAN.md` ("Forecast").
+- **Forecast (Sun 15 Nov, revised after M7, M8 and M9 each finished that
+  day; no cuts decided, full scope stays).** Sat 5 Dec is not reachable.
+  The dates are recomputed from M10 starting Mon 16 Nov, with the
+  per-milestone estimates unchanged; REG4 is not scheduled yet. Review
+  time isn't modelled, and M7–M9 haven't been reviewed. Reasons and risks
+  are in `docs/BUILD_PLAN.md` ("Forecast").
 
   | Milestone | Rigour | Forecast finish | Was due |
   |---|---|---|---|
   | M7 Inspections & checklists | full | **done Sun 15 Nov** | Tue 10 Nov |
   | M8 Incidents (with the deadline engine) | full | **done Sun 15 Nov** | Fri 13 Nov |
-  | M9 Corrective actions | full | Wed 18 Nov | Sun 15 Nov |
-  | M10 Toolbox talks & site diary | light | Fri 20 Nov | Tue 17 Nov |
-  | M11 People & documents | light | Tue 24 Nov | Fri 20 Nov |
-  | M12 Reports & audit pack | full | Fri 27 Nov | Sun 22 Nov |
-  | SYNC Offline sync API | full | Tue 1 Dec | Wed 25 Nov |
-  | BILL Billing | light; webhooks full | Fri 4 Dec | Fri 27 Nov |
-  | DEPLOY | – | Sun 6 Dec | Sat 28 Nov |
-  | IOD Injury on duty | full | Wed 9 Dec | Tue 1 Dec |
-  | JBCC Delay claims | full | Fri 11 Dec | Wed 2 Dec |
-  | PC Principal contractor tier | full | Sun 13 Dec | Fri 4 Dec |
-  | V1 Release | – | **Mon 14 Dec** | Sat 5 Dec |
+  | M9 Corrective actions | full | **done Sun 15 Nov** | Sun 15 Nov |
+  | M10 Toolbox talks & site diary | light | Tue 17 Nov | Tue 17 Nov |
+  | M11 People & documents | light | Sat 21 Nov | Fri 20 Nov |
+  | M12 Reports & audit pack | full | Tue 24 Nov | Sun 22 Nov |
+  | SYNC Offline sync API | full | Sat 28 Nov | Wed 25 Nov |
+  | BILL Billing | light; webhooks full | Tue 1 Dec | Fri 27 Nov |
+  | DEPLOY | – | Thu 3 Dec | Sat 28 Nov |
+  | IOD Injury on duty | full | Sun 6 Dec | Tue 1 Dec |
+  | JBCC Delay claims | full | Tue 8 Dec | Wed 2 Dec |
+  | PC Principal contractor tier | full | Thu 10 Dec | Fri 4 Dec |
+  | V1 Release | – | **Fri 11 Dec** | Sat 5 Dec |
 - **Done:** migrations 000001–000007; auth (email and mobile login, refresh
   rotation with reuse detection, sessions); sites, site members, supervisor
   scoping, locations; invites (send, list, revoke, preview, accept);
@@ -980,6 +1018,178 @@ the site diary, settings.
     - Mutation checks: 5 of 5 caught (each lock, the 400 mapping, the
       distinct SQL message, the before-calendar check).
 
+- **Milestone 9, Corrective actions** (due Sun 15 Nov): **done Sun 15
+  Nov**, on its due date. Full rigour. Plan approved Sun 15 Nov.
+  - **Decisions (15 Nov):**
+    - **D1 Every finding is addressed, nothing automatic.** A person raises
+      an action; a finding with neither an action nor a waiver is
+      *unactioned* (the findings list shows `coverage` and filters on it).
+      A lead may waive a **low or medium** finding with a reason
+      (append-only; retracted once, by a lead, with a reason). Critical and
+      high can't be waived: a fix on the spot is an action closed out with a
+      photo. A cancelled action leaves its finding unactioned unless
+      something else covers it. Several actions per finding.
+    - **D2 Due dates.** A local date (`due_on`), default by severity: critical
+      the day raised, high the next day, medium 7 days, low 14 (calendar days
+      from the local date of `client_raised_at`). Later than the default
+      needs a lead and a reason; afterwards the raiser, the owner or a lead
+      move it earlier, only a lead later (with a reason).
+    - **D3 Owner:** an active owner or SHE officer, or a supervisor added to
+      the site (database, at raise and every reassignment), plus an optional
+      free-text `responsible_party`. Reassigning: the raiser or a lead.
+    - **D4 Statuses:** open → awaiting_verification (close-out by the owner
+      or a lead) → closed (verified by a lead); reject → open; a lead may
+      reopen a closed action or cancel one that isn't closed, with a
+      reason. A lead verifying their own close-out is allowed and recorded
+      `self_verified`.
+    - **D5 Close-out photos:** verified, on the site, at least one; refused
+      if taken more than 5 minutes before the source time or if one of the
+      source's own photos; taken before the raise is accepted and flagged
+      `captured_before_raised`.
+    - **D6 Incident actions** link to the version they were raised against,
+      which must be the latest then; later versions never touch them.
+    - **D7 Corrections:** a finding is superseded once its inspection has a
+      completed correction (`corrected_by`). New actions and waivers only on
+      findings that aren't superseded. Old actions are kept and cover the
+      correction's finding for the same item only if its severity is the
+      same or lower; otherwise it is unactioned, a waiver never carries over,
+      and the old action shows `review: severity_raised` (or
+      `item_not_failed` if the correction passes the item).
+    - **D8 Overdue:** the M8 rule without the s4 extension: due by the end of
+      `due_on` in the regime's `time_zone`; open and past `due_at` is
+      overdue; awaiting verification never is (`awaiting_since` says how
+      long it has waited). Closed with the close-out submitted (device time)
+      at or after `due_at` is `closed_late`.
+    - **Defaults not put to a decision:** an archived site refuses new
+      actions and waivers (409); events, close-outs and reads still work.
+      Reassigning and moving a due date work while awaiting verification.
+      An action's severity never changes.
+  - 9.1 (Sun 15 Nov), **done**: `Finding.corrected_by` on `GET …/findings`:
+    the completed correction's id, null while there's none or it's in
+    progress or abandoned. **Contract change.**
+  - 9.2a (Sun 15 Nov), **done**: migration 000018.
+    - `corrective_actions` (source, severity, raiser, time zone; never
+      change) with a copy of the current state, and `corrective_action_events`
+      (append-only; each records who, when, why, and the state after it).
+      The header's state can only become its next event's (the
+      `incidents.latest_version` pattern: the advance trigger's
+      `UPDATE … WHERE event_count = seq - 1`, under the row lock that
+      serialises an action's events).
+    - Functions: `severity_rank`, `action_default_due_days`,
+      `action_local_date`, `action_due_at`, `action_site_member`,
+      `action_lead`. Every check of D2, D3, D4 (open/cancel part) and D6 is
+      a trigger, for every role; a raise takes `FOR SHARE` on the finding's
+      correction and on the incident, so it queues against a completing
+      correction or an amendment.
+    - Tests: `internal/platform/database/actions_test.go`, with forced
+      races (two events; a raise against a correction completing, both
+      orders; a raise against an amendment, both orders).
+    - Mutation checks: 48 of 50 caught on the first run. The two truncate
+      mutations were wrong (an AFTER TRUNCATE trigger still refuses);
+      dropping the triggers instead is caught. `action_lead`'s active check
+      is redundant for events (the actor must be an active site member
+      first) and is caught by the waiver test. A `due_at` computed only by
+      the raise event was caught after adding a test of the header alone.
+  - 9.2b (Sun 15 Nov), **done**: migration 000019.
+    - `corrective_action_closeouts` and their photos (append-only; photo
+      count and the closeout_submitted event checked at commit), the
+      close-out event kinds, `pending_closeout_id` and `awaiting_since` on
+      the header, `finding_waivers` (one live per finding; retraction a
+      one-way change), `finding_coverage` (the only implementation of D1/D7
+      coverage) and `action_review`.
+    - The event trigger now takes `FOR NO KEY UPDATE` (as an amendment
+      does), so a close-out row's foreign-key check doesn't wait on it.
+    - The RLS fixtures' finding is medium (so it can be waived); its action
+      has a close-out, so `corrective_action_events` has two rows per org
+      (`rlsRows`).
+    - Mutation checks: 61 on 000019 plus three re-runs for 000018 (the
+      truncate triggers dropped, `action_lead`'s active check); 63 of 64
+      caught. The survivor was the `corrective_actions_awaiting` CHECK,
+      which the guard covers; it is now caught by
+      `TestAwaitingCheckOnItsOwn` (guard off), so 64 of 64. Run in a scratch
+      copy of `construction_db`, so other tests could run meanwhile.
+    - Forced races: two close-outs; verify against cancel; two waivers; a
+      waiver against a correction completing.
+    - Up, down 2 and up again verified on a throwaway Postgres.
+  - 9.3–9.5 (Sun 15 Nov), **done**: `internal/core/actions` and the
+    findings list's `coverage`, `covered_by`, `waiver_id` and `?coverage=`.
+    - Endpoints in `docs/api/actions.md`; every write is a `PUT` under a
+      device id (a raise's event id is the action's, a close-out's event id
+      the close-out's), and an identical repeat answers 200 before any
+      other check.
+    - `GET /v1/actions` is the first list across sites, scoped like
+      `GET /v1/sites` (supervisors: their sites).
+    - Tests: `internal/app/actions_test.go`, with forced races through the
+      API (two close-outs; a close-out against a reassignment; a close-out
+      while a correction completes, which share no lock; a raise losing the
+      race on the primary key).
+    - Mutation checks on the API's own checks: 31, plus the raced-raise
+      retry and three on `TestAPIDoc`. All caught except two by design: the
+      superseded-finding and archived-site checks on raise have database
+      twins that answer the same 409 (the raise retries once and keeps the
+      database's reason), as M8's weakening and archived checks do. The
+      first run showed a test gap (no supervisor who was neither raiser nor
+      owner moving a due date earlier), now covered.
+    - A raise that loses a race to a correction, an amendment or an
+      archiving is retried once, so the answer names it (with
+      `latest_version` for an amendment): `TestRaiseRacesAmendment`,
+      `TestRaiseRacesCorrection`.
+    - **Contract change:** eight new endpoints, a changed findings list
+      (see `docs/api/m9-handover.md`).
+  - 9.6 (Sun 15 Nov), **done**: `docs/api/actions.md` with `TestAPIDoc`
+    (types, every error text, every state and review flag, the default due
+    table against `DefaultDueDays`), `docs/api/m9-handover.md`, and the
+    end-to-end walk.
+    - **End-to-end walk** on the real API, Postgres and MinIO (a separate
+      compose project, `-p siteproof-m9walk`, removed afterwards), 31 steps,
+      each with the expected status: sign up and invite a supervisor →
+      five photos to MinIO and sealed → an inspection failing one item
+      (high) with its photo → the finding unactioned → an action raised and
+      assigned (repeat 200; a supervisor's later due date 403) → close-outs
+      refused with no photo, with the fail's own photo and with a two-day-old
+      photo → a close-out with a new photo (awaiting, `awaiting_since`) → the
+      supervisor's verification 403, the owner's 201 (closed) → an action
+      dated three days ago on the site's and the supervisor's overdue lists →
+      a low finding waived, a high one refused → an incident action on v1,
+      the incident amended to v2 (the action untouched, showing v1 against
+      v2; a new raise on v1 is 409 with `latest_version`) → a correction at
+      critical: the original superseded, the correction's finding
+      unactioned, the old action flagged `severity_raised`, a raise on the
+      superseded finding 409, one on the correction's 201 → no unactioned
+      findings left → a logged photo view (`view_bytes` row). The script is
+      not in the repo.
+    - The walk's fail photo was taken before the item was answered, so step
+      10 met the age rule first ("taken before the action's source"); the
+      source-photo rule is tested in `internal/app`.
+  - Review fixes (Sun 15 Nov), each in the step it belongs to:
+    - **Action ids in another case.** Event and close-out read the action id
+      from the URL as a UUID (malformed: 404 `"action not found"`) and use
+      its canonical form, so a retry with an upper-case id is still a repeat
+      (200), not 409. Tested for both; the mutation (raw id back) is caught.
+    - **A supervisor taken off a site** can't record events or close-outs on
+      its actions (404 `"site not found"`) and no longer sees them in
+      `GET /v1/actions`; an action they owned stays theirs until a lead
+      reassigns it (not back to them: they're no longer eligible).
+      `TestRemovedSupervisor`.
+    - **Docs:** `severity_raised` now says plainly that the correction's
+      finding needs its own action (the old one doesn't cover it, even if
+      re-dated), and that re-dating or cancelling the old one is separate.
+    - **BUILD_PLAN:** the default due days join the severity wording in the
+      practitioner review.
+    - **Known flake, unexplained:** `TestIncidentSubmitAndGet` (M8) failed
+      once in a full `go test -p 4 ./...` on Sun 15 Nov; its error text was
+      lost (the command filtered it out). It then passed 96 times: 50 alone,
+      40 alongside the evidence, storage and database packages, and 6 full
+      `-p 4` runs. It sends one request at a time, so a race in the code is
+      unlikely; the suspect is a MinIO or Docker Desktop stall under load
+      (its photo upload fails on anything but 200, and Docker Desktop
+      refused container starts twice that evening). `putUpload` now reports
+      MinIO's status, headers, body and the elapsed time, so the next
+      occurrence names its cause. Keep whole logs when hunting it.
+    - **`go test -count=N` (N > 1)** fails from the second run in the
+      database, storage and evidence packages: committed fixtures use fixed
+      ids. Scheduled as the first commit of M10 (BUILD_PLAN).
+
 ## Finding severity
 
 A fixed product scale (decided 9 Nov 2026), not regime data, so findings
@@ -995,6 +1205,11 @@ has yet to review the wording.
 | `medium` | Medium | Could cause an injury needing treatment, or breaks a regulation with no immediate danger; fix within days, not weeks. |
 | `high` | High | Could cause serious injury or a reportable incident, but not imminently; fix before the affected work continues on the next shift. |
 | `critical` | Critical | Imminent danger of death or serious injury; stop the affected work now and keep it stopped until it is made safe. |
+
+A corrective action's default due date (D2) follows the time hints: days
+after the local date it is raised, low 14, medium 7, high 1, critical 0
+(`action_default_due_days`, 000018; `actions.DefaultDueDays` mirrors it).
+A practitioner has yet to review these too.
 
 ## Requested by the frontend
 

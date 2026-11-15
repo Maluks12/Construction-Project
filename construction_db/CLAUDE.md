@@ -171,6 +171,8 @@ both errors.
   rule selection and planning (`engine.go`), storage (`repo.go`). Due
   dates are computed only by Postgres's `deadline_due` (000015), from the
   `public_holidays` table. Tests here start their own Postgres.
+- `internal/core/incidents`: the incident register, witness statements,
+  and the deadline endpoints (`docs/api/incidents.md`).
 - `internal/core/checklists`: the checklist engine (Rev 4 §2.4).
   `GET /v1/sites/:id/checklists` returns the site regime's templates
   (through `sites.Service.Regime`, never hardcoded) and the severity scale.
@@ -912,6 +914,35 @@ the site diary, settings.
       superseded, withdrawn. A forthwith duty is met by any satisfaction.
     - `repo.go` stores plans (`Apply`) and reads rows with the duty's
       current satisfaction.
+  - 8.4–8.6 (Sun 15 Nov), **done**: `internal/core/incidents`, endpoints
+    in `docs/api/incidents.md`.
+    - **Submit** `PUT …/incidents/:id/versions/:n`. Order of checks: site
+      scope, then an identical repeat (200, before anything else, so a
+      retry always succeeds), then not-found / not-next / regime, then
+      archived, types, photos, then the plan. A non-lead's weakening plan
+      is refused before writing (403), with `deadline_due` used to compare
+      due times. An amendment locks the incident row (`FOR NO KEY UPDATE`,
+      the lock a version insert takes) before reading its deadlines, and
+      so does a satisfaction, so the two queue. A version 1 that loses the
+      race on the incident's primary key retries once (repeat or 409).
+    - **Get, register** (`?type=&reportable=&open_deadlines=&limit=`),
+      **witness statements**, **site deadlines** (`?state=`), **deadline
+      detail**, **satisfy** (any row of the duty; recorded against the
+      live one; re-evaluates the latest version and adds new clocks, i.e.
+      GAR 8(2) when the call is recorded after the death; an identical
+      repeat answers with the duty's live row), **retract**. A satisfaction
+      shows `recorded_after_due` when it was in time but recorded after
+      the due time (an offline phone); it isn't refused.
+    - Deadline endpoints live in the incidents package for now: every
+      deadline's facts come from an incident. `internal/core/deadlines`
+      stays regime-agnostic.
+    - Tests: `internal/app/incidents_test.go`, 14 tests, including your
+      change 1 (a call on day 6, `occurred_at` corrected 2 days earlier:
+      satisfied late), a downgrade refused for a supervisor and allowed for
+      an owner, GAR 8(2) both ways, and a forced lost race (repeat and
+      conflict). Mutation checks on the API's own checks are caught.
+    - **Contract change:** eight new endpoints and their types (see
+      `docs/api/m8-handover.md`).
 
 ## Finding severity
 

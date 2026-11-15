@@ -36,6 +36,9 @@ const (
 
 // Regime mirrors a regulatory_regimes row. Version is the version of the law
 // (e.g. "2014"), not of this data set; CheckDatabase compares it.
+//
+// TimeZone (IANA) is where the regime's days begin and end: day-based
+// deadlines are due by the end of a local day. It is not in the database row.
 type Regime struct {
 	Code          string `json:"code"`
 	Name          string `json:"name"`
@@ -43,6 +46,7 @@ type Regime struct {
 	Jurisdiction  string `json:"jurisdiction"`
 	Version       string `json:"version"`
 	EffectiveFrom string `json:"effective_from"` // YYYY-MM-DD
+	TimeZone      string `json:"time_zone"`
 }
 
 // ChecklistTemplate has its own Version so a completed checklist can record
@@ -74,16 +78,31 @@ type ChecklistItem struct {
 // after an event), "investigation" (an internal duty) or "notification"
 // (something due before work starts).
 //
+// AppliesWhen says what starts the clock, so core never names a rule key:
+//   - "incident_type": an incident type lists it in deadline_rules;
+//   - "employee_injured": a person in the incident is an injured (or dead)
+//     employee of the organisation;
+//   - "person_died_after_notice": a person dies after one of AfterSatisfied
+//     was met;
+//   - "site_work": starting work on a site (not an incident).
+//
+// Each AppliesWhen has exactly one Basis (appliesWhenBasis in validate.go).
+//
+// Caveat is optional text shown with every deadline from this rule.
+//
 // Holidays are not here: the calendar is a database table (Rev 4, section 2.3).
 type DeadlineRule struct {
-	Key       string `json:"key"`
-	Label     string `json:"label"`
-	Kind      string `json:"kind"`
-	Period    int    `json:"period"`
-	Unit      string `json:"unit"`
-	Direction string `json:"direction"`
-	Basis     string `json:"basis"`
-	SourceRef string `json:"source_ref"`
+	Key            string   `json:"key"`
+	Label          string   `json:"label"`
+	Kind           string   `json:"kind"`
+	Period         int      `json:"period"`
+	Unit           string   `json:"unit"`
+	Direction      string   `json:"direction"`
+	Basis          string   `json:"basis"`
+	AppliesWhen    string   `json:"applies_when"`
+	AfterSatisfied []string `json:"after_satisfied"`
+	Caveat         string   `json:"caveat"`
+	SourceRef      string   `json:"source_ref"`
 }
 
 // IncidentType is one entry in the incident taxonomy. DeadlineRules are the
@@ -210,6 +229,11 @@ func loadDataSet(fsys fs.FS, dir string) (*DataSet, error) {
 	}
 	if ds.Taxonomy == nil {
 		ds.Taxonomy = []IncidentType{}
+	}
+	for i := range ds.Deadlines {
+		if ds.Deadlines[i].AfterSatisfied == nil {
+			ds.Deadlines[i].AfterSatisfied = []string{}
+		}
 	}
 	for i := range ds.Taxonomy {
 		if ds.Taxonomy[i].DeadlineRules == nil {

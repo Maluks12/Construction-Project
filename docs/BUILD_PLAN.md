@@ -84,6 +84,8 @@ How the forecast is built:
 - [ ] Witness statements and evidence links; submitted incidents are amended by new version only (due Thu 12 Nov)
 - [ ] Incident tests (due Fri 13 Nov)
 
+Plan approved Sun 15 Nov (steps and decisions in `construction_db/CLAUDE.md`, Status): 8.0 sources and regime data; 8.1 holiday calendar and due-date function (000015); 8.2a incidents migration (000016); 8.2b deadlines migration (000017); 8.3 deadline engine; 8.4 submit and get; 8.5 register and witness statements; 8.6 deadlines API with satisfactions and retractions; 8.7 `docs/api/incidents.md` and the end-to-end walk.
+
 ### M9: Corrective actions (due Sun 15 Nov; forecast Tue 24 Nov)
 
 - [ ] Actions from findings and incidents: owner, due date, status (due Sat 14 Nov)
@@ -100,6 +102,7 @@ How the forecast is built:
 - [ ] Worker register; competencies and appointments with expiry (due Wed 18 Nov)
 - [ ] H&S file document register with versions in S3 (due Thu 19 Nov)
 - [ ] Deadline and expiry reminders in cmd/worker (Redis-backed) (due Fri 20 Nov)
+- [ ] Recompute open deadlines after a holiday-calendar migration (a newly proclaimed day): each recompute is a new deadline row superseding the old, so what the system said before stays on record. M8 ships the SQL that lists the deadlines a given date affects. Alert on job non-completion, not only failure (Rev 4 §2.3) (added Sun 15 Nov)
 
 ### M12: Reports & audit pack (due Sun 22 Nov; forecast Thu 3 Dec)
 
@@ -132,6 +135,7 @@ How the forecast is built:
 - [ ] Rate limiting on auth and evidence endpoints (Rev 3 security list, P1) (before the production deploy)
 - [ ] Evidence downloads logged by S3: server access logging or CloudTrail data events on the evidence bucket, to a separate bucket. The API's access log records that a 60-second view link was issued, not that it was used; this records the actual GETs (before the production deploy)
 - [ ] Set TRUSTED_PROXIES to the load balancer's addresses. Empty (the default) trusts no proxy, so behind a load balancer every access-log row would record the load balancer's IP; listing a range clients can reach lets them choose the logged IP (before the production deploy)
+- [ ] Decide who may see injury and treatment details in `incident_people` (POPIA special personal information: health). Today every owner, SHE officer and supervisor on the site can (added Sun 15 Nov) (before launch)
 - [ ] Production deploy: GHCR image, secrets, migrate step, health checks, backups (due Sat 28 Nov)
 - [ ] Smoke test the deployed API. Use a dedicated smoke-test org and site: evidence it uploads can never be deleted (due Sat 28 Nov)
 
@@ -140,7 +144,7 @@ How the forecast is built:
 ### IOD: Injury on duty (COIDA) (due Tue 1 Dec; forecast Tue 15 Dec)
 
 - [ ] IOD case linked to an incident, with the W.Cl.2–6 lifecycle (per Rev 3) (due Sun 29 Nov)
-- [ ] IOD deadlines and reminders from regime rules (due Mon 30 Nov)
+- [ ] IOD deadlines and reminders from regime rules. The 7-day W.Cl.2 clock already exists: M8 computes `coida_s39_employer_report` on the incident when an employee is injured. The IOD case reuses that deadline (its satisfaction is the W.Cl.2 being filed); it must not start a second one (decided Sun 15 Nov) (due Mon 30 Nov)
 - [ ] Assemble form data for each stage (structured data first, PDF later) (due Tue 1 Dec)
 
 ### JBCC: Delay claims (due Wed 2 Dec; forecast Thu 17 Dec)
@@ -151,6 +155,13 @@ How the forecast is built:
 
 - [ ] Link subcontractor orgs to a site; the principal contractor sees their compliance (due Thu 3 Dec)
 - [ ] Tests for cross-org visibility under RLS (due Fri 4 Dec)
+- [ ] Quote and model GAR 8(3) (incidents to people other than employees: who reports) and OHSA s24(3) (exclusions, e.g. a traffic accident on a public road). Until then every reportable type starts its clocks and the GAR 8(1) deadlines carry a caveat (decided Sun 15 Nov; here because non-employees on a site are mostly subcontractors' workers)
+
+### REG4: Regulation 4 notification (proposed Sun 15 Nov; not yet scheduled, date it at the Sun 22 Nov checkpoint)
+
+Rev 4's construction pack has "Regulation 4 notification, P1, 7-day deadline and tracking", but no task existed. `editions/construction/reg4` is empty.
+
+- [ ] A site's planned construction work (start date, and which of reg 4(1)(a)–(d) or 4(2) applies), creating `cr2014_reg4_notification` (and, for reg 3 permits, `cr2014_reg3_permit_application`) deadlines through the M8 engine (`applies_when: site_work`). Decide whether "at least 7 days before" means clear days. Rev 4 §3.2 overstates reg 4's scope (see SOURCES)
 
 ### V1: Release (due Sat 5 Dec; forecast Sun 20 Dec)
 

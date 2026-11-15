@@ -72,6 +72,25 @@ Known spec issues:
     - organisation-specific templates and the custom builder (A.5, P1);
     - housekeeping "scored by zone" (§3.3);
     - response types other than pass/fail/N-A.
+- Found in M8 (Nov 2026):
+  - **Several incident types per version.** Rev 4 §5.3 gives `incidents` one
+    `taxonomy_code`. One event can fall under several paragraphs of OHSA
+    s24(1), e.g. a pressure release (s24(1)(c)(ii), forthwith notice only)
+    that knocks someone unconscious (s24(1)(a), which also needs the 7-day
+    written notice). A single type would drop a statutory clock when the
+    wrong one is picked. So a version carries `taxonomy_codes` (one or
+    more), and its clocks are the union of their rules (decided 15 Nov).
+  - **Typed deadline subjects.** Rev 4 §5.3's `deadlines (subject_type,
+    subject_id, ...)` can't have a foreign key. `deadlines` has one nullable
+    foreign-key column per subject (`incident_id` now; site work and IOD
+    claims later) with exactly one set.
+  - **Counting days.** No source in the regime says how "within seven days"
+    counts. Interpretation Act s4 does, and extends a last day on a Sunday or
+    public holiday. We store both: `due` (no extension, used for alerts) and
+    `legal_latest` (with s4). See `SOURCES_za_construction_2014.md`.
+  - **Reg 4 has no task.** Rev 4's construction pack makes "Regulation 4
+    notification" P1, but BUILD_PLAN had no task for it; one is now
+    proposed there.
 
 ## Commands
 
@@ -746,6 +765,52 @@ the site diary, settings.
       `InspectionStatus` and the list filter (its bad-status text changed);
       `abandoned_at`, `abandoned_by` and `abandon_reason` on `Inspection`
       and `InspectionSummary`; the `AbandonRequest` type.
+- **Milestone 8, Incidents and the deadline engine** (due Fri 13 Nov): in
+  progress. Full rigour. Plan approved Sun 15 Nov.
+  - **Decisions (15 Nov):**
+    - **Counting:** "within N days" excludes the basis's local date and is
+      due by the end of the last day in the regime's `time_zone`. `due` is
+      never extended; `legal_latest` applies Interpretation Act s4 (a last
+      day on a Sunday or public holiday moves on). Alerts use `due`. Sources
+      in `SOURCES_za_construction_2014.md`. Whether s4 also excludes every
+      Sunday and holiday inside the period is open (only commentary found,
+      reading it our way); `legal_latest` is shown as "at least until".
+    - **COIDA s39** attaches to any injured or dead employee of the
+      organisation, first aid included, from `employer_aware_at`. IOD reuses
+      that deadline.
+    - **GAR 8(3) and s24(3)** are not modelled: clocks always start, with a
+      caveat on the GAR 8(1) deadlines.
+    - **Several types per version**, clocks are the union (Known spec issues).
+    - **Who:** owners, SHE officers and supervisors on their sites submit,
+      amend, take statements and record satisfactions; others 403.
+    - **Weakening a clock** (withdrawing an open report deadline, or moving
+      a report deadline later, satisfied or not) needs an owner or SHE
+      officer and a reason; the deadline records who, when and why.
+    - **A satisfaction belongs to the duty**, not the row: a basis change
+      supersedes the deadline and the satisfaction carries over, judged
+      against the corrected date. An owner or SHE officer can retract a
+      satisfaction with a reason (append-only), which reopens the duty.
+    - **No drafts on the server.** The phone keeps the draft; the server
+      holds submitted versions only. Amending restates the whole version.
+    - **New holidays** arrive by migration with the proclamation and Gazette
+      number. A test fails when the calendar's coverage ends less than two
+      years ahead.
+    - **Archived sites** accept a new incident only if it occurred before
+      the site was archived.
+    - **A death** must be classified with at least one reportable type.
+  - 8.0 (Sun 15 Nov), **done**: sources and regime data.
+    - SOURCES quotes the Public Holidays Act (s2(1), Schedule 1), the two
+      proclaimed days in range (29 May 2024, 4 Nov 2026) and Interpretation
+      Act s4 and s1.
+    - `regime.json` has `time_zone` (validated with `time.LoadLocation`;
+      `time/tzdata` is embedded so the container image doesn't matter).
+    - `DeadlineRule` has `applies_when` (`incident_type`,
+      `employee_injured`, `person_died_after_notice`, `site_work`), each
+      with one fixed basis; `after_satisfied` (the notices a later death
+      follows) and `caveat`. An incident type may only list `incident_type`
+      rules, so reg 3 and reg 4 can never attach to an incident.
+    - Mutation checks: dropping the basis check or the taxonomy check each
+      fails a test.
 
 ## Finding severity
 

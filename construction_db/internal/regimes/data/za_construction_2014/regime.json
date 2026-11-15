@@ -4,5 +4,6 @@
   "edition": "construction",
   "jurisdiction": "ZA",
   "version": "2014",
-  "effective_from": "2014-02-07"
+  "effective_from": "2014-02-07",
+  "time_zone": "Africa/Johannesburg"
 }

@@ -12,16 +12,19 @@ import (
 // in data/ and is checked against its sources.
 const (
 	regimeJSON = `{"code": "test_regime", "name": "Test regime", "edition": "construction",
-		"jurisdiction": "ZA", "version": "1", "effective_from": "2014-02-07"}`
+		"jurisdiction": "ZA", "version": "1", "effective_from": "2014-02-07", "time_zone": "Africa/Johannesburg"}`
 	checklistsJSON = `[{"key": "scaffold_daily", "version": 1, "title": "Scaffold daily check",
 		"cadence": "daily", "source_ref": "test ref",
 		"items": [{"key": "base_plates", "prompt": "Base plates sound?", "response_type": "pass_fail_na"}]}]`
 	deadlinesJSON = `[{"key": "test_rule", "label": "Report it", "kind": "report", "period": 7, "unit": "calendar_days",
-		"direction": "after", "basis": "incident_occurred_at", "source_ref": "test ref"},
+		"direction": "after", "basis": "incident_occurred_at", "applies_when": "incident_type", "source_ref": "test ref"},
 		{"key": "test_now", "label": "Phone it in", "kind": "report", "period": 0, "unit": "immediately",
-		"direction": "after", "basis": "incident_occurred_at", "source_ref": "test ref"},
+		"direction": "after", "basis": "incident_occurred_at", "applies_when": "incident_type", "source_ref": "test ref"},
 		{"key": "test_investigate", "label": "Investigate it", "kind": "investigation", "period": 7, "unit": "calendar_days",
-		"direction": "after", "basis": "incident_occurred_at", "source_ref": "test ref"}]`
+		"direction": "after", "basis": "incident_occurred_at", "applies_when": "incident_type", "source_ref": "test ref"},
+		{"key": "test_death", "label": "Report the death", "kind": "report", "period": 0, "unit": "immediately",
+		"direction": "after", "basis": "person_died_at", "applies_when": "person_died_after_notice",
+		"after_satisfied": ["test_now"], "caveat": "Test caveat", "source_ref": "test ref"}]`
 	taxonomyJSON = `[{"key": "injury", "label": "Injury", "reportable": true,
 		"deadline_rules": ["test_rule", "test_now", "test_investigate"]},
 		{"key": "medical_treatment", "label": "Medical treatment", "reportable": false, "deadline_rules": ["test_investigate"]},
@@ -72,6 +75,7 @@ func TestLoadEmbedded(t *testing.T) {
 		Jurisdiction:  "ZA",
 		Version:       "2014",
 		EffectiveFrom: "2014-02-07",
+		TimeZone:      "Africa/Johannesburg",
 	}
 	if ds.Regime != want {
 		t.Errorf("regime = %+v, want %+v", ds.Regime, want)
@@ -102,8 +106,41 @@ func TestLoadFSValid(t *testing.T) {
 	if ds.Taxonomy[2].DeadlineRules == nil {
 		t.Error("near_miss deadline_rules should be an empty list, not nil")
 	}
-	if len(ds.Deadlines) != 3 || ds.Deadlines[1].Unit != "immediately" || ds.Deadlines[1].Period != 0 {
+	if len(ds.Deadlines) != 4 || ds.Deadlines[1].Unit != "immediately" || ds.Deadlines[1].Period != 0 {
 		t.Errorf("deadlines = %+v", ds.Deadlines)
+	}
+	if d := ds.Deadlines[3]; !slices.Equal(d.AfterSatisfied, []string{"test_now"}) || d.Caveat != "Test caveat" {
+		t.Errorf("death rule = %+v", d)
+	}
+	// Omitted after_satisfied comes back as [], like every other list.
+	if ds.Deadlines[0].AfterSatisfied == nil {
+		t.Error("after_satisfied should be an empty list, not nil")
+	}
+}
+
+// The trigger of each shipped rule is a legal reading (SOURCES, "Readings we
+// chose"), so changing one must be deliberate.
+func TestShippedRuleTriggers(t *testing.T) {
+	reg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	ds, _ := reg.Get("za_construction_2014")
+	want := map[string]string{
+		"ohsa_gar8_1a_written_notice":    AppliesIncidentType,
+		"ohsa_gar8_1b_immediate_notice":  AppliesIncidentType,
+		"ohsa_gar8_2_death_after_notice": AppliesPersonDiedAfterNotice,
+		"ohsa_gar9_2_investigation":      AppliesIncidentType,
+		"coida_s39_employer_report":      AppliesEmployeeInjured,
+		"cr2014_reg4_notification":       AppliesSiteWork,
+		"cr2014_reg3_permit_application": AppliesSiteWork,
+	}
+	got := map[string]string{}
+	for _, d := range ds.Deadlines {
+		got[d.Key] = d.AppliesWhen
+	}
+	if !maps.Equal(got, want) {
+		t.Errorf("applies_when = %v, want %v", got, want)
 	}
 }
 
@@ -264,6 +301,49 @@ func TestLoadFSRejects(t *testing.T) {
 		"reportable with only an investigation": {
 			with(validFS(), taxonomyFile, `[{"key": "injury", "label": "Injury", "reportable": true, "deadline_rules": ["test_investigate"]}]`),
 			`reportable types need at least one deadline rule of kind "report"`,
+		},
+		"missing time zone": {
+			with(validFS(), regimeFile, strings.Replace(regimeJSON, `, "time_zone": "Africa/Johannesburg"`, "", 1)),
+			`time_zone "" must be an IANA time zone`,
+		},
+		"unknown time zone": {
+			with(validFS(), regimeFile, strings.Replace(regimeJSON, "Africa/Johannesburg", "Africa/Joburg", 1)),
+			`time_zone "Africa/Joburg" must be an IANA time zone`,
+		},
+		"server's local time zone": {
+			with(validFS(), regimeFile, strings.Replace(regimeJSON, "Africa/Johannesburg", "Local", 1)),
+			`time_zone "Local" must be an IANA time zone`,
+		},
+		"unknown applies_when": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, `"applies_when": "incident_type"`, `"applies_when": "always"`, 1)),
+			`deadlines[0]: applies_when "always" is not one of employee_injured, incident_type, person_died_after_notice, site_work`,
+		},
+		// An incident-type rule timed from a death would never start: the
+		// incident type supplies only the incident's time.
+		"basis does not match applies_when": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, `"basis": "incident_occurred_at"`, `"basis": "person_died_at"`, 1)),
+			`deadlines[0]: basis must be "incident_occurred_at" when applies_when is "incident_type"`,
+		},
+		"death rule without after_satisfied": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, `"after_satisfied": ["test_now"], `, "", 1)),
+			`deadlines[3]: after_satisfied is required exactly when applies_when is "person_died_after_notice"`,
+		},
+		"after_satisfied on another rule": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON,
+				`"applies_when": "incident_type", "source_ref"`, `"applies_when": "incident_type", "after_satisfied": ["test_now"], "source_ref"`, 1)),
+			`deadlines[0]: after_satisfied is required exactly when applies_when is "person_died_after_notice"`,
+		},
+		"after_satisfied names an investigation": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, `["test_now"]`, `["test_investigate"]`, 1)),
+			`after_satisfied entry "test_investigate" must be a "report" rule with applies_when "incident_type"`,
+		},
+		"after_satisfied names an unknown rule": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, `["test_now"]`, `["no_such_rule"]`, 1)),
+			`after_satisfied entry "no_such_rule" must be a "report" rule`,
+		},
+		"incident type lists a death rule": {
+			with(validFS(), taxonomyFile, `[{"key": "injury", "label": "Injury", "reportable": true, "deadline_rules": ["test_rule", "test_death"]}]`),
+			`deadline_rules entry "test_death" has applies_when "person_died_after_notice"; an incident type may only list "incident_type" rules`,
 		},
 		"report on a non-reportable type": {
 			with(validFS(), taxonomyFile, `[{"key": "near_miss", "label": "Near miss", "reportable": false, "deadline_rules": ["test_rule"]}]`),

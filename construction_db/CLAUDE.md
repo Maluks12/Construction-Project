@@ -865,6 +865,37 @@ the site diary, settings.
     - Mutation checks: all 21 caught, including each layer of a guard on its own
       (the advance trigger disabled inside a rolled-back test) and each
       table's truncate trigger with its neighbours' off.
+  - 8.2b (Sun 15 Nov), **done**: migration 000017, deadlines.
+    - `deadline_duties` (one per incident and rule, for life; holds the
+      current `satisfaction_id`), `deadlines` (each computation),
+      `deadline_satisfactions`, `deadline_satisfaction_retractions`.
+    - **Due values come only from `deadline_due`**, set by the insert
+      trigger; the client's are overwritten. A row must be computed in
+      the incident's latest version, and starts live. One live row per
+      duty (partial unique index).
+    - **Closing** (superseded or withdrawn) happens once, only by the
+      incident's latest version, later than the computing one. The
+      trigger copies who, when and why from that version.
+      `superseded_by` is a deferred FK to a row of the same duty.
+    - **Weakening** (deferred, so the replacement exists): withdrawing an
+      unsatisfied report deadline, or replacing a report deadline with a
+      later due time, satisfied or not, needs the version's submitter to
+      be an owner or SHE officer (`org_members`). The replacement must be
+      computed by the closing version.
+    - **Satisfactions:** against the live row, locked `FOR SHARE` so a
+      concurrent close is seen. Not in the future, not before the basis.
+      One unretracted per duty, held twice: the take trigger's guarded
+      UPDATE, and the duty guard. Retraction: owner or SHE officer
+      (checked after insert, so RLS answers first), the duty's current
+      satisfaction only; it reopens the duty, and the satisfaction stays.
+    - `added_by_satisfaction_id`: set on a row that recording a satisfaction
+      added (GAR 8(2)); the insert trigger requires a satisfaction of the
+      same incident recorded in the same transaction.
+    - `deadlines_affected_by_day(jurisdiction, day)` lists live day-based
+      deadlines whose window includes a day: what a new holiday could
+      move (for the M11 worker).
+    - Mutation checks: all 27 caught. Forced races: two satisfactions of one
+      duty; a satisfaction against a row being withdrawn.
 
 ## Finding severity
 

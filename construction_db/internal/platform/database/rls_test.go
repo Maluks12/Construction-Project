@@ -30,7 +30,21 @@ const (
 	rlsInspB     = "2a000000-0000-0000-0000-00000000000b"
 	rlsIncA      = "2e000000-0000-0000-0000-00000000000a" // version 1: one injured employee, one photo, one statement
 	rlsIncB      = "2e000000-0000-0000-0000-00000000000b"
+	rlsDutyA     = "30000000-0000-0000-0000-00000000000a" // GAR 8(1)(b) on rlsIncA: one live deadline, satisfied once then retracted
+	rlsDutyB     = "30000000-0000-0000-0000-00000000000b"
+	rlsDeadA     = "31000000-0000-0000-0000-00000000000a"
+	rlsDeadB     = "31000000-0000-0000-0000-00000000000b"
 )
+
+// Inserts a live deadline: $1 id, $2 org, $3 site, $4 duty, $5 incident, $6
+// rule, $7 kind, $8 period, $9 unit, $10 basis_at, $11 computed_in_version.
+// due_at and excluded_days are placeholders; the trigger computes them.
+const deadlineSQL = `
+	INSERT INTO deadlines (id, org_id, site_id, duty_id, incident_id, regime_id, rule_key, rule_label, kind, period, unit,
+	                       direction, basis, source_ref, basis_at, time_zone, jurisdiction, due_at, excluded_days, computed_in_version)
+	SELECT $1, $2, $3, $4, $5, id, $6, 'A rule', $7, $8, $9, 'after', 'incident_occurred_at', 'Test ref', $10,
+	       'Africa/Johannesburg', 'ZA', '2000-01-01', '{}', $11
+	FROM regulatory_regimes LIMIT 1`
 
 // What an unfiltered DELETE as tenant A does to a table.
 type deleteRule int
@@ -51,6 +65,10 @@ type rlsTable struct {
 
 // In foreign-key-safe delete order.
 var rlsTables = []rlsTable{
+	{"deadline_satisfaction_retractions", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"deadline_satisfactions", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"deadlines", "org_id", rlsOrgA, rlsOrgB, "closed_as", deleteDenied},
+	{"deadline_duties", "org_id", rlsOrgA, rlsOrgB, "satisfaction_id", deleteDenied},
 	{"witness_statements", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"incident_version_evidence", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"incident_people", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
@@ -110,7 +128,7 @@ var seedOnce = sync.OnceValue(func() error {
 	for _, x := range []string{"a", "b"} {
 		id := func(prefix string) string { return prefix + "000000-0000-0000-0000-00000000000" + x }
 		org, user, site, loc, sess, inv, ev, insp := id("20"), id("21"), id("22"), id("23"), id("24"), id("26"), id("28"), id("2a")
-		inc, stmt := id("2e"), id("2f")
+		inc, stmt, duty, dl, sat := id("2e"), id("2f"), id("30"), id("31"), id("32")
 
 		stmts := []struct {
 			sql  string
@@ -155,6 +173,14 @@ var seedOnce = sync.OnceValue(func() error {
 				[]any{org, site, inc, ev}},
 			{`INSERT INTO witness_statements (id, org_id, site_id, incident_id, witness_name, statement, taken_by, taken_at)
 			  VALUES ($1, $2, $3, $4, 'RLS witness', 'Saw it.', $5, now())`, []any{stmt, org, site, inc, user}},
+			// A duty with its live deadline, satisfied and then retracted.
+			{`INSERT INTO deadline_duties (id, org_id, site_id, incident_id, rule_key) VALUES ($1, $2, $3, $4, 'ohsa_gar8_1b_immediate_notice')`,
+				[]any{duty, org, site, inc}},
+			{deadlineSQL, []any{dl, org, site, duty, inc, "ohsa_gar8_1b_immediate_notice", "report", 0, "immediately", "2026-11-10T10:00:00Z", 1}},
+			{`INSERT INTO deadline_satisfactions (id, org_id, site_id, duty_id, deadline_id, satisfied_at, method, recorded_by)
+			  VALUES ($1, $2, $3, $4, $5, '2026-11-10T10:05:00Z', 'phone', $6)`, []any{sat, org, site, duty, dl, user}},
+			{`INSERT INTO deadline_satisfaction_retractions (satisfaction_id, org_id, site_id, duty_id, retracted_by, reason)
+			  VALUES ($1, $2, $3, $4, $5, 'Recorded on the wrong incident')`, []any{sat, org, site, duty, user}},
 		}
 		for _, s := range stmts {
 			if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
@@ -253,6 +279,15 @@ func TestRLSWrites(t *testing.T) {
 			  VALUES ($1, $2, $3, 1, $4)`, []any{rlsOrgB, rlsSiteB, rlsIncB, rlsEvidenceA}},
 			"witness_statements": {`INSERT INTO witness_statements (id, org_id, site_id, incident_id, witness_name, statement, taken_by, taken_at)
 			  VALUES ('2f000000-0000-0000-0000-0000000000bb', $1, $2, $3, 'W', 'Smuggled.', $4, now())`, []any{rlsOrgB, rlsSiteB, rlsIncB, rlsUserB}},
+			"deadline_duties": {`INSERT INTO deadline_duties (org_id, site_id, incident_id, rule_key) VALUES ($1, $2, $3, 'smuggled')`,
+				[]any{rlsOrgB, rlsSiteB, rlsIncB}},
+			"deadlines": {deadlineSQL, []any{"31000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, rlsDutyB, rlsIncB,
+				"ohsa_gar8_1b_immediate_notice", "report", 0, "immediately", "2026-11-10T10:00:00Z", 1}},
+			"deadline_satisfactions": {`INSERT INTO deadline_satisfactions (id, org_id, site_id, duty_id, deadline_id, satisfied_at, method, recorded_by)
+			  VALUES ('32000000-0000-0000-0000-0000000000bb', $1, $2, $3, $4, '2026-11-10T10:05:00Z', 'phone', $5)`,
+				[]any{rlsOrgB, rlsSiteB, rlsDutyB, rlsDeadB, rlsUserB}},
+			"deadline_satisfaction_retractions": {`INSERT INTO deadline_satisfaction_retractions (satisfaction_id, org_id, site_id, duty_id, retracted_by, reason)
+			  VALUES ('32000000-0000-0000-0000-00000000000b', $1, $2, $3, $4, 'Smuggled')`, []any{rlsOrgB, rlsSiteB, rlsDutyB, rlsUserB}},
 			"inspection_findings": {`INSERT INTO inspection_findings (org_id, site_id, inspection_id, item_key, severity)
 			  VALUES ($1, $2, $3, 'item', 'high')`, []any{rlsOrgB, rlsSiteB, rlsInspB}},
 		}

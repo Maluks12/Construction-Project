@@ -44,6 +44,7 @@ func TestAPIDoc(t *testing.T) {
 	doc.CheckUnion(t, "ResponseType", SupportedResponseTypes)
 	doc.CheckUnion(t, "InspectionStatus", []string{StatusInProgress, StatusCompleted, StatusAbandoned})
 	doc.CheckUnion(t, "Result", []string{ResultPass, ResultFail, ResultNA})
+	doc.CheckUnion(t, "Coverage", Coverages)
 
 	// Every error text the handlers send is quoted in the reference.
 	for _, e := range []error{
@@ -55,7 +56,7 @@ func TestAPIDoc(t *testing.T) {
 		ErrEvidenceNotVerified, ErrNewerAnswer, ErrDifferentAnswer,
 		ErrItemsNotAnswered, ErrFailNeedsPhoto,
 		ErrInspectionAbandoned, ErrCantAbandon, ErrAbandonNeedsLead, ErrBadReason,
-		ErrAnswerInFuture,
+		ErrAnswerInFuture, ErrBadCoverage,
 	} {
 		if quoted := `"` + e.Error() + `"`; !strings.Contains(doc.Text, quoted) {
 			t.Errorf("the reference doesn't quote the error %s", quoted)

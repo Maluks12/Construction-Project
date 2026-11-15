@@ -184,7 +184,7 @@ Abandoning is final, like completing:
 Answering or completing an abandoned inspection is 409
 `"inspection is abandoned"`. Archived sites still accept abandoning.
 
-### `GET /v1/sites/:siteId/findings?severity=&limit=` — a site's findings
+### `GET /v1/sites/:siteId/findings?severity=&coverage=&limit=` — a site's findings
 
 Owner, SHE officer, supervisor. Newest first, then by inspection and
 template order, as `FindingList` (`{"findings": []}` when empty, never
@@ -194,14 +194,19 @@ archived sites.
 
 - `severity` is optional and must be on the scale above. `limit` is
   1–200, default 50. There is no paging yet.
-- 400 `"severity must be low, medium, high or critical"` or `"limit must be
-  1-200"`; 404 `"site not found"`.
+- 400 `"severity must be low, medium, high or critical"`, `"coverage must be unactioned, actioned, waived or superseded"` or `"limit must be 1-200"`;
+  404 `"site not found"`.
 - `corrected_by` is the id of the **completed** correction of the
   finding's inspection, or null. A finding with `corrected_by` set is
   superseded: the correction's findings are the current ones. A correction
   still in progress, or abandoned, supersedes nothing, so it leaves
   `corrected_by` null.
-- Corrective actions for findings come with M9.
+- `coverage` says how the finding is addressed (`docs/api/actions.md`):
+  `actioned` (an action covers it: `covered_by` lists them, its own and any
+  carried from the same item earlier in its correction chain at the same or
+  a higher severity), `waived` (`waiver_id`), `superseded` (it has
+  `corrected_by`), or `unactioned`. The `coverage` filter takes one of those;
+  `coverage=unactioned` is the list of findings still needing an action.
 
 ### `GET /v1/sites/:siteId/inspections?status=&limit=` — list a site's inspections
 
@@ -236,8 +241,8 @@ least severe first.
 | `high` | High | Could cause serious injury or a reportable incident, but not imminently; fix before the affected work continues on the next shift. |
 | `critical` | Critical | Imminent danger of death or serious injury; stop the affected work now and keep it stopped until it is made safe. |
 
-The time hints guide the choice of severity; corrective-action due dates
-come later (M9).
+The time hints guide the choice of severity. A corrective action's default
+due date comes from it too (`docs/api/actions.md`).
 
 ## Across the API
 
@@ -363,7 +368,12 @@ export interface Finding {
   template_title: string;
   prompt: string;
   corrected_by: string | null;
+  coverage: Coverage;
+  covered_by: string[];
+  waiver_id: string | null;
 }
+
+export type Coverage = "unactioned" | "actioned" | "waived" | "superseded";
 
 export interface FindingList {
   findings: Finding[];

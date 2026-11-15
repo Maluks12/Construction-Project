@@ -351,7 +351,7 @@ func TestActionEventRules(t *testing.T) {
 
 	t.Run("cancelling", func(t *testing.T) {
 		no("only an owner or a SHE officer can cancel it", "cancelled", supOnSite2, "Duplicate", state{"cancelled", supOnSite2, "ABC Scaffolding", 0})
-		refusedBatch(t, tx, "23514", "corrective_action_events_cancel_reason",
+		refusedBatch(t, tx, "23514", "corrective_action_events_reason",
 			event(a, seq, "cancelled", rlsUserA, nil, state{"cancelled", supOnSite2, "ABC Scaffolding", 0}))
 		no("changes the status to cancelled, and nothing else", "cancelled", rlsUserA, "Duplicate", state{"cancelled", rlsUserA, "ABC Scaffolding", 0})
 		ok("cancelled", rlsUserA, "Duplicate", state{"cancelled", supOnSite2, "ABC Scaffolding", 0})
@@ -386,29 +386,42 @@ func TestActionsFrozenForEveryRole(t *testing.T) {
 	} {
 		refused(t, tx, "23514", "", sql, rlsActionA)
 	}
-	refuseTruncatesOf(t, tx, "record a new event instead", "corrective_actions", "corrective_action_events")
+	refuseTruncatesOf(t, tx, "record a new event instead", "corrective_actions", "corrective_action_events", "corrective_action_closeouts", "corrective_action_closeout_evidence")
 
 	// corrective_actions_guard on its own: with the advance trigger off
-	// (rolled back with the test), event 2 exists but the header is still
-	// at 1. Only event 2's exact state is accepted.
+	// (rolled back with the test), event 3 exists but the header is still
+	// at 2 (the seed's raise and close-out). Only event 3's exact state is
+	// accepted, and the close-out it awaits stays.
 	must(t, tx, 0, `ALTER TABLE corrective_action_events DISABLE TRIGGER corrective_action_events_advance`)
-	must(t, tx, 1, eventSQL, evID(1), rlsOrgA, rlsSiteA, rlsActionA, 2, "due_changed", rlsUserA, nil, "open", rlsUserA, nil, 0)
+	must(t, tx, 1, eventSQL, evID(1), rlsOrgA, rlsSiteA, rlsActionA, 3, "due_changed", rlsUserA, nil, "awaiting_verification", rlsUserA, nil, 0)
 	for _, sql := range []string{
-		`UPDATE corrective_actions SET event_count = 2 WHERE id = $1`,
-		`UPDATE corrective_actions SET event_count = 2, due_on = due_on - 1 WHERE id = $1`,
-		`UPDATE corrective_actions SET event_count = 2, due_on = due_on - 1, due_at = due_at - interval '1 day', status = 'cancelled' WHERE id = $1`,
-		`UPDATE corrective_actions SET event_count = 3, due_on = due_on - 1, due_at = due_at - interval '1 day' WHERE id = $1`,
-		`UPDATE corrective_actions SET event_count = 2, due_on = due_on - 1, due_at = action_due_at(due_on - 1, time_zone), title = 'x' WHERE id = $1`,
+		`UPDATE corrective_actions SET event_count = 3 WHERE id = $1`,
+		`UPDATE corrective_actions SET event_count = 3, due_on = due_on - 1 WHERE id = $1`,
+		`UPDATE corrective_actions SET event_count = 3, due_on = due_on - 1, due_at = due_at - interval '1 day', status = 'cancelled' WHERE id = $1`,
+		`UPDATE corrective_actions SET event_count = 4, due_on = due_on - 1, due_at = due_at - interval '1 day' WHERE id = $1`,
+		`UPDATE corrective_actions SET event_count = 3, due_on = due_on - 1, due_at = action_due_at(due_on - 1, time_zone), title = 'x' WHERE id = $1`,
+		`UPDATE corrective_actions SET event_count = 3, due_on = due_on - 1, due_at = action_due_at(due_on - 1, time_zone), awaiting_since = now() WHERE id = $1`,
+		`UPDATE corrective_actions SET event_count = 3, due_on = due_on - 1, due_at = action_due_at(due_on - 1, time_zone),
+		        status = 'open', pending_closeout_id = NULL, awaiting_since = NULL WHERE id = $1`,
 	} {
 		refused(t, tx, "23514", "an action changes only by a new event", sql, rlsActionA)
 	}
-	must(t, tx, 1, `UPDATE corrective_actions SET event_count = 2, due_on = due_on - 1, due_at = action_due_at(due_on - 1, time_zone) WHERE id = $1`, rlsActionA)
+	must(t, tx, 1, `UPDATE corrective_actions SET event_count = 3, due_on = due_on - 1, due_at = action_due_at(due_on - 1, time_zone) WHERE id = $1`, rlsActionA)
 
 	// The advance trigger on its own: with the insert trigger off, an event
 	// that skips a number still fails, on the header's sequence.
 	must(t, tx, 0, `ALTER TABLE corrective_action_events ENABLE TRIGGER corrective_action_events_advance`)
 	must(t, tx, 0, `ALTER TABLE corrective_action_events DISABLE TRIGGER corrective_action_events_insert`)
-	refused(t, tx, "23514", "event 4 is not the next event", eventSQL, evID(2), rlsOrgA, rlsSiteA, rlsActionA, 4, "due_changed", rlsUserA, nil, "open", rlsUserA, nil, 0)
+	refused(t, tx, "23514", "event 5 is not the next event", eventSQL, evID(2), rlsOrgA, rlsSiteA, rlsActionA, 5, "due_changed", rlsUserA, nil, "awaiting_verification", rlsUserA, nil, 0)
+
+	// The once-only indexes on their own, with both event triggers off.
+	must(t, tx, 0, `ALTER TABLE corrective_action_events DISABLE TRIGGER corrective_action_events_advance`)
+	refused(t, tx, "23505", "corrective_action_events_submitted_once", closeoutEventSQL, evID(3), rlsOrgA, rlsSiteA, rlsActionA, 4,
+		"closeout_submitted", rlsUserA, nil, "awaiting_verification", rlsUserA, nil, 0, "37000000-0000-0000-0000-00000000000a", nil)
+	must(t, tx, 1, closeoutEventSQL, evID(4), rlsOrgA, rlsSiteA, rlsActionA, 4,
+		"verified", rlsUserA, nil, "closed", rlsUserA, nil, 0, "37000000-0000-0000-0000-00000000000a", true)
+	refused(t, tx, "23505", "corrective_action_events_decided_once", closeoutEventSQL, evID(5), rlsOrgA, rlsSiteA, rlsActionA, 5,
+		"rejected", rlsUserA, "No", "open", rlsUserA, nil, 0, "37000000-0000-0000-0000-00000000000a", nil)
 }
 
 // refuseTruncatesOf is refuseTruncates for tables whose trigger says msg.

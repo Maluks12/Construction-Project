@@ -4,6 +4,10 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+
+	// time_zone is validated with time.LoadLocation; embedding the zone
+	// database means that never depends on the host or container image.
+	_ "time/tzdata"
 )
 
 // The data sets are compiled into the binary, so the API can never start with

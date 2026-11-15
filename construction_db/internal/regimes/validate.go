@@ -37,6 +37,23 @@ var (
 	// silently never start; a fixed list catches that at load time. Adding a
 	// basis here means the engine must learn to supply it too.
 	bases = set("incident_occurred_at", "person_died_at", "employer_notified_at", "work_starts_at")
+
+	// What starts each kind of clock fixes its basis, so a rule can't be
+	// attached one way and timed from an event that trigger never supplies.
+	appliesWhenBasis = map[string]string{
+		AppliesIncidentType:          "incident_occurred_at",
+		AppliesEmployeeInjured:       "employer_notified_at",
+		AppliesPersonDiedAfterNotice: "person_died_at",
+		AppliesSiteWork:              "work_starts_at",
+	}
+)
+
+// The values of DeadlineRule.AppliesWhen.
+const (
+	AppliesIncidentType          = "incident_type"
+	AppliesEmployeeInjured       = "employee_injured"
+	AppliesPersonDiedAfterNotice = "person_died_after_notice"
+	AppliesSiteWork              = "site_work"
 )
 
 const (
@@ -93,6 +110,10 @@ func (ds *DataSet) validate(dir string) error {
 	if _, err := time.Parse(time.DateOnly, r.EffectiveFrom); err != nil {
 		add(fileRegime, "regime: effective_from %q must be YYYY-MM-DD", r.EffectiveFrom)
 	}
+	// LoadLocation accepts "" and "Local", which would mean the server's zone.
+	if _, err := time.LoadLocation(r.TimeZone); err != nil || r.TimeZone == "" || r.TimeZone == "Local" {
+		add(fileRegime, "regime: time_zone %q must be an IANA time zone such as Africa/Johannesburg", r.TimeZone)
+	}
 
 	// A key appears once per version: versions are append-only, so every
 	// shipped one stays. A key's versions sit together, oldest first.
@@ -137,10 +158,32 @@ func (ds *DataSet) validate(dir string) error {
 
 	seenDeadlines := map[string]bool{}
 	kindOf := map[string]string{}
+	appliesOf := map[string]string{}
+	for _, d := range ds.Deadlines {
+		appliesOf[d.Key] = d.AppliesWhen
+	}
 	for i, d := range ds.Deadlines {
 		where := fmt.Sprintf("deadlines[%d]", i)
 		key(fileDeadlines, where, d.Key, seenDeadlines)
 		kindOf[d.Key] = d.Kind
+		if basis, ok := appliesWhenBasis[d.AppliesWhen]; !ok {
+			add(fileDeadlines, "%s: applies_when %q is not one of %s", where, d.AppliesWhen,
+				strings.Join(slices.Sorted(maps.Keys(appliesWhenBasis)), ", "))
+		} else if d.Basis != basis {
+			add(fileDeadlines, "%s: basis must be %q when applies_when is %q", where, basis, d.AppliesWhen)
+		}
+		// A death after notice needs to know which notices count, and those
+		// must be incident reports the engine can see satisfied.
+		if (d.AppliesWhen == AppliesPersonDiedAfterNotice) != (len(d.AfterSatisfied) > 0) {
+			add(fileDeadlines, "%s: after_satisfied is required exactly when applies_when is %q", where, AppliesPersonDiedAfterNotice)
+		}
+		for _, r := range d.AfterSatisfied {
+			if appliesOf[r] != AppliesIncidentType || !slices.ContainsFunc(ds.Deadlines, func(o DeadlineRule) bool {
+				return o.Key == r && o.Kind == kindReport
+			}) {
+				add(fileDeadlines, "%s: after_satisfied entry %q must be a %q rule with applies_when %q", where, r, kindReport, AppliesIncidentType)
+			}
+		}
 		need(fileDeadlines, where, "label", d.Label)
 		oneOf(fileDeadlines, where, "kind", d.Kind, kinds)
 		switch {
@@ -173,6 +216,9 @@ func (ds *DataSet) validate(dir string) error {
 				add(fileTaxonomy, "%s: deadline_rules lists %q twice", where, r)
 			case !ok:
 				add(fileTaxonomy, "%s: deadline_rules entry %q is not a deadline rule in %s", where, r, fileDeadlines)
+			case appliesOf[r] != AppliesIncidentType:
+				add(fileTaxonomy, "%s: deadline_rules entry %q has applies_when %q; an incident type may only list %q rules",
+					where, r, appliesOf[r], AppliesIncidentType)
 			case kind == kindReport:
 				hasReport = true
 			}

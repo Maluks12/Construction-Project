@@ -7,6 +7,8 @@
     "unit": "calendar_days",
     "direction": "after",
     "basis": "incident_occurred_at",
+    "applies_when": "incident_type",
+    "caveat": "Exclusions may apply (OHSA s24(3), e.g. a traffic accident on a public road); this deadline is shown regardless.",
     "source_ref": "General Administrative Regulations, 2003, reg 8(1)(a); OHSA s24(1)(a)"
   },
   {
@@ -17,6 +19,8 @@
     "unit": "immediately",
     "direction": "after",
     "basis": "incident_occurred_at",
+    "applies_when": "incident_type",
+    "caveat": "Exclusions may apply (OHSA s24(3), e.g. a traffic accident on a public road); this deadline is shown regardless.",
     "source_ref": "General Administrative Regulations, 2003, reg 8(1)(b); OHSA s24(1)"
   },
   {
@@ -27,6 +31,8 @@
     "unit": "immediately",
     "direction": "after",
     "basis": "person_died_at",
+    "applies_when": "person_died_after_notice",
+    "after_satisfied": ["ohsa_gar8_1a_written_notice", "ohsa_gar8_1b_immediate_notice"],
     "source_ref": "General Administrative Regulations, 2003, reg 8(2)"
   },
   {
@@ -37,6 +43,7 @@
     "unit": "calendar_days",
     "direction": "after",
     "basis": "incident_occurred_at",
+    "applies_when": "incident_type",
     "source_ref": "General Administrative Regulations, 2003, reg 9(2)"
   },
   {
@@ -47,6 +54,7 @@
     "unit": "calendar_days",
     "direction": "after",
     "basis": "employer_notified_at",
+    "applies_when": "employee_injured",
     "source_ref": "COIDA s39(1)"
   },
   {
@@ -57,6 +65,7 @@
     "unit": "calendar_days",
     "direction": "before",
     "basis": "work_starts_at",
+    "applies_when": "site_work",
     "source_ref": "Construction Regulations, 2014, reg 4(1) and 4(2)"
   },
   {
@@ -67,6 +76,7 @@
     "unit": "calendar_days",
     "direction": "before",
     "basis": "work_starts_at",
+    "applies_when": "site_work",
     "source_ref": "Construction Regulations, 2014, reg 3(1)"
   }
 ]

@@ -72,6 +72,25 @@ Known spec issues:
     - organisation-specific templates and the custom builder (A.5, P1);
     - housekeeping "scored by zone" (§3.3);
     - response types other than pass/fail/N-A.
+- Found in M8 (Nov 2026):
+  - **Several incident types per version.** Rev 4 §5.3 gives `incidents` one
+    `taxonomy_code`. One event can fall under several paragraphs of OHSA
+    s24(1), e.g. a pressure release (s24(1)(c)(ii), forthwith notice only)
+    that knocks someone unconscious (s24(1)(a), which also needs the 7-day
+    written notice). A single type would drop a statutory clock when the
+    wrong one is picked. So a version carries `taxonomy_codes` (one or
+    more), and its clocks are the union of their rules (decided 15 Nov).
+  - **Typed deadline subjects.** Rev 4 §5.3's `deadlines (subject_type,
+    subject_id, ...)` can't have a foreign key. `deadlines` has one nullable
+    foreign-key column per subject (`incident_id` now; site work and IOD
+    claims later) with exactly one set.
+  - **Counting days.** No source in the regime says how "within seven days"
+    counts. Interpretation Act s4 does, and extends a last day on a Sunday or
+    public holiday. We store both: `due` (no extension, used for alerts) and
+    `legal_latest` (with s4). See `SOURCES_za_construction_2014.md`.
+  - **Reg 4 has no task.** Rev 4's construction pack makes "Regulation 4
+    notification" P1, but BUILD_PLAN had no task for it; one is now
+    proposed there.
 
 ## Commands
 
@@ -148,6 +167,12 @@ both errors.
   - `DataSet.Latest()` is what the catalogue offers;
     `DataSet.Checklist(key, version)` finds any shipped version for the
     inspection engine.
+- `internal/core/deadlines`: the deadline engine (Rev 4 §2.3). Pure Go
+  rule selection and planning (`engine.go`), storage (`repo.go`). Due
+  dates are computed only by Postgres's `deadline_due` (000015), from the
+  `public_holidays` table. Tests here start their own Postgres.
+- `internal/core/incidents`: the incident register, witness statements,
+  and the deadline endpoints (`docs/api/incidents.md`).
 - `internal/core/checklists`: the checklist engine (Rev 4 §2.4).
   `GET /v1/sites/:id/checklists` returns the site regime's templates
   (through `sites.Service.Regime`, never hardcoded) and the severity scale.
@@ -377,26 +402,27 @@ the site diary, settings.
   step changes the plan or a decision, update this section.
 - Foundation (M4, M5) due Sun 1 Nov. Safety core (M6–M12) due Sun 22 Nov,
   which is the checkpoint.
-- **Forecast (Sun 15 Nov, revised after M7 finished that day; no cuts
-  decided, full scope stays).** Sat 5 Dec is not reachable. The dates are
-  recomputed from M8 starting Mon 16 Nov, with the per-milestone estimates
-  unchanged. Reasons and risks are in `docs/BUILD_PLAN.md` ("Forecast").
+- **Forecast (Sun 15 Nov, revised after M7 and again after M8 finished
+  that day; no cuts decided, full scope stays).** Sat 5 Dec is not
+  reachable. The dates are recomputed from M9 starting Mon 16 Nov, with the
+  per-milestone estimates unchanged; REG4 is not scheduled yet. Reasons
+  and risks are in `docs/BUILD_PLAN.md` ("Forecast").
 
   | Milestone | Rigour | Forecast finish | Was due |
   |---|---|---|---|
   | M7 Inspections & checklists | full | **done Sun 15 Nov** | Tue 10 Nov |
-  | M8 Incidents (with the deadline engine) | full | Sat 21 Nov | Fri 13 Nov |
-  | M9 Corrective actions | full | Tue 24 Nov | Sun 15 Nov |
-  | M10 Toolbox talks & site diary | light | Thu 26 Nov | Tue 17 Nov |
-  | M11 People & documents | light | Mon 30 Nov | Fri 20 Nov |
-  | M12 Reports & audit pack | full | Thu 3 Dec | Sun 22 Nov |
-  | SYNC Offline sync API | full | Mon 7 Dec | Wed 25 Nov |
-  | BILL Billing | light; webhooks full | Thu 10 Dec | Fri 27 Nov |
-  | DEPLOY | – | Sat 12 Dec | Sat 28 Nov |
-  | IOD Injury on duty | full | Tue 15 Dec | Tue 1 Dec |
-  | JBCC Delay claims | full | Thu 17 Dec | Wed 2 Dec |
-  | PC Principal contractor tier | full | Sat 19 Dec | Fri 4 Dec |
-  | V1 Release | – | **Sun 20 Dec** | Sat 5 Dec |
+  | M8 Incidents (with the deadline engine) | full | **done Sun 15 Nov** | Fri 13 Nov |
+  | M9 Corrective actions | full | Wed 18 Nov | Sun 15 Nov |
+  | M10 Toolbox talks & site diary | light | Fri 20 Nov | Tue 17 Nov |
+  | M11 People & documents | light | Tue 24 Nov | Fri 20 Nov |
+  | M12 Reports & audit pack | full | Fri 27 Nov | Sun 22 Nov |
+  | SYNC Offline sync API | full | Tue 1 Dec | Wed 25 Nov |
+  | BILL Billing | light; webhooks full | Fri 4 Dec | Fri 27 Nov |
+  | DEPLOY | – | Sun 6 Dec | Sat 28 Nov |
+  | IOD Injury on duty | full | Wed 9 Dec | Tue 1 Dec |
+  | JBCC Delay claims | full | Fri 11 Dec | Wed 2 Dec |
+  | PC Principal contractor tier | full | Sun 13 Dec | Fri 4 Dec |
+  | V1 Release | – | **Mon 14 Dec** | Sat 5 Dec |
 - **Done:** migrations 000001–000007; auth (email and mobile login, refresh
   rotation with reuse detection, sessions); sites, site members, supervisor
   scoping, locations; invites (send, list, revoke, preview, accept);
@@ -746,6 +772,213 @@ the site diary, settings.
       `InspectionStatus` and the list filter (its bad-status text changed);
       `abandoned_at`, `abandoned_by` and `abandon_reason` on `Inspection`
       and `InspectionSummary`; the `AbandonRequest` type.
+- **Milestone 8, Incidents and the deadline engine** (due Fri 13 Nov):
+  **done Sun 15 Nov**, two days late against the due date, six days
+  ahead of the forecast. Full rigour. Plan approved Sun 15 Nov.
+  - **Decisions (15 Nov):**
+    - **Counting:** "within N days" excludes the basis's local date and is
+      due by the end of the last day in the regime's `time_zone`. `due` is
+      never extended; `legal_latest` applies Interpretation Act s4 (a last
+      day on a Sunday or public holiday moves on). Alerts use `due`. Sources
+      in `SOURCES_za_construction_2014.md`. Whether s4 also excludes every
+      Sunday and holiday inside the period is open (only commentary found,
+      reading it our way); `legal_latest` is shown as "at least until".
+    - **COIDA s39** attaches to any injured or dead employee of the
+      organisation, first aid included, from `employer_aware_at`. IOD reuses
+      that deadline.
+    - **GAR 8(3) and s24(3)** are not modelled: clocks always start, with a
+      caveat on the GAR 8(1) deadlines.
+    - **Several types per version**, clocks are the union (Known spec issues).
+    - **Who:** owners, SHE officers and supervisors on their sites submit,
+      amend, take statements and record satisfactions; others 403.
+    - **Weakening a clock** (withdrawing an open report deadline, or moving
+      a report deadline later, satisfied or not) needs an owner or SHE
+      officer and a reason; the deadline records who, when and why.
+    - **A satisfaction belongs to the duty**, not the row: a basis change
+      supersedes the deadline and the satisfaction carries over, judged
+      against the corrected date. An owner or SHE officer can retract a
+      satisfaction with a reason (append-only), which reopens the duty.
+    - **No drafts on the server.** The phone keeps the draft; the server
+      holds submitted versions only. Amending restates the whole version.
+    - **New holidays** arrive by migration with the proclamation and Gazette
+      number. A test fails when the calendar's coverage ends less than two
+      years ahead.
+    - **Archived sites** accept a new incident only if it occurred before
+      the site was archived.
+    - **A death** must be classified with at least one reportable type.
+  - 8.0 (Sun 15 Nov), **done**: sources and regime data.
+    - SOURCES quotes the Public Holidays Act (s2(1), Schedule 1), the two
+      proclaimed days in range (29 May 2024, 4 Nov 2026) and Interpretation
+      Act s4 and s1.
+    - `regime.json` has `time_zone` (validated with `time.LoadLocation`;
+      `time/tzdata` is embedded so the container image doesn't matter).
+    - `DeadlineRule` has `applies_when` (`incident_type`,
+      `employee_injured`, `person_died_after_notice`, `site_work`), each
+      with one fixed basis; `after_satisfied` (the notices a later death
+      follows) and `caveat`. An incident type may only list `incident_type`
+      rules, so reg 3 and reg 4 can never attach to an incident.
+    - Mutation checks: dropping the basis check or the taxonomy check each
+      fails a test.
+  - 8.1 (Sun 15 Nov), **done**: migration 000015, the holiday calendar.
+    - `public_holidays` holds one row per day off from 2024 to 2030: 84
+      statutory, 8 Sunday substitutes, 2 proclaimed. `kind` and
+      `source_ref` say why. A substitute must be a Monday (CHECK).
+      `holiday_calendar_coverage` says which dates are complete.
+    - Both are read-only to the app and on the RLS allowlist (no `org_id`).
+    - `deadline_due(basis_at, period, unit, direction, time_zone,
+      jurisdiction)` is the engine's only date arithmetic. It returns
+      `due_at`, `due_on`, `excluded_days`, `legal_latest_on` and
+      `legal_latest_at`. A day outside the coverage raises `22000`, never
+      "no holiday", with one message for a day before it (an old incident:
+      the API answers 400) and another for a day after it (the calendar
+      needs extending: 500). An unknown zone raises `22023`.
+    - Tests in `internal/core/deadlines/calendar_test.go`:
+      - 15 worked examples covering each unit and direction, the local
+        date, Christmas, a Saturday, a Sunday, the proclaimed 4 Nov 2026,
+        a Sunday holiday with its Monday, Easter, and both reg 3/4
+        parameter sets.
+      - `TestHolidayCalendarFollowsTheAct` regenerates Schedule 1, Easter
+        and the Sunday rule in Go, and compares them with the table.
+      - `TestHolidayCalendarCoverageAhead` fails when coverage ends less
+        than two years from now.
+    - Mutation checks: each of 10 is caught (first-day exclusion, Sunday,
+      Saturday, holiday extension, coverage, working days, local date, a
+      missing substitute row, the grant, the Monday CHECK). Up, down and
+      up again verified on a throwaway Postgres.
+  - 8.2a (Sun 15 Nov), **done**: migration 000016, incidents.
+    - `incidents` (header: never changes except `latest_version`),
+      `incident_versions`, `incident_people`, `incident_version_evidence`,
+      `witness_statements`. All append-only for every role; TRUNCATE
+      refused; RLS forced.
+    - **Version order:** the version's AFTER INSERT trigger advances
+      `incidents.latest_version` with `UPDATE … WHERE latest_version =
+      version - 1`. A gap or a stale number fails. Two submissions of
+      the same number queue on the primary key and the second gets 23505.
+      A v3 while v2 is open fails at once: Postgres skips the row (its
+      committed `latest_version` doesn't match) without waiting.
+    - **Frozen at commit:** deferred constraint triggers check
+      `people_count`, `evidence_count`, `employer_aware_at` for an
+      injured employee, and that a new incident has a version. A row
+      added to a committed version breaks its count.
+    - Also enforced: `taxonomy_codes` 1+ distinct keys; `amend_reason`
+      exactly when version > 1; times not ahead of the server by more
+      than 5 minutes; `died_at` not before the incident; a death is an
+      injury; no incident on an archived site dated after it was
+      archived; photos verified and on the site (FKs); one correction per
+      statement, on the same incident. `submitted_at`, `recorded_at`,
+      `created_at` are the server's.
+    - Tests: `internal/platform/database/incidents_test.go`, including
+      forced races. **`SET CONSTRAINTS ALL IMMEDIATE` outlives a savepoint
+      rollback**: the test helper resets it.
+    - Mutation checks: all 21 caught, including each layer of a guard on its own
+      (the advance trigger disabled inside a rolled-back test) and each
+      table's truncate trigger with its neighbours' off.
+  - 8.2b (Sun 15 Nov), **done**: migration 000017, deadlines.
+    - `deadline_duties` (one per incident and rule, for life; holds the
+      current `satisfaction_id`), `deadlines` (each computation),
+      `deadline_satisfactions`, `deadline_satisfaction_retractions`.
+    - **Due values come only from `deadline_due`**, set by the insert
+      trigger; the client's are overwritten. A row must be computed in
+      the incident's latest version, and starts live. One live row per
+      duty (partial unique index).
+    - **Closing** (superseded or withdrawn) happens once, only by the
+      incident's latest version, later than the computing one. The
+      trigger copies who, when and why from that version.
+      `superseded_by` is a deferred FK to a row of the same duty.
+    - **Weakening** (deferred, so the replacement exists): withdrawing an
+      unsatisfied report deadline, or replacing a report deadline with a
+      later due time, satisfied or not, needs the version's submitter to
+      be an owner or SHE officer (`org_members`). The replacement must be
+      computed by the closing version.
+    - **Satisfactions:** against the live row, locked `FOR SHARE` so a
+      concurrent close is seen. Not in the future, not before the basis.
+      One unretracted per duty, held twice: the take trigger's guarded
+      UPDATE, and the duty guard. Retraction: owner or SHE officer
+      (checked after insert, so RLS answers first), the duty's current
+      satisfaction only; it reopens the duty, and the satisfaction stays.
+    - `added_by_satisfaction_id`: set on a row that recording a satisfaction
+      added (GAR 8(2)); the insert trigger requires a satisfaction of the
+      same incident recorded in the same transaction.
+    - `deadlines_affected_by_day(jurisdiction, day)` lists live day-based
+      deadlines whose window includes a day: what a new holiday could
+      move (for the M11 worker).
+    - Mutation checks: all 27 caught. Forced races: two satisfactions of one
+      duty; a satisfaction against a row being withdrawn.
+  - 8.3 (Sun 15 Nov), **done**: `internal/core/deadlines`.
+    - `Applicable(ds, facts, duties)` reads `applies_when` (union of the
+      types' rules; COIDA for an injured or dead employee, from
+      `employer_aware_at`; GAR 8(2) for a death later than a met GAR 8(1)
+      notice, from the earliest such death; never `site_work`).
+    - `Plan(clocks, duties)`: carry (same basis at microseconds),
+      supersede (new basis), withdraw, add (a new duty, or one withdrawn
+      before, which keeps its satisfaction).
+    - `State(...)`: open, due_now, overdue, satisfied, satisfied_late,
+      superseded, withdrawn. A forthwith duty is met by any satisfaction.
+    - `repo.go` stores plans (`Apply`) and reads rows with the duty's
+      current satisfaction.
+  - 8.4–8.6 (Sun 15 Nov), **done**: `internal/core/incidents`, endpoints
+    in `docs/api/incidents.md`.
+    - **Submit** `PUT …/incidents/:id/versions/:n`. Order of checks: site
+      scope, then an identical repeat (200, before anything else, so a
+      retry always succeeds), then not-found / not-next / regime, then
+      archived, types, photos, then the plan. A non-lead's weakening plan
+      is refused before writing (403), with `deadline_due` used to compare
+      due times. An amendment locks the incident row (`FOR NO KEY UPDATE`,
+      the lock a version insert takes) before reading its deadlines, and
+      so does a satisfaction, so the two queue. A version 1 that loses the
+      race on the incident's primary key retries once (repeat or 409).
+    - **Get, register** (`?type=&reportable=&open_deadlines=&limit=`),
+      **witness statements**, **site deadlines** (`?state=`), **deadline
+      detail**, **satisfy** (any row of the duty; recorded against the
+      live one; re-evaluates the latest version and adds new clocks, i.e.
+      GAR 8(2) when the call is recorded after the death; an identical
+      repeat answers with the duty's live row), **retract**. A satisfaction
+      shows `recorded_after_due` when it was in time but recorded after
+      the due time (an offline phone); it isn't refused.
+    - Deadline endpoints live in the incidents package for now: every
+      deadline's facts come from an incident. `internal/core/deadlines`
+      stays regime-agnostic.
+    - Tests: `internal/app/incidents_test.go`, 14 tests, including your
+      change 1 (a call on day 6, `occurred_at` corrected 2 days earlier:
+      satisfied late), a downgrade refused for a supervisor and allowed for
+      an owner, GAR 8(2) both ways, and a forced lost race (repeat and
+      conflict). Mutation checks on the API's own checks are caught.
+    - **Contract change:** eight new endpoints and their types (see
+      `docs/api/m8-handover.md`).
+  - 8.7 (Sun 15 Nov), **done**: `docs/api/incidents.md` with `TestAPIDoc`
+    (every error text, every state, and the incident-type table against
+    the regime data); `docs/api/m8-handover.md` for the frontend.
+    - **End-to-end walk** on the real API, Postgres and MinIO (a separate
+      compose project, `-p siteproof-m8walk`, removed afterwards): sign
+      up and invite a supervisor → photo to MinIO and sealed → near miss
+      (retry 200) → injury 9 days ago (COIDA and investigation overdue
+      when computed) → reclassified to 14 days off (written notice added)
+      → loss of a limb today (due end of Sun 22 Nov, legal latest Mon 23
+      Nov) → forthwith call recorded → death after the call (GAR 8(2)
+      added) → supervisor's downgrade 403 → owner's downgrade withdraws 4,
+      kept with who, when and why → statement with the photo → register
+      and overdue list → logged photo view. The script is not in the repo.
+    - Making `time_zone` required meant adding it to the in-memory test
+      regimes in `internal/app/regime_test.go`.
+    - One API check is deliberately redundant: refusing a second
+      correction of a witness statement. Without it the unique constraint
+      gives the same 409 (its mutation survives; the constraint's is
+      caught in 8.2a). Likewise the weakening and archived-site checks
+      have database twins that answer the same.
+  - Review fixes (Sun 15 Nov), each in the step it belongs to:
+    - **Satisfy against Submit race** (a 500): both lock the incident; two
+      forced tests (`TestSatisfactionAndAmendmentQueue`,
+      `TestAmendmentWaitsForSatisfaction`) stop one request with a held
+      lock while the other arrives.
+    - **Incident before the calendar** (a 500): 400 with its own text,
+      checked against `holiday_calendar_coverage`.
+    - `recorded_after_due`; a repeated satisfaction answers with the live
+      row; rows added by a satisfaction aren't in a version's `changes`.
+    - Docs: retracting a GAR 8(1) satisfaction means the next amendment
+      withdraws GAR 8(2) and needs a lead (also tested); the s4 open
+      question in SOURCES; the forecast recomputed (v1 Mon 14 Dec).
+    - Mutation checks: 5 of 5 caught (each lock, the 400 mapping, the
+      distinct SQL message, the before-calendar check).
 
 ## Finding severity
 

@@ -12,6 +12,7 @@ import (
 	"construction_db/internal/core/checklists"
 	"construction_db/internal/core/edition"
 	"construction_db/internal/core/evidence"
+	"construction_db/internal/core/incidents"
 	"construction_db/internal/core/invites"
 	"construction_db/internal/core/sites"
 	"construction_db/internal/platform/health"
@@ -62,6 +63,7 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	evidence.Register(router, evidenceSvc, authSvc)
 
 	checklists.Register(router, checklists.NewService(pool, sitesSvc), authSvc)
+	incidents.Register(router, incidents.NewService(pool, sitesSvc), authSvc)
 
 	editionRoutes := router.Group("/v1/" + ed.Name())
 	editionRoutes.Use(auth.RequireAuth(authSvc))

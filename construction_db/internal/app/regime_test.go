@@ -172,7 +172,7 @@ func regimeFS(codes ...string) fstest.MapFS {
 		fsys[code+"/regime.json"] = &fstest.MapFile{Data: []byte(`{"code": "` + code + `", "name": "Test",
 			"edition": "construction", "jurisdiction": "ZA", "version": "1", "effective_from": "2020-01-01",
 			"time_zone": "Africa/Johannesburg"}`)}
-		for _, f := range []string{"checklists.json", "deadlines.json", "taxonomies.json", "vocabulary.json"} {
+		for _, f := range []string{"checklists.json", "deadlines.json", "taxonomies.json", "vocabulary.json", "toolbox_topics.json"} {
 			fsys[code+"/"+f] = &fstest.MapFile{Data: []byte("[]")}
 		}
 	}

@@ -1,0 +1,11 @@
+[
+  {"key": "fall_protection", "title": "Working at height: the fall protection plan", "source_ref": "CR 2014 reg 10"},
+  {"key": "excavations", "title": "Excavations: supervision and ground stability", "source_ref": "CR 2014 reg 13"},
+  {"key": "scaffolding", "title": "Scaffolding: competent erection and inspection", "source_ref": "CR 2014 reg 16"},
+  {"key": "mobile_plant", "title": "Construction vehicles and mobile plant", "source_ref": "CR 2014 reg 23"},
+  {"key": "electrical_safety", "title": "Electrical cables, installations and machinery on site", "source_ref": "CR 2014 reg 24"},
+  {"key": "flammable_liquids", "title": "Using and storing flammable liquids", "source_ref": "CR 2014 reg 25"},
+  {"key": "housekeeping", "title": "Housekeeping: storage, waste and clear access", "source_ref": "CR 2014 reg 27"},
+  {"key": "stacking_storage", "title": "Stacking and storage of materials", "source_ref": "CR 2014 reg 28"},
+  {"key": "fire_precautions", "title": "Fire precautions on site", "source_ref": "CR 2014 reg 29"}
+]

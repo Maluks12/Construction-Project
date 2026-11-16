@@ -244,6 +244,42 @@ item's `source_ref`, and each template's `source_ref` is the inspection duty.
 Event-triggered inspections (after blasting, after rain, before and after a
 pour) start the same templates ad hoc. M7 handles scheduling.
 
+## Toolbox topics (`toolbox_topics.json`, M10)
+
+Read on **16 Nov 2026** from the same CR 2014 copy. CR 2014 doesn't mention
+toolbox talks; each topic is a subject a talk covers, and its `source_ref` is
+the regulation that sets the duty the talk is about. The quote is the
+regulation's heading and the start of its first duty. A talk stores the topic's
+key and its own title, so a later wording fix never alters a past talk.
+
+| key | source_ref | CR 2014 |
+|---|---|---|
+| `fall_protection` | reg 10 | "10. Fall protection (1) A contractor must - (a) designate a competent person to be responsible for the preparation of a fall protection plan" |
+| `excavations` | reg 13 | "13. Excavation (1) A contractor must - (a) ensure that all excavation work is carried out under the supervision of a competent person who has been appointed in writing for that purpose; and (b) evaluate, as far as is reasonably practicable, the stability of the ground before excavation work begins." |
+| `scaffolding` | reg 16 | "16. Scaffolding (1) A contractor must appoint a competent person in writing who must ensure that all scaffolding work operations are carried out under his or her supervision and that all scaffold erectors, team leaders and inspectors are competent to carry out their work." |
+| `mobile_plant` | reg 23 | "23. Construction vehicles and mobile plant (1) A contractor must ensure that all construction vehicles and mobile plant - (a) are of an acceptable design and construction; (b) are maintained in a good working order" |
+| `electrical_safety` | reg 24 | "24. Electrical installations and machinery on construction sites … (a) before construction commences and during the progress thereof, adequate steps are taken to ascertain the presence of and guard against danger to workers from any electrical cable or apparatus which is under, over or on the site" |
+| `flammable_liquids` | reg 25 | "25. Use and temporary storage of flammable liquids on construction sites A contactor must, in addition to compliance with the provisions for the use and storage of flammable liquids in the General Safety Regulations, 2003, ensure that -" ("contactor" as printed) |
+| `housekeeping` | reg 27 | "27. Housekeeping and general safeguarding on construction sites … ensure that suitable housekeeping is continuously implemented on each construction site, including - (a) the proper storage of materials and equipment; (b) the removal of scrap, waste and debris at appropriate intervals" |
+| `stacking_storage` | reg 28 | "28. Stacking and storage on construction sites … (a) a competent person is appointed in writing with the duty of supervising all stacking and storage on a construction site; (b) adequate storage areas are provided" |
+| `fire_precautions` | reg 29 | "29. Fire precautions on construction sites … (a) all appropriate measures are taken to avoid the risk of fire" |
+
+Left out: **PPE** has no regulation of its own in CR 2014 (it's in the General
+Safety Regulations, which this data set doesn't quote yet). **Induction**
+(reg 7(5): "No contractor may allow or permit any employee or person to enter
+any site, unless that employee or person has undergone health and safety
+induction training pertaining to the hazards prevalent on the site at the time
+of entry") is a record of its own (Rev 4 6.B, "Induction records"), not a talk.
+
+**Signatures (D2).** POPIA s1: "'biometrics' means a technique of personal
+identification that is based on physical, physiological or behavioural
+characterisation including blood typing, fingerprinting, DNA analysis, retinal
+scanning and voice recognition". Read on 16 Nov 2026 from a secondary copy of
+the Act, https://popia.co.za/section-1-definitions/ (not the Gazette). A drawn
+signature captured with its stroke dynamics would be behavioural
+characterisation; Rev 4 §2.10 rules biometrics out, so a toolbox signature is a
+tap and stores no drawing.
+
 ## Vocabulary (`vocabulary.json`)
 
 From Rev 4 §3.11: "Site diary (not daily log) · contract instruction (not

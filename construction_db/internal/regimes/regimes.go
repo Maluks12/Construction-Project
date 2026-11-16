@@ -27,11 +27,12 @@ import (
 )
 
 const (
-	fileRegime     = "regime.json"
-	fileChecklists = "checklists.json"
-	fileDeadlines  = "deadlines.json"
-	fileTaxonomy   = "taxonomies.json"
-	fileVocabulary = "vocabulary.json"
+	fileRegime        = "regime.json"
+	fileChecklists    = "checklists.json"
+	fileDeadlines     = "deadlines.json"
+	fileTaxonomy      = "taxonomies.json"
+	fileVocabulary    = "vocabulary.json"
+	fileToolboxTopics = "toolbox_topics.json"
 )
 
 // Regime mirrors a regulatory_regimes row. Version is the version of the law
@@ -126,12 +127,22 @@ type Term struct {
 	Label string `json:"label"`
 }
 
+// ToolboxTopic is a talk topic a presenter can pick (D3, M10). SourceRef names the
+// regulation it relates to, quoted in SOURCES. A talk stores the key and its own
+// title, so later wording changes never alter a past talk.
+type ToolboxTopic struct {
+	Key       string `json:"key"`
+	Title     string `json:"title"`
+	SourceRef string `json:"source_ref"`
+}
+
 type DataSet struct {
-	Regime     Regime              `json:"regime"`
-	Checklists []ChecklistTemplate `json:"checklists"`
-	Deadlines  []DeadlineRule      `json:"deadlines"`
-	Taxonomy   []IncidentType      `json:"taxonomy"`
-	Vocabulary []Term              `json:"vocabulary"`
+	Regime        Regime              `json:"regime"`
+	Checklists    []ChecklistTemplate `json:"checklists"`
+	Deadlines     []DeadlineRule      `json:"deadlines"`
+	Taxonomy      []IncidentType      `json:"taxonomy"`
+	Vocabulary    []Term              `json:"vocabulary"`
+	ToolboxTopics []ToolboxTopic      `json:"toolbox_topics"`
 }
 
 // Registry holds every loaded data set by regime code. It is built once at
@@ -163,7 +174,7 @@ func (r *Registry) Codes() []string {
 }
 
 // LoadFS loads every data set in fsys: one directory per regime, each with all
-// five files. It reports every problem it finds, not just the first, so one
+// six files. It reports every problem it finds, not just the first, so one
 // failed startup (or test run) shows everything that needs fixing.
 func LoadFS(fsys fs.FS) (*Registry, error) {
 	entries, err := fs.ReadDir(fsys, ".")
@@ -206,6 +217,7 @@ func loadDataSet(fsys fs.FS, dir string) (*DataSet, error) {
 		{fileDeadlines, &ds.Deadlines},
 		{fileTaxonomy, &ds.Taxonomy},
 		{fileVocabulary, &ds.Vocabulary},
+		{fileToolboxTopics, &ds.ToolboxTopics},
 	}
 
 	var errs []error
@@ -242,6 +254,9 @@ func loadDataSet(fsys fs.FS, dir string) (*DataSet, error) {
 	}
 	if ds.Vocabulary == nil {
 		ds.Vocabulary = []Term{}
+	}
+	if ds.ToolboxTopics == nil {
+		ds.ToolboxTopics = []ToolboxTopic{}
 	}
 
 	if ds.Regime.Code != dir {
@@ -282,4 +297,14 @@ func decodeFile(fsys fs.FS, name string, dst any) error {
 		return fmt.Errorf("%s: unexpected data after the JSON value", name)
 	}
 	return nil
+}
+
+// Topic returns the toolbox topic with key, if the regime has it.
+func (ds *DataSet) Topic(key string) (ToolboxTopic, bool) {
+	for _, t := range ds.ToolboxTopics {
+		if t.Key == key {
+			return t, true
+		}
+	}
+	return ToolboxTopic{}, false
 }

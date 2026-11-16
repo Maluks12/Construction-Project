@@ -501,7 +501,7 @@ func raiseC(ctx context.Context, tx pgx.Tx, id string, insp, inc any, version an
 	if _, err := tx.Exec(ctx, actionSQL, id, orgC, siteC, insp, itemIf(insp), inc, version, sev, userC, userC, nil, days); err != nil {
 		return err
 	}
-	_, err := tx.Exec(ctx, eventSQL, evID(raiseSeq(id)), orgC, siteC, id, 1, "raised", userC, nil, "open", userC, nil, days)
+	_, err := tx.Exec(ctx, eventSQL, id, orgC, siteC, id, 1, "raised", userC, nil, "open", userC, nil, days)
 	return err
 }
 
@@ -520,20 +520,20 @@ func asC(ctx context.Context, fn func(tx pgx.Tx) error) error {
 // fails on its sequence number.
 func TestActionEventsQueue(t *testing.T) {
 	ctx := context.Background()
-	insp, a := inspID(160), actID(60)
+	insp, a := fresh(), fresh()
 	committedFinding(t, insp, "high")
 	committed(t, func(ctx context.Context, tx pgx.Tx) error { return raiseC(ctx, tx, a, insp, nil, nil, "high", 1) })
 
 	first := tenantTx(t)
 	defer first.Rollback(ctx)
-	if _, err := first.Exec(ctx, eventSQL, evID(6002), orgC, siteC, a, 2, "due_changed", userC, nil, "open", userC, nil, 0); err != nil {
+	if _, err := first.Exec(ctx, eventSQL, fresh(), orgC, siteC, a, 2, "due_changed", userC, nil, "open", userC, nil, 0); err != nil {
 		t.Fatalf("first event 2: %v", err)
 	}
 
 	second := make(chan error, 1)
 	go func() {
 		second <- asC(ctx, func(tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, eventSQL, evID(6003), orgC, siteC, a, 2, "reassigned", userC, "x", "open", userC, "Sub", 1)
+			_, err := tx.Exec(ctx, eventSQL, fresh(), orgC, siteC, a, 2, "reassigned", userC, "x", "open", userC, "Sub", 1)
 			return err
 		})
 	}()
@@ -552,7 +552,7 @@ func TestRaiseAndCorrectionCompletion(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("completion first: the raise waits, then is refused", func(t *testing.T) {
-		insp, corr := inspID(161), inspID(162)
+		insp, corr := fresh(), fresh()
 		committedFinding(t, insp, "high")
 		committedCorrection(t, corr, insp, "pass", nil)
 
@@ -563,7 +563,7 @@ func TestRaiseAndCorrectionCompletion(t *testing.T) {
 		}
 		raised := make(chan error, 1)
 		go func() {
-			raised <- asC(ctx, func(tx pgx.Tx) error { return raiseC(ctx, tx, actID(61), insp, nil, nil, "high", 1) })
+			raised <- asC(ctx, func(tx pgx.Tx) error { return raiseC(ctx, tx, fresh(), insp, nil, nil, "high", 1) })
 		}()
 		waitingOn(t, "INSERT INTO corrective_actions")
 		if err := completing.Commit(ctx); err != nil {
@@ -575,13 +575,13 @@ func TestRaiseAndCorrectionCompletion(t *testing.T) {
 	})
 
 	t.Run("raise first: the completion waits, then both stand", func(t *testing.T) {
-		insp, corr := inspID(163), inspID(164)
+		insp, corr, a := fresh(), fresh(), fresh()
 		committedFinding(t, insp, "high")
 		committedCorrection(t, corr, insp, "pass", nil)
 
 		raising := tenantTx(t)
 		defer raising.Rollback(ctx)
-		if err := raiseC(ctx, raising, actID(63), insp, nil, nil, "high", 1); err != nil {
+		if err := raiseC(ctx, raising, a, insp, nil, nil, "high", 1); err != nil {
 			t.Fatalf("raise: %v", err)
 		}
 		completed := make(chan error, 1)
@@ -596,7 +596,7 @@ func TestRaiseAndCorrectionCompletion(t *testing.T) {
 			t.Fatalf("completion after the raise: %v", err)
 		}
 		var n int
-		if err := admin.QueryRow(ctx, `SELECT count(*) FROM corrective_actions WHERE id = $1`, actID(63)).Scan(&n); err != nil || n != 1 {
+		if err := admin.QueryRow(ctx, `SELECT count(*) FROM corrective_actions WHERE id = $1`, a).Scan(&n); err != nil || n != 1 {
 			t.Errorf("%d actions, err %v; want the raise kept", n, err)
 		}
 	})
@@ -608,7 +608,7 @@ func TestRaiseAndAmendment(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("amendment first: the raise waits, then is refused", func(t *testing.T) {
-		inc := incID(160)
+		inc := fresh()
 		committedIncident(t, inc)
 		amending := tenantTx(t)
 		defer amending.Rollback(ctx)
@@ -617,7 +617,7 @@ func TestRaiseAndAmendment(t *testing.T) {
 		}
 		raised := make(chan error, 1)
 		go func() {
-			raised <- asC(ctx, func(tx pgx.Tx) error { return raiseC(ctx, tx, actID(65), nil, inc, 1, "medium", 7) })
+			raised <- asC(ctx, func(tx pgx.Tx) error { return raiseC(ctx, tx, fresh(), nil, inc, 1, "medium", 7) })
 		}()
 		waitingOn(t, "INSERT INTO corrective_actions")
 		if err := amending.Commit(ctx); err != nil {
@@ -629,11 +629,11 @@ func TestRaiseAndAmendment(t *testing.T) {
 	})
 
 	t.Run("raise first: the amendment waits, then both stand", func(t *testing.T) {
-		inc := incID(161)
+		inc := fresh()
 		committedIncident(t, inc)
 		raising := tenantTx(t)
 		defer raising.Rollback(ctx)
-		if err := raiseC(ctx, raising, actID(66), nil, inc, 1, "medium", 7); err != nil {
+		if err := raiseC(ctx, raising, fresh(), nil, inc, 1, "medium", 7); err != nil {
 			t.Fatalf("raise: %v", err)
 		}
 		amended := make(chan error, 1)

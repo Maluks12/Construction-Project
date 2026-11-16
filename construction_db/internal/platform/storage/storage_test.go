@@ -18,12 +18,18 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/google/uuid"
 
 	"construction_db/internal/platform/storage"
 	"construction_db/internal/platform/storagetest"
 )
 
 var env *storagetest.Env
+
+// fresh is a new name for an object or bucket that a test creates. Fixed names
+// would collide with the previous run's under go test -count=N: an object is
+// written once (If-None-Match) and a bucket can't be created twice.
+func fresh(prefix string) string { return prefix + "-" + uuid.NewString()[:8] }
 
 func TestMain(m *testing.M) {
 	e, cleanup, err := storagetest.Start(context.Background())
@@ -76,7 +82,8 @@ func upload(t *testing.T, p *storage.PresignedPut, body []byte, skip string) *ht
 func TestPresignedPut(t *testing.T) {
 	ctx := context.Background()
 	body := []byte("photo bytes")
-	p := presign(t, "put/ok", body)
+	key := fresh("put/ok")
+	p := presign(t, key, body)
 
 	if p.Headers["X-Amz-Checksum-Sha256"] == "" || p.Headers["If-None-Match"] != "*" || p.Headers["Content-Type"] != "image/jpeg" {
 		t.Fatalf("signed headers %v lack the checksum, If-None-Match or Content-Type", p.Headers)
@@ -95,7 +102,7 @@ func TestPresignedPut(t *testing.T) {
 		t.Fatalf("put: status %d, want 200", resp.StatusCode)
 	}
 
-	info, err := env.Store.Stat(ctx, "put/ok")
+	info, err := env.Store.Stat(ctx, key)
 	if err != nil {
 		t.Fatalf("stat: %v", err)
 	}
@@ -105,7 +112,7 @@ func TestPresignedPut(t *testing.T) {
 	if info.LockMode != storage.LockGovernance || info.RetainUntil == nil || !info.RetainUntil.After(time.Now()) {
 		t.Errorf("stat = %+v, want the bucket's default GOVERNANCE retention", info)
 	}
-	head, err := env.Admin.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(env.Config.Bucket), Key: aws.String("put/ok")})
+	head, err := env.Admin.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(env.Config.Bucket), Key: aws.String(key)})
 	if err != nil {
 		t.Fatalf("head: %v", err)
 	}
@@ -114,7 +121,7 @@ func TestPresignedPut(t *testing.T) {
 	}
 
 	for _, version := range []string{info.VersionID, ""} {
-		r, err := env.Store.ReadVersion(ctx, "put/ok", version)
+		r, err := env.Store.ReadVersion(ctx, key, version)
 		if err != nil {
 			t.Fatalf("read version %q: %v", version, err)
 		}
@@ -208,7 +215,7 @@ func TestPresignedPutRefusesOtherContentType(t *testing.T) {
 
 func TestPresignedPutOnlyOnce(t *testing.T) {
 	body := []byte("photo bytes")
-	p := presign(t, "put/once", body)
+	p := presign(t, fresh("put/once"), body)
 
 	if resp := upload(t, p, body, ""); resp.StatusCode != http.StatusOK {
 		t.Fatalf("first put: status %d, want 200", resp.StatusCode)
@@ -349,18 +356,19 @@ func TestCheckObjectLock(t *testing.T) {
 	}
 
 	t.Run("bucket without object lock", func(t *testing.T) {
-		if err := storeFor(t, "no-lock", false).CheckObjectLock(ctx, storage.LockGovernance); err == nil {
+		if err := storeFor(t, fresh("no-lock"), false).CheckObjectLock(ctx, storage.LockGovernance); err == nil {
 			t.Error("want an error")
 		}
 	})
 	t.Run("locked bucket without default retention", func(t *testing.T) {
-		if err := storeFor(t, "no-retention", true).CheckObjectLock(ctx, storage.LockGovernance); err == nil {
+		if err := storeFor(t, fresh("no-retention"), true).CheckObjectLock(ctx, storage.LockGovernance); err == nil {
 			t.Error("want an error")
 		}
 	})
 	t.Run("compliance bucket", func(t *testing.T) {
-		s := storeFor(t, "compliance", true)
-		if err := storagetest.SetDefaultRetention(ctx, env.Admin, "compliance", types.ObjectLockRetentionModeCompliance); err != nil {
+		bucket := fresh("compliance")
+		s := storeFor(t, bucket, true)
+		if err := storagetest.SetDefaultRetention(ctx, env.Admin, bucket, types.ObjectLockRetentionModeCompliance); err != nil {
 			t.Fatal(err)
 		}
 		if err := s.CheckObjectLock(ctx, storage.LockCompliance); err != nil {

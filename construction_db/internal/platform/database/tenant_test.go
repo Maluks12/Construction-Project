@@ -12,11 +12,6 @@ import (
 	"construction_db/internal/platform/database"
 )
 
-const (
-	orgA = "00000000-0000-0000-0000-00000000000a"
-	orgB = "00000000-0000-0000-0000-00000000000b"
-)
-
 // A snapshot transaction must not see a commit made after its first query;
 // a plain WithTenant does, which shows the test can tell them apart.
 func TestWithTenantSnapshot(t *testing.T) {
@@ -68,6 +63,7 @@ func TestWithTenantSnapshot(t *testing.T) {
 
 func TestTenant(t *testing.T) {
 	ctx := context.Background()
+	orgA, orgB := fresh(), fresh() // committed below
 
 	t.Run("connections run as the app role", func(t *testing.T) {
 		var role string

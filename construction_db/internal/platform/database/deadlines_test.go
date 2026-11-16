@@ -335,19 +335,19 @@ func satisfyC(ctx context.Context, tx pgx.Tx, id, duty, deadline string) error {
 // Two satisfactions of one duty: the second waits for the first, then fails.
 func TestSatisfactionsQueue(t *testing.T) {
 	ctx := context.Background()
-	inc, duty, deadline := incID(42), dutyID(42), dlID(42)
+	inc, duty, deadline := fresh(), fresh(), fresh()
 	committedDuty(t, inc, duty, deadline)
 
 	first := tenantTx(t)
 	defer first.Rollback(ctx)
-	if err := satisfyC(ctx, first, satID(42), duty, deadline); err != nil {
+	if err := satisfyC(ctx, first, fresh(), duty, deadline); err != nil {
 		t.Fatalf("first satisfaction: %v", err)
 	}
 
 	second := make(chan error, 1)
 	go func() {
 		second <- database.WithTenant(ctx, pool, database.Tenant{OrgID: orgC}, func(tx pgx.Tx) error {
-			return satisfyC(ctx, tx, satID(43), duty, deadline)
+			return satisfyC(ctx, tx, fresh(), duty, deadline)
 		})
 	}()
 	waitingOn(t, "INSERT INTO deadline_satisfactions")
@@ -364,7 +364,7 @@ func TestSatisfactionsQueue(t *testing.T) {
 // the amendment, then fails: it would otherwise land on a closed row.
 func TestSatisfactionWaitsForClosing(t *testing.T) {
 	ctx := context.Background()
-	inc, duty, deadline := incID(44), dutyID(44), dlID(44)
+	inc, duty, deadline := fresh(), fresh(), fresh()
 	committedDuty(t, inc, duty, deadline)
 
 	closing := tenantTx(t)
@@ -381,7 +381,7 @@ func TestSatisfactionWaitsForClosing(t *testing.T) {
 	satisfied := make(chan error, 1)
 	go func() {
 		satisfied <- database.WithTenant(ctx, pool, database.Tenant{OrgID: orgC}, func(tx pgx.Tx) error {
-			return satisfyC(ctx, tx, satID(44), duty, deadline)
+			return satisfyC(ctx, tx, fresh(), duty, deadline)
 		})
 	}()
 	waitingOn(t, "INSERT INTO deadline_satisfactions")

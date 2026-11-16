@@ -379,7 +379,7 @@ func tenantTx(t *testing.T) pgx.Tx {
 // fails: it can't land after completed_at.
 func TestAnswerWaitsForCompletion(t *testing.T) {
 	ctx := context.Background()
-	id := inspID(40)
+	id := fresh()
 	committedInspection(t, id, map[string]string{"a": "pass"}, "a")
 
 	completing := tenantTx(t)
@@ -414,7 +414,7 @@ func TestAnswerWaitsForCompletion(t *testing.T) {
 // inspection complete.
 func TestCompletionWaitsForAnswer(t *testing.T) {
 	ctx := context.Background()
-	id := inspID(41)
+	id := fresh()
 	committedInspection(t, id, nil, "a")
 
 	answering := tenantTx(t)
@@ -445,7 +445,7 @@ func TestCompletionWaitsForAnswer(t *testing.T) {
 // are stored.
 func TestAnswersRacingCompletion(t *testing.T) {
 	ctx := context.Background()
-	id := inspID(42)
+	id := fresh()
 	const n = 20
 	items := make([]string, n)
 	answers := map[string]string{}

@@ -30,15 +30,17 @@ const (
 		{"key": "medical_treatment", "label": "Medical treatment", "reportable": false, "deadline_rules": ["test_investigate"]},
 		{"key": "near_miss", "label": "Near miss", "reportable": false}]`
 	vocabularyJSON = `[{"key": "site_diary", "label": "Site diary"}]`
+	topicsJSON     = `[{"key": "scaffolding", "title": "Scaffolding", "source_ref": "test ref"}]`
 )
 
 func validFS() fstest.MapFS {
 	return fstest.MapFS{
-		"test_regime/regime.json":     {Data: []byte(regimeJSON)},
-		"test_regime/checklists.json": {Data: []byte(checklistsJSON)},
-		"test_regime/deadlines.json":  {Data: []byte(deadlinesJSON)},
-		"test_regime/taxonomies.json": {Data: []byte(taxonomyJSON)},
-		"test_regime/vocabulary.json": {Data: []byte(vocabularyJSON)},
+		"test_regime/regime.json":         {Data: []byte(regimeJSON)},
+		"test_regime/checklists.json":     {Data: []byte(checklistsJSON)},
+		"test_regime/deadlines.json":      {Data: []byte(deadlinesJSON)},
+		"test_regime/taxonomies.json":     {Data: []byte(taxonomyJSON)},
+		"test_regime/vocabulary.json":     {Data: []byte(vocabularyJSON)},
+		"test_regime/toolbox_topics.json": {Data: []byte(topicsJSON)},
 	}
 }
 
@@ -185,6 +187,7 @@ func TestLoadFSRejects(t *testing.T) {
 		deadlinesFile  = "test_regime/deadlines.json"
 		taxonomyFile   = "test_regime/taxonomies.json"
 		vocabularyFile = "test_regime/vocabulary.json"
+		topicsFile     = "test_regime/toolbox_topics.json"
 	)
 
 	tests := map[string]struct {
@@ -199,6 +202,18 @@ func TestLoadFSRejects(t *testing.T) {
 		"missing file": {
 			with(validFS(), vocabularyFile, ""),
 			"test_regime/vocabulary.json",
+		},
+		"missing topics file": {
+			with(validFS(), topicsFile, ""),
+			"test_regime/toolbox_topics.json",
+		},
+		"topic without a source": {
+			with(validFS(), topicsFile, `[{"key": "a", "title": "A", "source_ref": ""}]`),
+			"toolbox_topics[0]: source_ref is required",
+		},
+		"duplicate topic": {
+			with(validFS(), topicsFile, `[{"key": "a", "title": "A", "source_ref": "r"}, {"key": "a", "title": "B", "source_ref": "r"}]`),
+			`toolbox_topics[1]: duplicate key "a"`,
 		},
 		"unknown field": {
 			with(validFS(), regimeFile, strings.Replace(regimeJSON, `"version"`, `"colour": "red", "version"`, 1)),

@@ -334,7 +334,7 @@ func submitC(ctx context.Context, tx pgx.Tx, id string, n int) error {
 // fails on the version number.
 func TestSameVersionSubmissionsQueue(t *testing.T) {
 	ctx := context.Background()
-	id := incID(40)
+	id := fresh()
 	committedIncident(t, id)
 
 	first := tenantTx(t)
@@ -362,7 +362,7 @@ func TestSameVersionSubmissionsQueue(t *testing.T) {
 // lands if the first is rolled back.
 func TestVersionWhileAnotherIsOpen(t *testing.T) {
 	ctx := context.Background()
-	id := incID(41)
+	id := fresh()
 	committedIncident(t, id)
 
 	first := tenantTx(t)

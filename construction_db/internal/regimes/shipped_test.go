@@ -22,6 +22,7 @@ type shippedKeys struct {
 	ChecklistItems    []string                     `json:"checklist_items"`
 	Deadlines         []string                     `json:"deadlines"`
 	Taxonomy          []string                     `json:"taxonomy"`
+	ToolboxTopics     []string                     `json:"toolbox_topics"`
 	ChecklistVersions map[string]map[string]string `json:"checklist_versions"`
 }
 
@@ -51,6 +52,10 @@ func missingKeys(reg *Registry, lock map[string]shippedKeys) []string {
 		for _, t := range ds.Taxonomy {
 			taxonomy[t.Key] = true
 		}
+		topics := map[string]bool{}
+		for _, t := range ds.ToolboxTopics {
+			topics[t.Key] = true
+		}
 
 		report := func(kind string, want []string, have map[string]bool) {
 			for _, k := range want {
@@ -64,6 +69,7 @@ func missingKeys(reg *Registry, lock map[string]shippedKeys) []string {
 		report("checklist item", want.ChecklistItems, items)
 		report("deadline", want.Deadlines, deadlines)
 		report("taxonomy", want.Taxonomy, taxonomy)
+		report("toolbox topic", want.ToolboxTopics, topics)
 	}
 	return missing
 }
@@ -96,6 +102,7 @@ func TestMissingKeysDetected(t *testing.T) {
 			ChecklistItems: []string{"scaffold_daily/base_plates", "scaffold_daily/gone_item"},
 			Deadlines:      []string{"test_rule", "gone_rule"},
 			Taxonomy:       []string{"injury", "gone_type"},
+			ToolboxTopics:  []string{"scaffolding", "gone_topic"},
 		},
 		"gone_regime": {},
 	}
@@ -107,6 +114,7 @@ func TestMissingKeysDetected(t *testing.T) {
 		`test_regime checklist item "scaffold_daily/gone_item"`,
 		`test_regime deadline "gone_rule"`,
 		`test_regime taxonomy "gone_type"`,
+		`test_regime toolbox topic "gone_topic"`,
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("missingKeys =\n%q\nwant\n%q", got, want)

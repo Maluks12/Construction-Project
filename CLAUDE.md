@@ -51,8 +51,8 @@ request body, response shape, status codes or error text is a contract change:
   endpoint change.
 
 Endpoint references for the frontend live in `docs/api/` (so far:
-`evidence.md`, `inspections.md`, `incidents.md` and `actions.md`, with the
-types to mirror; each milestone's `mN-handover.md` lists what changed). A backend
+`evidence.md`, `inspections.md`, `incidents.md`, `actions.md`, `toolbox.md`
+and `diary.md`, with the types to mirror; each milestone's `mN-handover.md` lists what changed). A backend
 change to an endpoint listed there updates the reference in the same
 commit; `TestAPIDoc` fails if its types drift from the Go code.
 

@@ -241,5 +241,13 @@ func (ds *DataSet) validate(dir string) error {
 		need(fileVocabulary, where, "label", v.Label)
 	}
 
+	seenTopics := map[string]bool{}
+	for i, tp := range ds.ToolboxTopics {
+		where := fmt.Sprintf("toolbox_topics[%d]", i)
+		key(fileToolboxTopics, where, tp.Key, seenTopics)
+		need(fileToolboxTopics, where, "title", tp.Title)
+		need(fileToolboxTopics, where, "source_ref", tp.SourceRef)
+	}
+
 	return errors.Join(errs...)
 }

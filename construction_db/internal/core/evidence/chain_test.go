@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -287,6 +288,8 @@ func recompute(t *testing.T, db evidencetest.Querier, siteID string) []sqlCheck 
 	return got
 }
 
+var seedVectors sync.Once
+
 // The SQL in CHAIN.md must accept the vectors as stored by the real schema,
 // and must notice a sealed field being edited or an entry being deleted.
 func TestRecomputeSQL(t *testing.T) {
@@ -320,11 +323,15 @@ func TestRecomputeSQL(t *testing.T) {
 				[]any{v.EvidenceID, org, site, v.Seq, unhex(t, v.ContentSHA256), v.ServerReceivedAt, unhex(t, v.PrevChainHash), unhex(t, v.MetadataHash), unhex(t, v.ChainHash)}},
 		)
 	}
-	for _, f := range fixtures {
-		if _, err := admin.Exec(ctx, f.sql, f.args...); err != nil {
-			t.Fatalf("fixture %q: %v", f.sql, err)
+	// Once per process: the vectors fix these ids, and every subtest below
+	// rolls back, so a second run (go test -count=N) reuses the rows.
+	seedVectors.Do(func() {
+		for _, f := range fixtures {
+			if _, err := admin.Exec(ctx, f.sql, f.args...); err != nil {
+				t.Fatalf("fixture %q: %v", f.sql, err)
+			}
 		}
-	}
+	})
 
 	t.Run("intact chain", func(t *testing.T) {
 		got := recompute(t, admin, site)

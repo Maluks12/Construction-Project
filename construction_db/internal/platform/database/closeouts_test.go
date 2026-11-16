@@ -546,17 +546,17 @@ func closeOutC(ctx context.Context, tx pgx.Tx, action, co, photo, eventID string
 // then fails on its sequence number.
 func TestTwoCloseoutsQueue(t *testing.T) {
 	ctx := context.Background()
-	insp, a := inspID(170), actID(170)
+	insp, a := fresh(), fresh()
 	photos := committedAction(t, insp, a)
 
 	first := tenantTx(t)
 	defer first.Rollback(ctx)
-	if err := closeOutC(ctx, first, a, coID(170), photos[0], evID(17002), 2); err != nil {
+	if err := closeOutC(ctx, first, a, fresh(), photos[0], fresh(), 2); err != nil {
 		t.Fatalf("first close-out: %v", err)
 	}
 	second := make(chan error, 1)
 	go func() {
-		second <- asC(ctx, func(tx pgx.Tx) error { return closeOutC(ctx, tx, a, coID(171), photos[1], evID(17003), 2) })
+		second <- asC(ctx, func(tx pgx.Tx) error { return closeOutC(ctx, tx, a, fresh(), photos[1], fresh(), 2) })
 	}()
 	waitingOn(t, "INSERT INTO corrective_action_events")
 	if err := first.Commit(ctx); err != nil {
@@ -571,21 +571,21 @@ func TestTwoCloseoutsQueue(t *testing.T) {
 // action closed.
 func TestVerifyAndCancelQueue(t *testing.T) {
 	ctx := context.Background()
-	insp, a := inspID(172), actID(172)
+	insp, a, co := fresh(), fresh(), fresh()
 	photos := committedAction(t, insp, a)
 	committed(t, func(ctx context.Context, tx pgx.Tx) error {
-		return closeOutC(ctx, tx, a, coID(172), photos[0], evID(17202), 2)
+		return closeOutC(ctx, tx, a, co, photos[0], fresh(), 2)
 	})
 
 	verifying := tenantTx(t)
 	defer verifying.Rollback(ctx)
-	if _, err := verifying.Exec(ctx, closeoutEventSQL, evID(17203), orgC, siteC, a, 3, "verified", userC, nil, "closed", userC, nil, 1, coID(172), true); err != nil {
+	if _, err := verifying.Exec(ctx, closeoutEventSQL, fresh(), orgC, siteC, a, 3, "verified", userC, nil, "closed", userC, nil, 1, co, true); err != nil {
 		t.Fatalf("verify: %v", err)
 	}
 	cancelled := make(chan error, 1)
 	go func() {
 		cancelled <- asC(ctx, func(tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, eventSQL, evID(17204), orgC, siteC, a, 3, "cancelled", userC, "Duplicate", "cancelled", userC, nil, 1)
+			_, err := tx.Exec(ctx, eventSQL, fresh(), orgC, siteC, a, 3, "cancelled", userC, "Duplicate", "cancelled", userC, nil, 1)
 			return err
 		})
 	}()
@@ -602,7 +602,7 @@ func TestVerifyAndCancelQueue(t *testing.T) {
 // then fails.
 func TestTwoWaiversQueue(t *testing.T) {
 	ctx := context.Background()
-	insp := inspID(174)
+	insp := fresh()
 	committedFinding(t, insp, "medium")
 	waiveC := func(tx pgx.Tx, id string) error {
 		_, err := tx.Exec(ctx, waiverSQL, id, orgC, siteC, insp, "a", "medium", userC)
@@ -610,11 +610,11 @@ func TestTwoWaiversQueue(t *testing.T) {
 	}
 	first := tenantTx(t)
 	defer first.Rollback(ctx)
-	if err := waiveC(first, wvID(174)); err != nil {
+	if err := waiveC(first, fresh()); err != nil {
 		t.Fatalf("first waiver: %v", err)
 	}
 	second := make(chan error, 1)
-	go func() { second <- asC(ctx, func(tx pgx.Tx) error { return waiveC(tx, wvID(175)) }) }()
+	go func() { second <- asC(ctx, func(tx pgx.Tx) error { return waiveC(tx, fresh()) }) }()
 	waitingOn(t, "INSERT INTO finding_waivers")
 	if err := first.Commit(ctx); err != nil {
 		t.Fatalf("commit first: %v", err)
@@ -627,7 +627,7 @@ func TestTwoWaiversQueue(t *testing.T) {
 // A waiver and the completion of a correction take turns, as a raise does.
 func TestWaiverWaitsForCorrection(t *testing.T) {
 	ctx := context.Background()
-	insp, corr := inspID(176), inspID(177)
+	insp, corr := fresh(), fresh()
 	committedFinding(t, insp, "medium")
 	committedCorrection(t, corr, insp, "pass", nil)
 
@@ -639,7 +639,7 @@ func TestWaiverWaitsForCorrection(t *testing.T) {
 	waived := make(chan error, 1)
 	go func() {
 		waived <- asC(ctx, func(tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, waiverSQL, wvID(176), orgC, siteC, insp, "a", "medium", userC)
+			_, err := tx.Exec(ctx, waiverSQL, fresh(), orgC, siteC, insp, "a", "medium", userC)
 			return err
 		})
 	}()

@@ -1,5 +1,16 @@
 {
   "za_construction_2014": {
+    "toolbox_topics": [
+      "fall_protection",
+      "excavations",
+      "scaffolding",
+      "mobile_plant",
+      "electrical_safety",
+      "flammable_liquids",
+      "housekeeping",
+      "stacking_storage",
+      "fire_precautions"
+    ],
     "checklists": [
       "excavation_inspection",
       "mobile_plant_pre_use",

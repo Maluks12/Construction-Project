@@ -121,6 +121,58 @@ Known spec issues:
     sources sets them, so the severity defaults are a product choice, like
     the severity wording, and need the same practitioner review. Not
     researched beyond `SOURCES_za_construction_2014.md`.
+- Found in M10 (Nov 2026):
+  - **The diary is edition code.** Rev 4 §5.2 lists `/diary` under
+    `/editions/construction`, so its endpoints are the first under
+    `/v1/construction` (D4). Toolbox talks are core: both editions have them,
+    with talk topics from each regime.
+  - **Lock point.** Rev 3 A.8 locks the diary only "once linked to a
+    submitted claim", and the Domain Reference agrees: "Once a diary entry is
+    linked to a submitted claim, it should become read-only, with amendments
+    recorded as separate, dated addenda". We close it at midnight (D6),
+    which is stricter.
+  - **Signature versus biometrics.** Rev 3 §2.3.4: "attendance by scan or
+    signature"; Rev 4 §2.10: "Rule 1 -- no biometrics. Ever." A drawn
+    signature captured with its stroke dynamics is behavioural
+    characterisation (POPIA s1, quoted in SOURCES), so a signature is a tap
+    (D2).
+  - **Content library.** Rev 3: "Ships with a content library -- foremen will
+    not write safety content"; Rev 4 6.B: "Construction toolbox talk
+    content, P1, Activity and season based". M10 ships topic titles with
+    sources only; the library is a proposed task (BUILD_PLAN, TALKS).
+  - **Shifted rows in Rev 3 A.8**, as in Rev 4 §1.4 and A.5. Read correctly,
+    e.g. "Weather with effect: Activities stopped, hours lost, critical path,
+    delayed effect"; "Plant working vs standing: Recoverable standing time".
+  - **Fields added by D10**, each optional:
+    - Rev 4 §3.9: "Weather recorded by effect (activities stopped, hours
+      lost, critical path, delayed effect), labour by trade and
+      subcontractor, plant working versus standing, materials expected but
+      not received";
+    - Rev 3 §2.3.4: "Topic, presenter, duration, attendance by scan or
+      signature, photograph";
+    - Domain Reference §2.5: "Delayed-effect flag: Captures the 'ground was
+      still wet on Tuesday from Sunday's rain' case, which is where most
+      claims are lost";
+    - Domain Reference §2.6: "Standing time on hired plant is a recoverable
+      cost";
+    - Domain Reference §2.7: "Deliveries expected but not received (a delay
+      ground in its own right)".
+  - **Not built in M10** (Rev 3 A.8, Domain Reference §2.7):
+    - temperature and wind readings;
+    - materials delivered with a delivery-note photo;
+    - work completed by area;
+    - drawings and revisions received;
+    - missing-day detection;
+    - diary reminders;
+    - signature and countersignature;
+    - the rainfall baseline;
+    - two-tier escalation (phone UI).
+  - **Records before photos.** Rev 4 §2.2 sends records before photos. A
+    diary revision with photos waits for them, inside the 48-hour grace; if
+    that passes, the photos go on an addendum.
+  - **Law:** nothing found in Rev 4 on talks or the diary that contradicts
+    it. A site diary is a contractual record (JBCC), not a statutory one.
+    Not researched beyond the three documents.
 
 ## Commands
 
@@ -210,6 +262,18 @@ both errors.
   `action_default_due_days`); `DefaultDueDays` mirrors it for the
   reference, and `TestActionRulesMatchDatabase` compares them. Finding
   coverage is `finding_coverage` (000019), which the findings list reads.
+- `internal/core/toolbox`: toolbox talks, their photos and signatures
+  (`docs/api/toolbox.md`). Topics come from the site regime
+  (`toolbox_topics.json`, `DataSet.Topic`). `toolbox_headcount(site, day)`
+  (000020) is the diary's suggested headcount.
+- `internal/editions/construction/diary`: the site diary
+  (`docs/api/diary.md`), the edition's first routes, mounted by
+  `construction.Edition.RegisterRoutes` under `/v1/construction`. Every
+  handler resolves the site through `sites.Service.RegimeInTx` and answers
+  404 unless its regime's edition is construction. `GraceAfterClose`
+  mirrors `site_diary_grace()` (000021); `TestDiaryGraceMatchesDatabase`
+  compares them. The current revision and conflict are only ever
+  `site_diary_replay`'s result (000021).
 - `internal/core/checklists`: the checklist engine (Rev 4 §2.4).
   `GET /v1/sites/:id/checklists` returns the site regime's templates
   (through `sites.Service.Regime`, never hardcoded) and the severity scale.
@@ -439,11 +503,11 @@ the site diary, settings.
   step changes the plan or a decision, update this section.
 - Foundation (M4, M5) due Sun 1 Nov. Safety core (M6–M12) due Sun 22 Nov,
   which is the checkpoint.
-- **Forecast (Sun 15 Nov, revised after M7, M8 and M9 each finished that
-  day; no cuts decided, full scope stays).** Sat 5 Dec is not reachable.
-  The dates are recomputed from M10 starting Mon 16 Nov, with the
-  per-milestone estimates unchanged; REG4 is not scheduled yet. Review
-  time isn't modelled, and M7–M9 haven't been reviewed. Reasons and risks
+- **Forecast (Mon 16 Nov, revised after M10 finished that day; no cuts
+  decided, full scope stays).** Sat 5 Dec is not reachable. The dates are
+  recomputed from M11 starting Tue 17 Nov, with the per-milestone
+  estimates unchanged; REG4 is not scheduled yet. Review time isn't
+  modelled, and M7–M10 haven't been reviewed. Reasons and risks
   are in `docs/BUILD_PLAN.md` ("Forecast").
 
   | Milestone | Rigour | Forecast finish | Was due |
@@ -451,16 +515,16 @@ the site diary, settings.
   | M7 Inspections & checklists | full | **done Sun 15 Nov** | Tue 10 Nov |
   | M8 Incidents (with the deadline engine) | full | **done Sun 15 Nov** | Fri 13 Nov |
   | M9 Corrective actions | full | **done Sun 15 Nov** | Sun 15 Nov |
-  | M10 Toolbox talks & site diary | light | Tue 17 Nov | Tue 17 Nov |
-  | M11 People & documents | light | Sat 21 Nov | Fri 20 Nov |
-  | M12 Reports & audit pack | full | Tue 24 Nov | Sun 22 Nov |
-  | SYNC Offline sync API | full | Sat 28 Nov | Wed 25 Nov |
-  | BILL Billing | light; webhooks full | Tue 1 Dec | Fri 27 Nov |
-  | DEPLOY | – | Thu 3 Dec | Sat 28 Nov |
-  | IOD Injury on duty | full | Sun 6 Dec | Tue 1 Dec |
-  | JBCC Delay claims | full | Tue 8 Dec | Wed 2 Dec |
-  | PC Principal contractor tier | full | Thu 10 Dec | Fri 4 Dec |
-  | V1 Release | – | **Fri 11 Dec** | Sat 5 Dec |
+  | M10 Toolbox talks & site diary | light; full for attendance and closing | **done Mon 16 Nov** | Tue 17 Nov |
+  | M11 People & documents | light | Fri 20 Nov | Fri 20 Nov |
+  | M12 Reports & audit pack | full | Mon 23 Nov | Sun 22 Nov |
+  | SYNC Offline sync API | full | Fri 27 Nov | Wed 25 Nov |
+  | BILL Billing | light; webhooks full | Mon 30 Nov | Fri 27 Nov |
+  | DEPLOY | – | Wed 2 Dec | Sat 28 Nov |
+  | IOD Injury on duty | full | Sat 5 Dec | Tue 1 Dec |
+  | JBCC Delay claims | full | Mon 7 Dec | Wed 2 Dec |
+  | PC Principal contractor tier | full | Wed 9 Dec | Fri 4 Dec |
+  | V1 Release | – | **Thu 10 Dec** | Sat 5 Dec |
 - **Done:** migrations 000001–000007; auth (email and mobile login, refresh
   rotation with reuse detection, sessions); sites, site members, supervisor
   scoping, locations; invites (send, list, revoke, preview, accept);
@@ -1186,9 +1250,200 @@ the site diary, settings.
       refused container starts twice that evening). `putUpload` now reports
       MinIO's status, headers, body and the elapsed time, so the next
       occurrence names its cause. Keep whole logs when hunting it.
-    - **`go test -count=N` (N > 1)** fails from the second run in the
-      database, storage and evidence packages: committed fixtures use fixed
-      ids. Scheduled as the first commit of M10 (BUILD_PLAN).
+    - **`go test -count=N` (N > 1)** failed from the second run in the
+      database, storage and evidence packages: committed fixtures used fixed
+      ids. Fixed in 10.0.
+
+- **Milestone 10, Toolbox talks and site diary** (due Tue 17 Nov): **done
+  Mon 16 Nov**, a day early, not yet reviewed. Plan
+  approved Mon 16 Nov. Rigour: full for signed attendance, the paper rule,
+  the diary's closing, conflicts and addenda; light for the rest.
+  - **Decisions (16 Nov):**
+    - **D1 Attendee identity:** a name as written at the talk (required),
+      optional firm and clock number, no ID number. M11 links attendance to
+      a worker through its own append-only table; the signed row never
+      changes.
+    - **D2 Signature:** a tap on the logged-in presenter's or supervisor's
+      phone (`tap`), recording device time, server time, device and account.
+      It proves the account recorded the name as present then, not identity.
+      `paper`: names from a photographed signed register; a talk with any
+      paper attendance needs a `paper_register` photo (database-enforced).
+    - **D3 Topics:** `toolbox_topics` in the regime data (8–10, each with a
+      CR 2014 `source_ref` quoted in SOURCES, locked in `shipped.json`); a
+      talk has an optional `topic_key` and a required, editable title. No
+      content library.
+    - **D4 Diary home:** `internal/editions/construction/diary`, under
+      `/v1/construction/sites/:id/diary`; another regime's site is 404.
+      Toolbox talks are core (`internal/core/toolbox`).
+    - **D5 Writers and conflicts:** owners, SHE officers and supervisors on
+      the site. Each save restates the diary as an append-only revision; the
+      newest by device time is current (5-minute future guard). A revision
+      not based on the current one opens or extends a conflict (its ids
+      shown); only a revision based on the newest of them clears it.
+    - **D6 Midnight:** saved on the device before local midnight and
+      received within 48 hours: part of the original, flagged
+      `received_after_close`. Otherwise 409, add an addendum. A diary with no
+      revision yet may get one saved after midnight (a late diary, with a
+      reason), sealed on arrival. An on-time revision arriving in the grace
+      is still accepted after a late one (a conflict that can no longer be
+      cleared, left visible).
+    - **D7 Addenda:** by diary writers, on a closed diary only, with a
+      reason (1–500 characters), optional sections and photos; append-only.
+    - **D8 Delays and instructions:** structured rows with stable
+      device-chosen ids; JBCC links to them later by a person's choice.
+      Nothing becomes a contract instruction automatically.
+    - **D9 Labour:** `{id, firm, own_team, trade?, headcount}` rows, free-text
+      firms; a read of the site's firm names for autocomplete.
+    - **D10:** critical-path and delayed-effect flags on weather,
+      `expected_not_received` deliveries, plant hours working and standing,
+      a talk's end time; all optional.
+    - **Defaults not put to a decision:** a talk's header (topic, notes,
+      start) can change until its first signature, then only `ended_at` may
+      be set, once, and photos added. A signature counts from the start to
+      the end, or 12 hours after the start while there's none (000023,
+      review). The same name, firm and clock number twice on one talk is
+      409, with a hint (000023, review). A retraction: once, by the recorder or a lead, with a
+      reason. Archived sites take talks and diaries only for days before
+      the archive date; signatures, addenda and reads still work. Headcount
+      suggestion: distinct signed, unretracted names (with clock number) in
+      the day's talks, stored on each revision and shown live.
+  - 10.0 (Mon 16 Nov), **done**: fresh fixture ids. Committed fixtures in
+    the forced race tests take `fresh()` (a new UUID); org C's raise event
+    takes the action's id (`raiseSeq` parsed a UUID's tail as a number).
+    The chain vectors (`TestRecomputeSQL`) fix their ids, so they're seeded
+    once per process; storage test objects and buckets get a per-run suffix.
+    `go test -count=3` passes on the database, storage and evidence
+    packages (the second run failed 15, 3 and 1 tests before).
+  - 10.1 (Mon 16 Nov), **done**: the plan, D1–D10 and the Known spec
+    issues (above); BUILD_PLAN's M10 items restated with the full rules.
+  - 10.2 (Mon 16 Nov), **done**: `toolbox_topics.json`, a sixth regime
+    file: 9 topics, each quoting its CR 2014 regulation in SOURCES (reg 10,
+    13, 16, 23, 24, 25, 27, 28, 29; PPE and induction left out, with
+    reasons), plus POPIA s1's "biometrics". Keys locked in `shipped.json`;
+    `TestToolboxTopicsQuotedInSources` ties each key to its SOURCES row.
+    Mutation checks: 3 of 3 caught.
+  - 10.3 (Mon 16 Nov), **done**: migration 000020 (see Layout,
+    `internal/core/toolbox`).
+    - `toolbox_talks` (editable until the first signature, then only
+      `ended_at`, once; `talk_date` from the copied zone),
+      `toolbox_talk_evidence` (`photo` or `paper_register`, verified and
+      same site by FK), `toolbox_attendance` (a stored `identity_key` makes
+      the same name and clock number unique per talk),
+      `toolbox_attendance_retractions` (one per signature: the recorder or a
+      lead on the site). All append-only and untruncatable for every role.
+    - Paper attendance needs a register photo, checked at commit.
+    - **Who may write is checked AFTER the insert** (the M9 pattern): RLS's
+      `WITH CHECK` runs after BEFORE triggers, and another org's members
+      are invisible, so a BEFORE check would answer a cross-tenant row with
+      the wrong error.
+    - Forced races: two signatures of one name; a signature against a
+      header edit, both orders (the signature holds the talk `FOR SHARE`);
+      two retractions.
+    - Mutation checks: 34 of 34 caught. The first run found one survivor
+      (the retractor's site membership: every off-site retractor in the
+      tests was also neither recorder nor lead), now covered by a recorder
+      taken off the site. One mutation was invalid at first (a foreign key
+      with no matching unique key, so the migration failed) and was redone.
+  - 10.4 (Mon 16 Nov), **done**: `internal/core/toolbox`, endpoints in
+    `docs/api/toolbox.md` (seven). An edit locks the talk row first, so it
+    and a signature queue. A signature that loses its insert race (on
+    either unique key) retries once and answers as a repeat.
+    `TestToolboxSignLosesTheRace` forces it. **Contract change:** seven new
+    endpoints.
+  - 10.5 (Mon 16 Nov), **done**: migration 000021.
+    - `site_diaries` (one per site and local day; `opens_at`, `closes_at`
+      from the copied zone), `site_diary_revisions` (append-only, numbered
+      by arrival), `site_diary_revision_evidence`.
+    - **One definition of the current diary:** `site_diary_replay` replays
+      the revisions in arrival order (D5: a revision based on the head and
+      newer than it clears the conflict; anything else joins it, and the
+      newest by device time is the head). The header guard refuses any
+      state that isn't exactly the replay, moved on by one revision.
+    - D6 in the revision trigger, under the diary row's lock: future and
+      before-the-day times, the 48-hour grace (`site_diary_grace()`), and a
+      save after midnight only as a diary's first revision, with a reason.
+    - Forced races: two revisions on one base, both orders; two phones
+      creating the day; a late diary against an on-time save, both orders.
+      A second phone's `INSERT … ON CONFLICT` on the diary waits on the
+      first's uncommitted update, before the revision's own lock.
+    - Mutation checks: 37 of 37 caught. The first run left the guard's
+      head, conflict, late and count comparisons uncaught: every test
+      broke the count first. `TestSiteDiaryHeaderGuard` now holds the row
+      back one revision and tries each wrong part on its own, and a
+      two-revision jump.
+  - 10.6 (Mon 16 Nov), **done**: migration 000022, addenda (only once the
+    server's clock is past `closes_at`; reason required; must add a note,
+    sections or photos; photo count frozen at commit; append-only).
+    Mutation checks: 10 of 10 caught. Up, down 2, up verified on a
+    throwaway Postgres for 000020–000022.
+  - 10.7–10.8 (Mon 16 Nov), **done**: `internal/editions/construction/diary`
+    (see Layout), endpoints in `docs/api/diary.md` (six). Section problems
+    answer 400 with `section`, `row` and `field`. A revision that loses its
+    insert race retries once (`TestDiaryRevisionLosesTheRace`);
+    `TestDiaryOnlyOnConstructionSites` builds a registry with a mining test
+    regime and checks its site is 404. **Contract change:** six new
+    endpoints, the first under `/v1/construction`.
+  - **API mutation checks** (10.4, 10.7, 10.8): toolbox 8 of 11, diary
+    service 13 of 16, section validation 8 of 8 caught. The six survivors
+    are by design: pre-checks with database twins (paper register photo,
+    signing window, editing a signed talk, a closed diary, the grace, an
+    addendum on an open diary) that answer the same through `mapRule`, as
+    M8's and M9's twins do. Nine mutations first failed to compile (a
+    condition replaced by `false` left a variable unused) and were redone
+    as `false && …`; a run's results are now checked for build failures.
+  - 10.9 (Mon 16 Nov), **done**: `docs/api/toolbox.md`, `docs/api/diary.md`
+    (both under `TestAPIDoc`), `docs/api/m10-handover.md`, BUILD_PLAN ticked
+    and the forecast recomputed (v1 Thu 10 Dec).
+    - **End-to-end walk** on the real API, Postgres and MinIO (a separate
+      compose project, `-p siteproof-m10walk`, removed afterwards), 45
+      steps, each with its expected status: sign up and invite a supervisor
+      → a talk on a regime topic with a sealed group photo → three people
+      tap to sign, the phone's retry 200, the same person under a new id 409
+      → a paper name before the register photo 409, after it 201 → a topic
+      change after signatures 409, the end time 200 (4 signed, 2 photos) →
+      today's diary with only the minimum, then every optional section and
+      a photo → headcount 12 entered beside 4 suggested, the talk linked →
+      an edit before midnight 201, an addendum on the open diary 409 →
+      yesterday's diary saved 23:50 and received today 201
+      (`received_after_close`) → an edit after midnight 409 → an addendum
+      201, the original untouched → the supervisor on site B 404 (diary and
+      talk) → the registers, revisions, firms → a logged photo view (one
+      `view_bytes` row). The script (Node) is not in the repo.
+    - `go test -p 4 ./...` passes; `go test -count=3` on the database
+      package passes with the M10 tests.
+  - **Review fixes (Mon 16 Nov), migration 000023:**
+    - **Same-name workers.** `identity_key` is name|firm|clock number, each
+      through `toolbox_norm` (whitespace runs to one space, trimmed,
+      lowered). `toolbox.IdentityKey` is the same in Go, and
+      `TestIdentityKeyMatchesDatabase` compares it with the generated column
+      (case, tabs and newlines, a missing firm or clock number, accents). A
+      second signature of the same person is 409 with a `hint` to add a firm
+      or clock number. `toolbox_norm` lowers by the database's collation;
+      the test database is en_US.utf8, and production must be a UTF-8 one
+      too, or accented names would compare differently in Go.
+    - **Night shifts.** A signature counts from `started_at` to `ended_at`,
+      or to `started_at` + 12 hours (`toolbox_signing_window()`, mirrored by
+      `toolbox.SigningWindow`) while there's no end, across midnight. An end
+      time is at least the start, at most 12 hours after it, and not before
+      a signature that stands. Each bound has its own message. The diary
+      still counts a talk on `talk_date`. `TestSigningWindowAgrees` runs the
+      same cases through the Go check, a direct insert (the trigger) and the
+      API. Forced races: two identical signatures through the API (one 201,
+      one 409, one row); an end time against a later signature, both
+      orders.
+    - 000023 supersedes 000020's signing-day rule, its key and its
+      `ended_at > started_at` check; those mutation results of 000020 now
+      describe the replaced code.
+    - Not done: an addendum resolving a conflict (BUILD_PLAN, M10 open
+      item); it would need addenda in `site_diary_replay` and the header
+      guard.
+    - Mutation checks: 000023 12 of 12 caught; Go 9 of 10 (the end-time
+      pre-check survives by design: its database twin answers the same).
+    - **Near-midnight flake fixed:** "the day hasn't begun" was tested with
+      tomorrow, which falls inside the 5-minute clock leeway in the last 5
+      minutes of a day (it failed at 23:57). Both tests now use the day
+      after tomorrow. Other diary tests compute "today" and "yesterday" at
+      call time, so a run that straddles midnight can still flake.
 
 ## Finding severity
 

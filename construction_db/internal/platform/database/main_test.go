@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"construction_db/internal/platform/dbtest"
@@ -15,6 +16,10 @@ var (
 	pool  *pgxpool.Pool // as siteproof_app, under RLS
 	admin *pgxpool.Pool // superuser, bypasses RLS; fixtures and checks only
 )
+
+// fresh is a new id for a fixture that commits. Fixed ids would collide with
+// the previous run's rows under go test -count=N.
+func fresh() string { return uuid.NewString() }
 
 func TestMain(m *testing.M) {
 	app, adm, cleanup, err := dbtest.Start(context.Background())

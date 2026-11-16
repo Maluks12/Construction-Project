@@ -1,26 +1,57 @@
+import Link from "next/link";
+
 import { logout } from "@/app/actions/auth";
-import { Badge, Logo, buttonClass } from "@/components/ui";
+import { Logo } from "@/components/ui";
+import { currentSite, regimeOf } from "@/lib/site";
 
-import { Nav } from "./nav";
+import { Nav, SitePicker } from "./nav";
 
-export default function DashboardLayout({ children }: LayoutProps<"/">) {
-  return (
-    <div className="min-h-screen md:grid md:grid-cols-[232px_1fr]">
-      <aside className="border-b border-line bg-surface md:sticky md:top-0 md:flex md:h-screen md:flex-col md:border-r md:border-b-0">
-        <div className="flex items-center justify-between gap-3 px-4 py-4 md:px-5 md:py-5">
-          <Logo />
-          <Badge tone="warn">Construction</Badge>
-        </div>
-        <Nav />
-        <form action={logout} className="hidden px-3 pb-4 md:mt-auto md:block">
-          <button type="submit" className={buttonClass("ghost", "sm") + " w-full justify-start"}>
+export default async function DashboardLayout({ children }: LayoutProps<"/">) {
+  const { sites, site } = await currentSite();
+  const regime = site ? await regimeOf(site.id) : null;
+
+  const sidebar = (
+    <>
+      <SitePicker
+        sites={sites.map((s) => ({ id: s.id, name: s.name }))}
+        siteId={site?.id ?? null}
+        regime={regime?.name ?? null}
+      />
+      <Nav />
+      <div className="mt-auto flex items-center justify-between gap-2 px-3 pt-2 text-xs text-side-muted">
+        <Link href="/account" className="hover:text-side-ink">
+          Account &amp; devices
+        </Link>
+        <form action={logout}>
+          <button type="submit" className="hover:text-side-ink">
             Sign out
           </button>
         </form>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="min-h-screen md:grid md:grid-cols-[240px_1fr]">
+      {/* Phones and narrow windows: the sidebar folds into a menu. */}
+      <details className="group bg-side md:hidden">
+        <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
+          <Logo onDark />
+          <span className="rounded-lg border border-side-line px-3 py-1.5 text-sm font-semibold text-side-ink">
+            Menu
+          </span>
+        </summary>
+        <div className="flex flex-col gap-4 px-3.5 pb-4">{sidebar}</div>
+      </details>
+
+      <aside className="hidden bg-side md:sticky md:top-0 md:flex md:h-screen md:flex-col md:gap-[18px] md:overflow-y-auto md:px-3.5 md:py-5">
+        <div className="px-2 py-1">
+          <Logo onDark />
+        </div>
+        {sidebar}
       </aside>
-      <main className="min-w-0 px-4 py-6 sm:px-8 sm:py-8">
-        <div className="mx-auto max-w-5xl">{children}</div>
-      </main>
+
+      <main className="min-w-0 px-4 py-6 sm:px-8 sm:py-7">{children}</main>
     </div>
   );
 }

@@ -16,7 +16,7 @@ export default async function InvitePage({ searchParams }: PageProps<"/invite">)
   if (!preview || typeof token !== "string") {
     return (
       <>
-        <h1 className="text-2xl font-semibold tracking-tight">Invite not valid</h1>
+        <h1 className="font-head text-2xl font-semibold">Invite not valid</h1>
         <div className="mt-4">
           <Alert>
             This invite link is invalid, has expired, or was already used. Ask
@@ -25,7 +25,7 @@ export default async function InvitePage({ searchParams }: PageProps<"/invite">)
         </div>
         <p className="mt-6 text-sm text-muted">
           Already set up?{" "}
-          <Link href="/login" className="font-medium text-ink underline underline-offset-4">
+          <Link href="/login" className="link">
             Sign in
           </Link>
         </p>
@@ -36,7 +36,7 @@ export default async function InvitePage({ searchParams }: PageProps<"/invite">)
   return (
     <>
       <p className="text-sm text-muted">You&apos;ve been invited to join</p>
-      <h1 className="text-2xl font-semibold tracking-tight">{preview.org_name}</h1>
+      <h1 className="font-head text-2xl font-semibold">{preview.org_name}</h1>
       <dl className="mt-4 mb-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-md border border-line bg-surface px-4 py-3 text-sm">
         <dt className="text-muted">Name</dt>
         <dd>{preview.full_name}</dd>

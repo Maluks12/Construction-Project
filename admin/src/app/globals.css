@@ -1,0 +1,166 @@
+@import "tailwindcss";
+
+/*
+  SiteProof tokens, taken from the prototype: warm paper background, white
+  cards, a dark slate sidebar and a rust accent. Status colours come in
+  soft/ink pairs for pills. Use these through the Tailwind names below
+  (bg-surface, text-muted, border-line...), never raw colours, so dark mode
+  keeps working.
+*/
+:root {
+  --bg: #f6f5f2;
+  --surface: #ffffff;
+  --surface-2: #f3f1ec;
+  --ink: #16181d;
+  --muted: #5b6170;
+  --line: #e3e1dc;
+  --line-soft: #efede8;
+  --line-strong: #d6d3cc;
+  --primary: #b4470f;
+  --primary-hover: #8c3409;
+  --primary-ink: #ffffff;
+  --accent: #b4470f;
+  --accent-ink: #8c3409;
+  --accent-soft: #fdf3ec;
+  --danger: #8e1616;
+  --danger-soft: #fbe3e3;
+  --ok: #1f6f43;
+  --ok-soft: #e3f2e8;
+  --warn: #7a4e00;
+  --warn-soft: #fff1cc;
+  --neutral: #334155;
+  --neutral-soft: #eef1f5;
+  --high: #9a3a0b;
+  --high-soft: #fde6d6;
+  --critical: #a61b1b;
+  --critical-ink: #ffffff;
+  --bar: #1b1f27;
+  --thumb: #d9d5cc;
+  --focus: #e2683c;
+
+  /* The sidebar is dark in both colour schemes. */
+  --side: #1b1f27;
+  --side-line: #333a47;
+  --side-ink: #ffffff;
+  --side-text: #c9cdd6;
+  --side-muted: #a3a8b4;
+  --side-hover: #252a34;
+  --side-on: #2e3440;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111318;
+    --surface: #171a21;
+    --surface-2: #222631;
+    --ink: #eceef2;
+    --muted: #9aa1ae;
+    --line: #2a2f3a;
+    --line-soft: #232833;
+    --line-strong: #3a4150;
+    --primary: #c8521a;
+    --primary-hover: #e2683c;
+    --accent: #e2683c;
+    --accent-ink: #f08a63;
+    --accent-soft: #2b1a12;
+    --danger: #f3a3a3;
+    --danger-soft: #3b1717;
+    --ok: #7fd3a2;
+    --ok-soft: #12291d;
+    --warn: #f2c260;
+    --warn-soft: #33270c;
+    --neutral: #c3ccd9;
+    --neutral-soft: #232a36;
+    --high: #f5a77c;
+    --high-soft: #3a2012;
+    --critical: #c62828;
+    --bar: #c9cdd6;
+    --thumb: #2f3440;
+    --side: #0c0e12;
+    --side-line: #2a2f3a;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-line-strong: var(--line-strong);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-ink: var(--primary-ink);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-neutral: var(--neutral);
+  --color-neutral-soft: var(--neutral-soft);
+  --color-high: var(--high);
+  --color-high-soft: var(--high-soft);
+  --color-critical: var(--critical);
+  --color-critical-ink: var(--critical-ink);
+  --color-bar: var(--bar);
+  --color-thumb: var(--thumb);
+  --color-side: var(--side);
+  --color-side-line: var(--side-line);
+  --color-side-ink: var(--side-ink);
+  --color-side-text: var(--side-text);
+  --color-side-muted: var(--side-muted);
+  --color-side-hover: var(--side-hover);
+  --color-side-on: var(--side-on);
+  --font-sans: "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-head: "Space Grotesk Variable", "Space Grotesk", "Inter Variable", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Links inside page content use the accent, as in the prototype. */
+.link {
+  color: var(--accent);
+  font-weight: 600;
+}
+.link:hover {
+  color: var(--accent-ink);
+}
+
+/* Shared table look: small grey headings, soft row lines. */
+.tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.tbl th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.tbl td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+}
+.tbl tr:last-child td {
+  border-bottom: 0;
+}

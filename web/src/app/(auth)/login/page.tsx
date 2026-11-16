@@ -12,7 +12,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
+      <h1 className="font-head text-2xl font-semibold">Sign in</h1>
       <p className="mt-1 mb-6 text-sm text-muted">
         Use the email or mobile number on your SiteProof account.
       </p>
@@ -24,7 +24,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
       <LoginForm next={typeof next === "string" ? next : ""} />
       <p className="mt-6 text-sm text-muted">
         New company?{" "}
-        <Link href="/signup" className="font-medium text-ink underline underline-offset-4">
+        <Link href="/signup" className="link">
           Create an account
         </Link>
       </p>

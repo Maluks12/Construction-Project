@@ -18,7 +18,7 @@ const field = (form: FormData, name: string) =>
 
 // Only follow ?next= to a page on this site, never to another domain.
 function safeNext(value: string) {
-  return value.startsWith("/") && !value.startsWith("//") ? value : "/sites";
+  return value.startsWith("/") && !value.startsWith("//") ? value : "/overview";
 }
 
 export async function login(_: FormState, form: FormData): Promise<FormState> {
@@ -71,7 +71,7 @@ export async function signup(_: FormState, form: FormData): Promise<FormState> {
   }
 
   writeTokens(await cookies(), pair);
-  redirect("/sites");
+  redirect("/overview");
 }
 
 export async function acceptInvite(
@@ -101,7 +101,7 @@ export async function acceptInvite(
   }
 
   writeTokens(await cookies(), pair);
-  redirect("/sites");
+  redirect("/overview");
 }
 
 export async function logout() {

@@ -40,6 +40,11 @@ const (
 	rlsTalkB     = "3c000000-0000-0000-0000-00000000000b"
 	rlsAttA      = "3d000000-0000-0000-0000-00000000000a"
 	rlsAttB      = "3d000000-0000-0000-0000-00000000000b"
+	rlsRevA      = "3e000000-0000-0000-0000-00000000000a" // the late diary of 15 Jan, one photo, one addendum with a photo
+	rlsRevB      = "3e000000-0000-0000-0000-00000000000b"
+	rlsAddA      = "3f000000-0000-0000-0000-00000000000a"
+	rlsAddB      = "3f000000-0000-0000-0000-00000000000b"
+	rlsDiaryDate = "2026-01-15"
 )
 
 // Inserts an open action on a finding; its raise must follow. $1 id, $2 org, $3 site,
@@ -85,6 +90,11 @@ type rlsTable struct {
 
 // In foreign-key-safe delete order.
 var rlsTables = []rlsTable{
+	{"site_diary_addendum_evidence", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"site_diary_addenda", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"site_diary_revision_evidence", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"site_diary_revisions", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"site_diaries", "org_id", rlsOrgA, rlsOrgB, "late", deleteDenied},
 	{"toolbox_attendance_retractions", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"toolbox_attendance", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"toolbox_talk_evidence", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
@@ -170,6 +180,7 @@ var seedOnce = sync.OnceValue(func() error {
 		org, user, site, loc, sess, inv, ev, insp := id("20"), id("21"), id("22"), id("23"), id("24"), id("26"), id("28"), id("2a")
 		inc, stmt, duty, dl, sat, act, ev1, co, wv, ev2 := id("2e"), id("2f"), id("30"), id("31"), id("32"), id("33"), id("34"), id("37"), id("38"), id("3a")
 		talk, att := id("3c"), id("3d")
+		rev, add := id("3e"), id("3f")
 
 		stmts := []struct {
 			sql  string
@@ -249,6 +260,12 @@ var seedOnce = sync.OnceValue(func() error {
 			{talkPhotoSQL, []any{org, site, talk, ev, "photo", user}},
 			{signSQL, []any{att, org, site, talk, "RLS worker", nil, "tap", user, signTime}},
 			{unsignSQL, []any{att, org, site, "Signed by mistake", user}},
+			// A diary written late, with a photo, and an addendum with a photo.
+			{diarySQL, []any{org, site, rlsDiaryDate, user}},
+			{revisionSQL, []any{rev, org, site, rlsDiaryDate, nil, 5, user, lateSaveAt, "Written up later", 1}},
+			{revisionPhotoSQL, []any{org, site, rlsDiaryDate, rev, ev}},
+			{addendumSQL, []any{add, org, site, rlsDiaryDate, "Forgot the plant", "Crane idle", user, 1}},
+			{addendumPhotoSQL, []any{org, site, rlsDiaryDate, add, ev}},
 		}
 		for _, s := range stmts {
 			if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
@@ -364,7 +381,13 @@ func TestRLSWrites(t *testing.T) {
 			  VALUES ($1, $2, '37000000-0000-0000-0000-00000000000b', $3)`, []any{rlsOrgB, rlsSiteB, rlsEvidenceB}},
 			"finding_waivers": {`INSERT INTO finding_waivers (id, org_id, site_id, inspection_id, item_key, severity, reason, waived_by, client_waived_at)
 			  VALUES ('38000000-0000-0000-0000-0000000000bb', $1, $2, $3, 'item', 'medium', 'Smuggled', $4, now())`, []any{rlsOrgB, rlsSiteB, rlsInspB, rlsUserB}},
-			"corrective_actions":             {actionOnFindingSQL, []any{"33000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, rlsInspB, "item", "high", rlsUserB, 1}},
+			"corrective_actions": {actionOnFindingSQL, []any{"33000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, rlsInspB, "item", "high", rlsUserB, 1}},
+			"site_diaries": {`INSERT INTO site_diaries (org_id, site_id, diary_date, time_zone, created_by) VALUES ($1, $2, '2026-01-16', 'Africa/Johannesburg', $3)`,
+				[]any{rlsOrgB, rlsSiteB, rlsUserB}},
+			"site_diary_revisions":           {revisionSQL, []any{"3e000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, rlsDiaryDate, nil, 1, rlsUserB, lateSaveAt, "Smuggled", 0}},
+			"site_diary_revision_evidence":   {revisionPhotoSQL, []any{rlsOrgB, rlsSiteB, rlsDiaryDate, rlsRevB, rlsEvidenceB}},
+			"site_diary_addenda":             {addendumSQL, []any{"3f000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, rlsDiaryDate, "Smuggled", "x", rlsUserB, 0}},
+			"site_diary_addendum_evidence":   {addendumPhotoSQL, []any{rlsOrgB, rlsSiteB, rlsDiaryDate, rlsAddB, rlsEvidenceB}},
 			"toolbox_talks":                  {talkSQL, []any{"3c000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, nil, "Smuggled", talkStart, nil, sast, rlsUserB}},
 			"toolbox_talk_evidence":          {talkPhotoSQL, []any{rlsOrgB, rlsSiteB, rlsTalkB, rlsEvidenceB, "photo", rlsUserB}},
 			"toolbox_attendance":             {signSQL, []any{"3d000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, rlsTalkB, "Smuggled", nil, "tap", rlsUserB, signTime}},

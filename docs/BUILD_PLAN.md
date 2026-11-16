@@ -6,9 +6,15 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 
 **Checkpoint, Sun 22 Nov:** if the safety core isn't done, cut from the end in this order: JBCC delay claims, then the principal-contractor tier, then IOD form assembly. Keep the IOD lifecycle.
 
-**Decided Sun 15 Nov: no cuts.** The full scope stays, so **Sat 5 Dec is not reachable**. The forecast below puts v1.0.0 on **Thu 10 Dec**, 5 days late. The Sun 22 Nov checkpoint stays as a review point, not a cut.
+**Decided Sun 15 Nov: no cuts.** The full scope stays. The forecast below (fifth revision, Tue 17 Nov) puts v1.0.0 on **Sun 6 Dec**, one day after Sat 5 Dec. The due date stays Sat 5 Dec. The Sun 22 Nov checkpoint stays as a review point, not a cut.
 
-## Forecast (Mon 16 Nov, fourth revision)
+**Decided Tue 17 Nov (the pricing, Enterprise and onboarding documents):**
+- **Pricing is per active site, never per user.** Users are unlimited on every plan; plans limit active sites.
+- **CHSO partners get a once-off referral payout**, not a recurring share. It's paid after the referred client has paid its first 3 months, or on its first annual prepay.
+
+## Forecast (Tue 17 Nov, fifth revision)
+
+**Fifth revision (Tue 17 Nov, after the product and billing decisions).** The estimates are now set from the pace M8–M10 actually had, not from the original plan. M8 (4 tasks), M9 (3) and M10 (4, with the fixture fix) were each built in one day at full rigour: 11 plan tasks in 3 days, about 3.5 a day, against forecasts of 6, 3 and 2 days. The rule below assumes 3 a day, to leave some room. ONBOARD (4 tasks) is added and BILL grew from 2 tasks to 9, 4 of them full rigour. SYNC is set to 3 days by hand: its pull and push, with conflict rules, must cover every record type built so far, which the task count undercounts. Every date is recomputed from M11 starting Tue 17 Nov: v1 moves from Thu 10 Dec to **Sun 6 Dec**, one day after Sat 5 Dec. Review time is still not modelled, and M7–M10 have not been reviewed yet; M6 and M7 ran slower than planned (8 days against 5, 7 against 2), so the faster pace is three milestones' worth of evidence.
 
 **Fourth revision (after M10).** M10 was finished on Mon 16 Nov, against a 2-day estimate that had it on Tue 17 Nov. It grew in planning (signed attendance and the diary's closing, conflicts and addenda became full rigour), yet took one day. Every date below is recomputed from M11 starting Tue 17 Nov, with the same per-milestone estimates: v1 moves from Fri 11 Dec to Thu 10 Dec, 5 days after Sat 5 Dec. Review time is still not modelled, and M7–M10 have not been reviewed yet.
 
@@ -18,11 +24,14 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 
 **First revision.** The first forecast this morning had M7 on Wed 18 Nov, and abandoning (added to M7 the same day) would have pushed it to Thu 19. In fact M7's code was finished on Sun 15 Nov, including abandoning and an end-to-end walk on the real API. So every date below is recomputed from a Mon 16 Nov start for M8, with the same per-milestone estimates. That brings v1 forward from Wed 23 Dec to Sun 20 Dec. The estimates themselves are unchanged: one fast day doesn't justify shrinking them.
 
-How the forecast is built:
-- **Recent pace:** M6 took 8 days against a planned 5. M7 grew from a 2-day plan to 7 days (Mon 9 to Sun 15 Nov), mostly from scope added along the way (the access log, template versioning, corrections and abandoning).
-- **Full-rigour milestones** (anything that seals, freezes or proves; see `construction_db/CLAUDE.md`) are estimated at about 1.5 times their planned days. **Light ones** (ordinary CRUD) are estimated as planned.
+How the forecast is built (fifth revision):
+- **Pace:** M8–M10 delivered about 3.5 plan tasks a day at full rigour; the forecast assumes 3. Effort days = the milestone's open tasks ÷ 3, rounded up. The rate was measured on full-rigour work, so light milestones get no discount and full ones no extra.
+- **Plus one day** for new infrastructure (M11: `cmd/worker` and Redis) or an outside sandbox to integrate (BILL: Stitch).
+- **DEPLOY** keeps its 2 days: its tasks are configuration and accounts, not code, so the task rate doesn't apply.
+- **SYNC** is set to 3 days: pull and push with conflict rules must cover every record type built so far (inspections, findings, incidents and their versions, actions, toolbox talks and attendance, diary revisions and addenda, evidence); 3 open tasks would give 1.
 - **Calendar:** one milestone after another, working every day, as so far.
 - **Not modelled:** review time. Each step waits for review before the next builds on it.
+- **Earlier revisions** estimated from the original plan, with full-rigour milestones at 1.5 times their planned days (M6 took 8 days against 5; M7 7 against 2).
 
 | Milestone | Rigour | Days | Forecast finish | Was due | Why it takes longer than planned |
 |---|---|---|---|---|---|
@@ -30,20 +39,31 @@ How the forecast is built:
 | M8 Incidents | full | – | **done Sun 15 Nov** | Fri 13 Nov | Built in one day against a 6-day estimate; the dates below are recomputed from it |
 | M9 Corrective actions | full | – | **done Sun 15 Nov** | Sun 15 Nov | Built in one day against a 3-day estimate; the dates below are recomputed from it |
 | M10 Toolbox talks & site diary | light; full for attendance and closing | – | **done Mon 16 Nov** | Tue 17 Nov | Grew in planning (full rigour on signed attendance, closing, conflicts, addenda); built in one day |
-| M11 People & documents | light, plus the worker | 4 | Fri 20 Nov | Fri 20 Nov | Reminders need `cmd/worker` and Redis, which are new infrastructure; now also action escalation |
-| M12 Reports & audit pack | full | 3 | Mon 23 Nov | Sun 22 Nov | The audit pack may need to run in the worker |
-| SYNC Offline sync API | full | 4 | Fri 27 Nov | Wed 25 Nov | Conflict rules across every record type built by then |
-| BILL Billing | light; webhooks full | 3 | Mon 30 Nov | Fri 27 Nov | Needs Stitch sandbox access (external) |
-| DEPLOY | – | 2 | Wed 2 Dec | Sat 28 Nov | Needs an AWS account and a practitioner's call on the Object Lock mode (external) |
-| IOD Injury on duty | full | 3 | Sat 5 Dec | Tue 1 Dec | |
-| JBCC Delay claims | full | 2 | Mon 7 Dec | Wed 2 Dec | |
-| PC Principal contractor tier | full | 2 | Wed 9 Dec | Fri 4 Dec | |
-| V1 Release | – | 1 | **Thu 10 Dec** | Sat 5 Dec | |
+| M11 People & documents | light, plus the worker | 3 | Thu 19 Nov | Fri 20 Nov | 5 tasks (2 days), plus 1 for `cmd/worker` and Redis, new infrastructure |
+| M12 Reports & audit pack | full | 2 | Sat 21 Nov | Sun 22 Nov | 4 tasks; the audit pack may need to run in the worker |
+| SYNC Offline sync API | full | 3 | Tue 24 Nov | Wed 25 Nov | Set by hand (the task count gives 1): pull and push with conflict rules across every record type built so far |
+| ONBOARD Onboarding | light; the CSV import's all-or-nothing tested | 2 | Thu 26 Nov | Thu 26 Nov | 4 tasks, added Tue 17 Nov |
+| BILL Billing | light; full for invoicing, price versions, metering and webhooks | 4 | Mon 30 Nov | Mon 30 Nov | 9 tasks (3 days, was 2 tasks), plus 1 for the Stitch sandbox (external) |
+| DEPLOY | – | 2 | Wed 2 Dec | Mon 30 Nov | Configuration, not code; needs an AWS account and a practitioner's call on the Object Lock mode (external) |
+| IOD Injury on duty | full | 1 | Thu 3 Dec | Tue 1 Dec | 3 tasks |
+| JBCC Delay claims | full | 1 | Fri 4 Dec | Wed 2 Dec | 1 task |
+| PC Principal contractor tier | full | 1 | Sat 5 Dec | Fri 4 Dec | 3 tasks |
+| V1 Release | – | 1 | **Sun 6 Dec** | Sat 5 Dec | |
+
+**Critical path:** every milestone follows the last, so all of them are on it, and there is no slack: the forecast is already one day past Sat 5 Dec. The external dependencies fall due on it as follows:
+- **Stitch sandbox credentials:** needed when BILL starts, Fri 27 Nov, and at the latest for the Stitch task, Mon 30 Nov.
+- **AWS account:** needed when DEPLOY starts, Tue 1 Dec.
+- **The Object Lock call (mode and retention, with a practitioner):** needed by Tue 1 Dec, before the bucket is created.
+
+Any one of them arriving late moves the release later still, day for day.
+
+**Lead times, Tue 17 Nov:** Stitch sandbox access and the AWS account are being requested now, to take their lead time off the critical path, and the Object Lock call is being booked this week.
 
 **Risks to the forecast:**
-- **External waits:** Stitch sandbox credentials, the AWS account, and a practitioner reviewing the Object Lock mode, the severity wording, and the corrective-action default due days that follow it (low 14, medium 7, high 1, critical 0 days after the day raised; M9, product defaults, not law). Each one can stall a milestone on its own.
-- **Mobile sync:** the mobile app can't sync offline until SYNC lands (Fri 27 Nov, was Wed 25 Nov).
-- **No contingency:** the forecast has none. Anything that grows the way M7 did moves every date after it.
+- **External waits:** the three above, plus a practitioner reviewing the severity wording and the corrective-action default due days that follow it (low 14, medium 7, high 1, critical 0 days after the day raised; M9, product defaults, not law), which doesn't block a milestone.
+- **The pace:** three milestones at about 3.5 tasks a day is the evidence. M6 and M7 ran slower than planned, and review time isn't modelled: if every milestone from M11 to the release took one day more, the release would be Wed 16 Dec.
+- **Mobile sync:** the mobile app can't sync offline until SYNC lands (Tue 24 Nov, due Wed 25 Nov).
+- **No contingency.** Anything that grows the way M7 did moves every date after it.
 
 **Done before this plan:** migrations 000001–000006, auth (signup, login, refresh with reuse detection, sessions), sites (CRUD, members, supervisor scoping, locations), integration tests, CI.
 
@@ -126,35 +146,54 @@ Rev 3 §2.3.4: "Ships with a content library -- foremen will not write safety co
 
 - [ ] Talk content per topic (what the presenter reads out), versioned append-only in the regime data like checklists, chosen by activity and season
 
-### M11: People & documents (due Fri 20 Nov; forecast Fri 20 Nov)
+### M11: People & documents (due Fri 20 Nov; forecast Thu 19 Nov)
 
 - [ ] Worker register; competencies and appointments with expiry (due Wed 18 Nov)
 - [ ] H&S file document register with versions in S3 (due Thu 19 Nov)
+- [ ] Organisation-level company documents with expiry dates (the statutory vault): Letter of Good Standing, COIDA registration, CIDB, tax clearance. Separate from the site H&S file register; both feed the expiry reminders (due Thu 19 Nov; added Tue 17 Nov)
 - [ ] Deadline and expiry reminders in cmd/worker (Redis-backed) (due Fri 20 Nov). Also corrective actions: escalate overdue ones up the role hierarchy (Rev 3 "visible ageing and escalation of overdue actions", Rev 4 A.4 "escalation up the role hierarchy", both P1), and flag stalled verifications from `awaiting_since` (added Sun 15 Nov, M9)
 - [ ] Recompute open deadlines after a holiday-calendar migration (a newly proclaimed day): each recompute is a new deadline row superseding the old, so what the system said before stays on record. M8 ships the SQL that lists the deadlines a given date affects. Alert on job non-completion, not only failure (Rev 4 §2.3) (added Sun 15 Nov)
 
-### M12: Reports & audit pack (due Sun 22 Nov; forecast Mon 23 Nov)
+### M12: Reports & audit pack (due Sun 22 Nov; forecast Sat 21 Nov)
 
 - [ ] Site compliance summary endpoint: open findings, overdue actions, expiring competencies (due Sat 21 Nov)
 - [ ] In the compliance summary, list each site's evidence still pending more than 24 hours after it was declared. A declared upload that's never completed stays pending forever, and any object it uploaded stays under Object Lock; this makes abandoned uploads visible rather than silent (due Sat 21 Nov)
 - [ ] Audit pack export with evidence manifest and chain verification result. Include each site's chain head hash and length: the chain alone can't detect its newest entries being deleted (with site_chain_heads rewound), but a pack someone already holds records how long it was (see internal/core/evidence/CHAIN.md). Until the daily signed anchor (P2) exists, this is the only external record. Verifying a long chain (it walks every entry) can take longer than REQUEST_TIMEOUT (default 10s), and a pack covers many sites, so the export may need to run in cmd/worker rather than inside a request. Include abandoned inspections, marked abandoned, with their answers and who abandoned them, when and why (decided 15 Nov) (due Sun 22 Nov)
 - [ ] Checkpoint: review the safety core against Rev 4 section 6.D; decide cuts here if behind (due Sun 22 Nov)
 
-## Sync, billing & deploy (due Sat 28 Nov)
+## Sync, onboarding, billing & deploy (due Mon 30 Nov)
 
-### SYNC: Offline sync API (due Wed 25 Nov; forecast Fri 27 Nov)
+### SYNC: Offline sync API (due Wed 25 Nov; forecast Tue 24 Nov)
 
 - [x] Request deadlines and pool limits: replace RequireAuth's own 2s timeout with one request-level deadline set in middleware; a request that hits it or can't get a pool connection gets 503 with Retry-After, never 500; pool size (pgxpool MaxConns) set from config and documented. Found in M6: a burst larger than the pool (default max(4, CPUs)) made auth answer 500 after 2s (due Mon 23 Nov)
 - [ ] Client-generated UUIDs and idempotency keys on every create (due Mon 23 Nov)
 - [ ] Delta pull per site from a cursor (GET /v1/sync?since=) (due Tue 24 Nov)
 - [ ] Batch push with per-record results and conflict rules; evidence is never overwritten (due Wed 25 Nov)
 
-### BILL: Billing (due Fri 27 Nov; forecast Mon 30 Nov)
+### ONBOARD: Onboarding (due Thu 26 Nov; forecast Thu 26 Nov; added Tue 17 Nov)
 
-- [ ] PaymentProvider interface, plans, seat limits, subscription states (due Thu 26 Nov)
-- [ ] Stitch DebiCheck provider (sandbox) and verified webhooks (due Fri 27 Nov)
+**Rigour:** light, except that the CSV import needs a test proving that one bad row writes nothing.
 
-### DEPLOY: Deploy (due Sat 28 Nov; forecast Wed 2 Dec)
+- [ ] Site zones and floors: check whether `site_locations` already covers them; extend it only if not (due Wed 25 Nov)
+- [ ] CSV import for the worker register: validate every row, report errors per row, all or nothing. Test: one bad row writes nothing (due Wed 25 Nov)
+- [ ] Bulk document upload with expiry dates: worker certificates, medicals and company documents (due Thu 26 Nov)
+- [ ] First-run setup progress endpoint for the wizard: sites added, team invited, company documents loaded, workers added (due Thu 26 Nov)
+
+### BILL: Billing (due Mon 30 Nov; forecast Mon 30 Nov)
+
+**Rigour:** full for invoicing, price versions (escalation, cap, rounding, prepay lock), metering and the webhooks; light for the rest.
+
+- [ ] PaymentProvider interface, per-site plans (active-site limit and an extra-site price), subscription states (due Fri 27 Nov)
+- [ ] Active-site counting. Archived sites are free and still readable. A lapsed account goes read-only and never loses its evidence (due Fri 27 Nov)
+- [ ] Plan features switched on per plan: IOD claims, delay claims, the statutory vault and the subcontractor rollup now; SSO, API access and data export later (due Sat 28 Nov)
+- [ ] Free subcontractor accounts under a principal contractor (due Sat 28 Nov)
+- [ ] Invoicing: VAT invoices, EFT on 30-day terms, monthly, quarterly or annual billing, and annual prepay (two months free). **Full rigour** (due Sun 29 Nov)
+- [ ] One-off and hourly charges on an invoice: done-for-you onboarding, and work beyond its limits (due Sun 29 Nov)
+- [ ] Price versions with effective dates: yearly CPI escalation on a fixed date with a cap, 30 days' notice, rounding, and annual prepay locked until renewal. **Full rigour** (due Sun 29 Nov)
+- [ ] SMS/WhatsApp metering per organisation, billed at cost plus a margin. **Full rigour** (due Mon 30 Nov)
+- [ ] Stitch DebiCheck provider (sandbox) and verified webhooks. Declare the yearly increase on the mandate at signup, and set the maximum collection amount with headroom above the current invoice. Check Stitch's current documentation for both. **Full rigour** for the webhooks (due Mon 30 Nov)
+
+### DEPLOY: Deploy (due Mon 30 Nov; forecast Wed 2 Dec)
 
 - [ ] RLS on users: visible if it's you or shares an org with the tenant; login and invite lookups by email/mobile via SECURITY DEFINER functions (before the production deploy)
 - [ ] Create a LOGIN role for siteproof_app with its own password; the production API connects with it, never superuser credentials. The migration owner must be a superuser or have BYPASSRLS (the token lookups are SECURITY DEFINER) (before the production deploy)
@@ -165,22 +204,22 @@ Rev 3 §2.3.4: "Ships with a content library -- foremen will not write safety co
 - [ ] Evidence downloads logged by S3: server access logging or CloudTrail data events on the evidence bucket, to a separate bucket. The API's access log records that a 60-second view link was issued, not that it was used; this records the actual GETs (before the production deploy)
 - [ ] Set TRUSTED_PROXIES to the load balancer's addresses. Empty (the default) trusts no proxy, so behind a load balancer every access-log row would record the load balancer's IP; listing a range clients can reach lets them choose the logged IP (before the production deploy)
 - [ ] Decide who may see injury and treatment details in `incident_people` (POPIA special personal information: health). Today every owner, SHE officer and supervisor on the site can (added Sun 15 Nov) (before launch)
-- [ ] Production deploy: GHCR image, secrets, migrate step, health checks, backups (due Sat 28 Nov)
-- [ ] Smoke test the deployed API. Use a dedicated smoke-test org and site: evidence it uploads can never be deleted (due Sat 28 Nov)
+- [ ] Production deploy: GHCR image, secrets, migrate step, health checks, backups (due Mon 30 Nov)
+- [ ] Smoke test the deployed API. Use a dedicated smoke-test org and site: evidence it uploads can never be deleted (due Mon 30 Nov)
 
 ## Claims & contractor tier (due Sat 5 Dec)
 
-### IOD: Injury on duty (COIDA) (due Tue 1 Dec; forecast Sat 5 Dec)
+### IOD: Injury on duty (COIDA) (due Tue 1 Dec; forecast Thu 3 Dec)
 
-- [ ] IOD case linked to an incident, with the W.Cl.2–6 lifecycle (per Rev 3) (due Sun 29 Nov)
-- [ ] IOD deadlines and reminders from regime rules. The 7-day W.Cl.2 clock already exists: M8 computes `coida_s39_employer_report` on the incident when an employee is injured. The IOD case reuses that deadline (its satisfaction is the W.Cl.2 being filed); it must not start a second one (decided Sun 15 Nov) (due Mon 30 Nov)
+- [ ] IOD case linked to an incident, with the W.Cl.2–6 lifecycle (per Rev 3) (due Tue 1 Dec)
+- [ ] IOD deadlines and reminders from regime rules. The 7-day W.Cl.2 clock already exists: M8 computes `coida_s39_employer_report` on the incident when an employee is injured. The IOD case reuses that deadline (its satisfaction is the W.Cl.2 being filed); it must not start a second one (decided Sun 15 Nov) (due Tue 1 Dec)
 - [ ] Assemble form data for each stage (structured data first, PDF later) (due Tue 1 Dec)
 
-### JBCC: Delay claims (due Wed 2 Dec; forecast Mon 7 Dec)
+### JBCC: Delay claims (due Wed 2 Dec; forecast Fri 4 Dec)
 
 - [ ] Delay event log, notice deadlines from regime data, evidence links (due Wed 2 Dec)
 
-### PC: Principal contractor tier (due Fri 4 Dec; forecast Wed 9 Dec)
+### PC: Principal contractor tier (due Fri 4 Dec; forecast Sat 5 Dec)
 
 - [ ] Link subcontractor orgs to a site; the principal contractor sees their compliance (due Thu 3 Dec)
 - [ ] Tests for cross-org visibility under RLS (due Fri 4 Dec)
@@ -192,6 +231,18 @@ Rev 4's construction pack has "Regulation 4 notification, P1, 7-day deadline and
 
 - [ ] A site's planned construction work (start date, and which of reg 4(1)(a)–(d) or 4(2) applies), creating `cr2014_reg4_notification` (and, for reg 3 permits, `cr2014_reg3_permit_application`) deadlines through the M8 engine (`applies_when: site_work`). Decide whether "at least 7 days before" means clear days. Rev 4 §3.2 overstates reg 4's scope (see SOURCES)
 
-### V1: Release (due Sat 5 Dec; forecast Thu 10 Dec)
+### V1: Release (due Sat 5 Dec; forecast Sun 6 Dec)
 
 - [ ] Full regression, CI green, tag v1.0.0, deploy (due Sat 5 Dec)
+
+## Enterprise & growth (Tue 8 – Fri 18 Dec; after v1, not part of it)
+
+### ENT: Enterprise & growth (due Fri 18 Dec; added Tue 17 Nov)
+
+- [ ] Custom plans per organisation: their own prices, site volume bands and contract dates, alongside the standard plans. No customer-specific code (due Tue 8 Dec)
+- [ ] SSO, switched on per plan (due Thu 10 Dec)
+- [ ] Public API with API keys, switched on per plan (due Fri 11 Dec)
+- [ ] Custom reports and data export, switched on per plan (due Mon 14 Dec)
+- [ ] Usage counts for the Enterprise quote triggers: active sites, office users, linked subcontractors (due Tue 15 Dec)
+- [ ] CHSO partner programme: partner record, referral attribution, and the once-off payout (after the referred client has paid its first 3 months, or on its first annual prepay) (due Thu 17 Dec)
+- [ ] A CHSO can work across several client organisations, with scoped access under RLS and tests (due Fri 18 Dec)

@@ -503,28 +503,8 @@ the site diary, settings.
   step changes the plan or a decision, update this section.
 - Foundation (M4, M5) due Sun 1 Nov. Safety core (M6–M12) due Sun 22 Nov,
   which is the checkpoint.
-- **Forecast (Mon 16 Nov, revised after M10 finished that day; no cuts
-  decided, full scope stays).** Sat 5 Dec is not reachable. The dates are
-  recomputed from M11 starting Tue 17 Nov, with the per-milestone
-  estimates unchanged; REG4 is not scheduled yet. Review time isn't
-  modelled, and M7–M10 haven't been reviewed. Reasons and risks
-  are in `docs/BUILD_PLAN.md` ("Forecast").
-
-  | Milestone | Rigour | Forecast finish | Was due |
-  |---|---|---|---|
-  | M7 Inspections & checklists | full | **done Sun 15 Nov** | Tue 10 Nov |
-  | M8 Incidents (with the deadline engine) | full | **done Sun 15 Nov** | Fri 13 Nov |
-  | M9 Corrective actions | full | **done Sun 15 Nov** | Sun 15 Nov |
-  | M10 Toolbox talks & site diary | light; full for attendance and closing | **done Mon 16 Nov** | Tue 17 Nov |
-  | M11 People & documents | light | Fri 20 Nov | Fri 20 Nov |
-  | M12 Reports & audit pack | full | Mon 23 Nov | Sun 22 Nov |
-  | SYNC Offline sync API | full | Fri 27 Nov | Wed 25 Nov |
-  | BILL Billing | light; webhooks full | Mon 30 Nov | Fri 27 Nov |
-  | DEPLOY | – | Wed 2 Dec | Sat 28 Nov |
-  | IOD Injury on duty | full | Sat 5 Dec | Tue 1 Dec |
-  | JBCC Delay claims | full | Mon 7 Dec | Wed 2 Dec |
-  | PC Principal contractor tier | full | Wed 9 Dec | Fri 4 Dec |
-  | V1 Release | – | **Thu 10 Dec** | Sat 5 Dec |
+- **Forecast:** the one source is `docs/BUILD_PLAN.md` ("Forecast"): the
+  dates, the reasons and the risks.
 - **Done:** migrations 000001–000007; auth (email and mobile login, refresh
   rotation with reuse detection, sessions); sites, site members, supervisor
   scoping, locations; invites (send, list, revoke, preview, accept);

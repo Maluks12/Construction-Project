@@ -40,7 +40,7 @@ export async function proxy(request: NextRequest) {
 
   if (matches(pathname, PUBLIC_PATHS)) {
     if (refresh && matches(pathname, SIGNED_OUT_ONLY)) {
-      return NextResponse.redirect(new URL("/sites", request.url));
+      return NextResponse.redirect(new URL("/overview", request.url));
     }
     return NextResponse.next();
   }

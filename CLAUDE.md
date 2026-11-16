@@ -7,6 +7,10 @@ Two areas, two people:
 - `construction_db/`: Go API (backend). Details in `construction_db/CLAUDE.md`.
 - `web/`: Next.js 16 dashboard for owners and SHE officers (frontend). Details
   in `web/CLAUDE.md`.
+- `mobile/`: Expo (React Native) app for supervisors on site (frontend). Calls
+  the API directly; details in `mobile/README.md`.
+- `admin/`: Next.js 16 portal for the SiteProof team. Front end only, sample
+  data, no API calls yet; details in `admin/README.md`.
 
 Source of truth for the product: SiteProof spec **Rev 4** (22 Sep 2026), in
 `docs/spec/`. Rev 3 (SiteProof_Rev3_Safety_Led_...) has the detailed injury-on-duty (COIDA W.Cl.2–6)

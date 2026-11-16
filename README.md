@@ -6,6 +6,8 @@ South African site safety and compliance platform. This repo holds two apps:
 |---|---|---|
 | `construction_db/` | Go API (Gin, pgx), PostgreSQL migrations, regime data | `http://localhost:8080` |
 | `web/` | Next.js 16 dashboard for owners and SHE officers | `http://localhost:3000` |
+| `admin/` | Next.js 16 portal for the SiteProof team (sample data only, no API yet) | `http://localhost:3001` |
+| `mobile/` | Expo / React Native app for supervisors on site | Expo dev server (see `mobile/README.md`) |
 | `docs/` | Product spec (Rev 4 is the source of truth) and `BUILD_PLAN.md` | — |
 
 The API, the database and the file storage all run in Docker. The dashboard

@@ -30,12 +30,25 @@ src/
     session.ts          Cookie names and options
     errors.ts           Turns validator errors into readable messages
     types.ts            Response shapes; keep in step with model.go json tags
+                        and the type blocks in docs/api/*.md
+    site.ts             Which site the sidebar's "Viewing" picker points at
+    regime.ts           Incident types per regime (copied from docs/api)
+    sample.ts           Data for the pages that aren't connected yet
   app/
     actions/            Server Actions: every write goes through here
     (auth)/             login, signup, invite (public)
-    (dashboard)/        sites, sites/[id], team, account (signed in)
-  components/           ui.tsx (plain) and client.tsx (forms, buttons)
+    (dashboard)/        signed in. Wired: overview, inspections, actions,
+                        incidents, deadlines, evidence, organisation, sites,
+                        team, account. Sample data: injury-on-duty,
+                        delay-claims, permits, toolbox, people,
+                        subcontractors, audit-pack, sync-conflicts, reminders
+  components/           ui.tsx (plain), client.tsx (forms, buttons),
+                        photo.tsx (open a photo), deadline.tsx, states.tsx
 ```
+
+The look comes from the SiteProof prototype; the colour tokens are in
+`app/globals.css`. The phone app (`../mobile`) and the team's admin portal
+(`../admin`) use the same tokens.
 
 **Tokens never reach the browser's JavaScript.** Login sets two httpOnly
 cookies (`sp_access`, 15 min; `sp_refresh`, 30 days). Pages and actions read

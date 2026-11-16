@@ -54,6 +54,26 @@ Run lint, tsc and build after each change and report the results.
   sites list and create; site page with edit, archive, nested locations
   (add, rename, archive) and members (list, remove); team page with invite
   (copyable link) and revoke; account page with devices.
+- **Done, restyled to the prototype** (dark sidebar, rust accent, Inter and
+  Space Grotesk via `@fontsource-variable`): every page. The sidebar's
+  "Viewing" picker chooses the site (cookie `sp_site`, see `lib/site.ts`),
+  because the safety endpoints are all per site.
+- **Wired to the API** (reads in `lib/data.ts`, writes in `app/actions/`):
+  overview; inspections list and detail (abandon); findings & actions
+  (raise, waive, reassign, move due, verify, reject, cancel, reopen);
+  incidents (register, detail, report, amend, witness statement, raise an
+  action); deadlines (record as met, retract); evidence (list, view a
+  photo, chain check). Built against `docs/api/*.md` and a stand-in server,
+  **not yet run against the real API**: check each write once with it.
+- **Sample data only** (`lib/sample.ts`, each page shows a banner): injury
+  on duty, delay claims, notifications & permits, toolbox & diary, people &
+  documents, subcontractors, audit pack, sync conflicts, reminders; the
+  company details card on Organisation and the subscription card on Team.
+- **Not on the dashboard:** answering an inspection, close-outs and taking
+  photos (phone only); the evidence access log (no read endpoint yet).
+- `lib/regime.ts` copies the incident types table from
+  `docs/api/incidents.md`; there is no endpoint for them. Ask the backend
+  for one, or keep the two in step by hand.
 - **Blocked on the backend** (see "Requested by the frontend" in
   `../construction_db/CLAUDE.md`): role and names in `/v1/me`; listing org
   members to add people to sites; sending invites by SMS or email.

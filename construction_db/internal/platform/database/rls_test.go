@@ -36,6 +36,10 @@ const (
 	rlsDeadB     = "31000000-0000-0000-0000-00000000000b"
 	rlsActionA   = "33000000-0000-0000-0000-00000000000a" // on rlsInspA's finding, owned by its user, due tomorrow; closed out, awaiting verification
 	rlsActionB   = "33000000-0000-0000-0000-00000000000b"
+	rlsTalkA     = "3c000000-0000-0000-0000-00000000000a" // one photo, one tap signature (retracted)
+	rlsTalkB     = "3c000000-0000-0000-0000-00000000000b"
+	rlsAttA      = "3d000000-0000-0000-0000-00000000000a"
+	rlsAttB      = "3d000000-0000-0000-0000-00000000000b"
 )
 
 // Inserts an open action on a finding; its raise must follow. $1 id, $2 org, $3 site,
@@ -81,6 +85,10 @@ type rlsTable struct {
 
 // In foreign-key-safe delete order.
 var rlsTables = []rlsTable{
+	{"toolbox_attendance_retractions", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"toolbox_attendance", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"toolbox_talk_evidence", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"toolbox_talks", "org_id", rlsOrgA, rlsOrgB, "notes", deleteDenied},
 	{"finding_waivers", "org_id", rlsOrgA, rlsOrgB, "retract_reason", deleteDenied},
 	{"corrective_action_closeout_evidence", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"corrective_action_closeouts", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
@@ -161,6 +169,7 @@ var seedOnce = sync.OnceValue(func() error {
 		id := func(prefix string) string { return prefix + "000000-0000-0000-0000-00000000000" + x }
 		org, user, site, loc, sess, inv, ev, insp := id("20"), id("21"), id("22"), id("23"), id("24"), id("26"), id("28"), id("2a")
 		inc, stmt, duty, dl, sat, act, ev1, co, wv, ev2 := id("2e"), id("2f"), id("30"), id("31"), id("32"), id("33"), id("34"), id("37"), id("38"), id("3a")
+		talk, att := id("3c"), id("3d")
 
 		stmts := []struct {
 			sql  string
@@ -235,6 +244,11 @@ var seedOnce = sync.OnceValue(func() error {
 			// A waiver of the same finding.
 			{`INSERT INTO finding_waivers (id, org_id, site_id, inspection_id, item_key, severity, reason, waived_by, client_waived_at)
 			  VALUES ($1, $2, $3, $4, 'item', 'medium', 'Paperwork only', $5, now())`, []any{wv, org, site, insp, user}},
+			// A toolbox talk with a photo and one signature, retracted.
+			{talkSQL, []any{talk, org, site, "scaffolding", "Scaffolding", talkStart, nil, sast, user}},
+			{talkPhotoSQL, []any{org, site, talk, ev, "photo", user}},
+			{signSQL, []any{att, org, site, talk, "RLS worker", nil, "tap", user, signTime}},
+			{unsignSQL, []any{att, org, site, "Signed by mistake", user}},
 		}
 		for _, s := range stmts {
 			if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
@@ -350,7 +364,11 @@ func TestRLSWrites(t *testing.T) {
 			  VALUES ($1, $2, '37000000-0000-0000-0000-00000000000b', $3)`, []any{rlsOrgB, rlsSiteB, rlsEvidenceB}},
 			"finding_waivers": {`INSERT INTO finding_waivers (id, org_id, site_id, inspection_id, item_key, severity, reason, waived_by, client_waived_at)
 			  VALUES ('38000000-0000-0000-0000-0000000000bb', $1, $2, $3, 'item', 'medium', 'Smuggled', $4, now())`, []any{rlsOrgB, rlsSiteB, rlsInspB, rlsUserB}},
-			"corrective_actions": {actionOnFindingSQL, []any{"33000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, rlsInspB, "item", "high", rlsUserB, 1}},
+			"corrective_actions":             {actionOnFindingSQL, []any{"33000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, rlsInspB, "item", "high", rlsUserB, 1}},
+			"toolbox_talks":                  {talkSQL, []any{"3c000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, nil, "Smuggled", talkStart, nil, sast, rlsUserB}},
+			"toolbox_talk_evidence":          {talkPhotoSQL, []any{rlsOrgB, rlsSiteB, rlsTalkB, rlsEvidenceB, "photo", rlsUserB}},
+			"toolbox_attendance":             {signSQL, []any{"3d000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, rlsTalkB, "Smuggled", nil, "tap", rlsUserB, signTime}},
+			"toolbox_attendance_retractions": {unsignSQL, []any{rlsAttB, rlsOrgB, rlsSiteB, "Smuggled", rlsUserB}},
 			"corrective_action_events": {`INSERT INTO corrective_action_events (id, org_id, site_id, action_id, seq, kind, actor_id, client_at, reason, status, owner_id, due_on)
 			  VALUES ('34000000-0000-0000-0000-0000000000bb', $1, $2, $3, 2, 'cancelled', $4, now(), 'Smuggled', 'cancelled', $4, current_date + 1)`,
 				[]any{rlsOrgB, rlsSiteB, rlsActionB, rlsUserB}},

@@ -41,7 +41,15 @@ export const sitePeople = cache(async (siteId: string) => {
 });
 
 // The regime name shown under the site ("Construction Regulations 2014").
+// Only a label, so a failure here must not take every page down with it:
+// it's logged and the label is left out. Pages that need the checklists
+// call getChecklists themselves and show the real error.
 export async function regimeOf(siteId: string) {
-  const catalog = await getChecklists(siteId);
-  return catalog === "forbidden" ? null : catalog.regime;
+  try {
+    const catalog = await getChecklists(siteId);
+    return catalog === "forbidden" ? null : catalog.regime;
+  } catch (e) {
+    console.error("regime label: checklists request failed", e);
+    return null;
+  }
 }

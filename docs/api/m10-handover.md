@@ -106,7 +106,7 @@ another edition's regime answers 404 there.
 
 - Worker identity: M11 links signatures to the worker register (no change
   to signatures already given).
-- Site sign-ins (M11) will join the headcount suggestion.
+- Site sign-ins will join the headcount suggestion: BUILD_PLAN, M11, "Daily site sign-in and sign-out from the worker register" (distinct people who signed in that day, plus anyone who only signed a talk, on the same identity key).
 - Toolbox talk content (what the presenter reads out) is a proposed task,
   not scheduled (BUILD_PLAN, TALKS).
 - JBCC delay events and contract instructions will link to diary rows by

@@ -13,7 +13,7 @@ func TestAPIDoc(t *testing.T) {
 
 	for name, v := range map[string]any{
 		"ToolboxTopic": regimes.ToolboxTopic{}, "TalkSummary": TalkSummary{}, "Talk": Talk{}, "TalkPhoto": TalkPhoto{},
-		"Attendance": Attendance{}, "Retraction": Retraction{},
+		"Attendance": Attendance{}, "Retraction": Retraction{}, "NotSigned": NotSigned{},
 	} {
 		t.Run(name, func(t *testing.T) { doc.CheckStruct(t, name, v, false) })
 	}

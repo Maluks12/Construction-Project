@@ -76,6 +76,8 @@ func checkSections(s *Sections, d day) error {
 			return &SectionError{ErrBadText, "labour", i, "trade"}
 		case r.Headcount < 0 || r.Headcount > 10000:
 			return &SectionError{ErrBadNumber, "labour", i, "headcount"}
+		case !workerIDsOK(r):
+			return &SectionError{ErrBadWorkerIDs, "labour", i, "worker_ids"}
 		case r.OwnTeam && own:
 			return &SectionError{ErrTwoOwnTeams, "labour", i, "own_team"}
 		}
@@ -219,3 +221,21 @@ func text(s string, max int) bool {
 func optText(s *string, max int) bool { return s == nil || text(*s, max) }
 
 func micro(t time.Time) time.Time { return t.Truncate(time.Microsecond).UTC() }
+
+// workerIDsOK: canonical UUIDs, each once, no more than the row's headcount
+// (M11 D8). Whether they are register workers is checked in the transaction.
+func workerIDsOK(r *LabourRow) bool {
+	if len(r.WorkerIDs) > r.Headcount {
+		return false
+	}
+	seen := map[string]bool{}
+	for i, s := range r.WorkerIDs {
+		id, err := uuid.Parse(s)
+		if err != nil || seen[id.String()] {
+			return false
+		}
+		r.WorkerIDs[i] = id.String()
+		seen[id.String()] = true
+	}
+	return true
+}

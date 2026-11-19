@@ -245,7 +245,7 @@ func evidenceStatuses(ctx context.Context, db DBTX, orgID, siteID string, ids []
 
 func headcountNow(ctx context.Context, db DBTX, siteID, date string) (int, error) {
 	var n int
-	err := db.QueryRow(ctx, `SELECT toolbox_headcount($1, $2)`, siteID, date).Scan(&n)
+	err := db.QueryRow(ctx, `SELECT site_headcount($1, $2)`, siteID, date).Scan(&n)
 	return n, err
 }
 
@@ -346,4 +346,22 @@ func dayOf(date, zone string) (day, error) {
 		return day{}, ErrBadDate
 	}
 	return day{opens: d, closes: time.Date(d.Year(), d.Month(), d.Day()+1, 0, 0, 0, 0, loc)}, nil
+}
+
+// checkLabourWorkers: every labour row's worker_ids are workers of the
+// organisation (M11 D8).
+func checkLabourWorkers(ctx context.Context, db DBTX, orgID string, s *Sections) error {
+	for i, r := range s.Labour {
+		if len(r.WorkerIDs) == 0 {
+			continue
+		}
+		var n int
+		if err := db.QueryRow(ctx, `SELECT count(*) FROM workers WHERE org_id = $1 AND id = ANY($2::uuid[])`, orgID, r.WorkerIDs).Scan(&n); err != nil {
+			return err
+		}
+		if n != len(r.WorkerIDs) {
+			return &SectionError{ErrBadWorkerIDs, "labour", i, "worker_ids"}
+		}
+	}
+	return nil
 }

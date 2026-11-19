@@ -66,6 +66,9 @@ type LabourRow struct {
 	OwnTeam   bool    `json:"own_team"`
 	Trade     *string `json:"trade"`
 	Headcount int     `json:"headcount"`
+	// The register workers counted in this row (M11 D8), optional: each
+	// once, at most headcount. Old revisions have none.
+	WorkerIDs []string `json:"worker_ids,omitempty"`
 }
 
 type PlantRow struct {
@@ -215,7 +218,8 @@ type Diary struct {
 	DiaryHeader
 	// The current revision: the newest by device time.
 	Current Revision `json:"current"`
-	// toolbox_headcount for the day now; current.headcount_suggested is what
+	// site_headcount for the day now (sign-ins and talk signatures, M11);
+	// current.headcount_suggested is what
 	// it was when that revision arrived.
 	HeadcountSuggestedNow int        `json:"headcount_suggested_now"`
 	Addenda               []Addendum `json:"addenda"`
@@ -269,6 +273,7 @@ var (
 	ErrBadTime        = errors.New("time must be on the diary's day")
 	ErrTwoOwnTeams    = errors.New("only one labour row can be own_team")
 	ErrTooManyRows    = errors.New("at most 200 rows in a section")
+	ErrBadWorkerIDs   = errors.New("worker_ids must be register workers, each once, at most the row's headcount")
 	ErrMissingTime    = errors.New("received_at is required")
 	ErrEndBeforeStart = errors.New("an end time must not be before its start")
 

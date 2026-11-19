@@ -1766,9 +1766,27 @@ the site diary, settings.
         second run changes nothing.
     - **Smaller:** not_signed skips sign-ins that ended before the talk; an
       on-the-spot worker_id with other details is 409.
-    - **Verification:** Docker Desktop stopped answering during the fixes.
-      gofmt, vet, the unit tests and TestAPIDoc ran; the database and HTTP
-      tests and the mutation runs for the fixes wait for Docker.
+    - **Verification:**
+      - `go test -p 4 ./...` passes; the database package with `-count=3`.
+      - Migrations 000030-000035 go up, down 6 and up again on a throwaway
+        Postgres; the schema after down 6 matches a fresh up 29.
+      - The round trip found 000032's down dropping `workers_history()`
+        before its trigger; fixed.
+      - **Mutation runs:** 30 mutations, 27 caught.
+        - The first run caught 22 of 29.
+        - Four survivors were real gaps: a sign-in on another site ending
+          this one; a later sign-in, or a roster entry added later,
+          changing a past day; and the medical title.
+        - The medical title mutation had hit 000034, but 000035 re-issues
+          `notifications_due`. It was redone on 000035, alongside a new
+          competency-label mutation.
+        - Tests were added for each gap, and all are now caught.
+      - **The three survivors can't be caught by any test:**
+        - E2: allowing `sending` -> `sending`; the guard returns early on an
+          unchanged status.
+        - E8: accepting a misspelt mode; unknown modes are already refused.
+        - H7: the recompute passing the old dates; deadlines_insert
+          recomputes them anyway.
 
 - **M12 answers (Thu 19 Nov), for the site compliance summary:**
   - **Expiring** means each record's own state (its reminder window).

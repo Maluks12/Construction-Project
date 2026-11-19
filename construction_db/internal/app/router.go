@@ -9,14 +9,20 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"construction_db/internal/core/actions"
+	"construction_db/internal/core/attendance"
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/checklists"
+	"construction_db/internal/core/documents"
 	"construction_db/internal/core/edition"
 	"construction_db/internal/core/evidence"
+	"construction_db/internal/core/files"
 	"construction_db/internal/core/incidents"
 	"construction_db/internal/core/invites"
+	"construction_db/internal/core/notifications"
 	"construction_db/internal/core/sites"
 	"construction_db/internal/core/toolbox"
+	"construction_db/internal/core/vault"
+	"construction_db/internal/core/workers"
 	"construction_db/internal/platform/health"
 	"construction_db/internal/platform/httpapi"
 	"construction_db/internal/platform/storage"
@@ -51,6 +57,7 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	router.Use(gin.Recovery(), httpapi.Deadline(opts.RequestTimeout))
 
 	router.GET("/healthz", health.Handler(pool))
+	router.GET("/healthz/jobs", notifications.JobsHealth(pool))
 
 	authSvc := auth.NewService(pool, jwtSecret, ed.Name(), ed.DefaultRegime())
 	auth.Register(router, authSvc)
@@ -64,14 +71,23 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	evidenceSvc := evidence.NewService(pool, sitesSvc, store)
 	evidence.Register(router, evidenceSvc, authSvc)
 
+	filesSvc := files.NewService(pool, sitesSvc, store)
+	files.Register(router, filesSvc, authSvc)
+
 	checklists.Register(router, checklists.NewService(pool, sitesSvc), authSvc)
 	incidents.Register(router, incidents.NewService(pool, sitesSvc), authSvc)
 	actions.Register(router, actions.NewService(pool, sitesSvc), authSvc)
 	toolbox.Register(router, toolbox.NewService(pool, sitesSvc), authSvc)
+	workersSvc := workers.NewService(pool, sitesSvc, filesSvc, reg)
+	workers.Register(router, workersSvc, authSvc)
+	attendance.Register(router, attendance.NewService(pool, sitesSvc, reg), authSvc)
+	documentsSvc := documents.NewService(pool, sitesSvc, filesSvc, reg)
+	vault.Register(router, documentsSvc, authSvc)
+	notifications.Register(router, notifications.NewService(pool), authSvc)
 
 	editionRoutes := router.Group("/v1/" + ed.Name())
 	editionRoutes.Use(auth.RequireAuth(authSvc))
-	ed.RegisterRoutes(editionRoutes, edition.Deps{Pool: pool, Sites: sitesSvc})
+	ed.RegisterRoutes(editionRoutes, edition.Deps{Pool: pool, Sites: sitesSvc, Files: filesSvc, Documents: documentsSvc, Regimes: reg})
 
 	return router, nil
 }

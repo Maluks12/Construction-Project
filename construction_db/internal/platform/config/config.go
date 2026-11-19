@@ -147,3 +147,43 @@ func splitList(s string) []string {
 	}
 	return out
 }
+
+// Worker is cmd/worker's configuration.
+type Worker struct {
+	DatabaseURL string
+	DBMaxConns  int32
+	RedisURL    string // required: the jobs' schedule
+	SMTPURL     string // optional: without it, emails are only logged
+}
+
+const defaultWorkerMaxConns = 5
+
+func LoadWorker() (*Worker, error) {
+	if err := godotenv.Load(); err != nil {
+		log.Println("Warning: .env file not found, using environment variables")
+	}
+	w := &Worker{
+		DatabaseURL: os.Getenv("DATABASE_URL"),
+		DBMaxConns:  defaultWorkerMaxConns,
+		RedisURL:    os.Getenv("REDIS_URL"),
+		SMTPURL:     os.Getenv("SMTP_URL"),
+	}
+	if s := os.Getenv("WORKER_DB_MAX_CONNS"); s != "" {
+		n, err := strconv.ParseInt(s, 10, 32)
+		if err != nil || n < 1 {
+			return nil, fmt.Errorf("WORKER_DB_MAX_CONNS must be a whole number from 1")
+		}
+		w.DBMaxConns = int32(n)
+	}
+	var missing []string
+	if w.DatabaseURL == "" {
+		missing = append(missing, "DATABASE_URL")
+	}
+	if w.RedisURL == "" {
+		missing = append(missing, "REDIS_URL")
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("missing required environment variable: %s", strings.Join(missing, ", "))
+	}
+	return w, nil
+}

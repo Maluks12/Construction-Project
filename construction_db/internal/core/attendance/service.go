@@ -382,7 +382,7 @@ func (s *Service) Day(ctx context.Context, orgID, userID, role, siteID, date str
 		if d.Sheets, err = listSheets(ctx, tx, orgID, site, date); err != nil {
 			return err
 		}
-		if d.Absent, err = absent(ctx, tx, orgID, site, date); err != nil {
+		if d.Absent, err = absent(ctx, tx, site, date, sr.Data.Regime.TimeZone, sr.Data.Reminders.RosterLapseDays); err != nil {
 			return err
 		}
 		if d.Overlaps, err = overlaps(ctx, tx, orgID, site, date); err != nil {
@@ -402,11 +402,13 @@ func (s *Service) Day(ctx context.Context, orgID, userID, role, siteID, date str
 func (s *Service) Roster(ctx context.Context, orgID, userID, role, siteID string, all bool) ([]RosterEntry, error) {
 	var out []RosterEntry
 	err := s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
-		site, err := s.sites.GetInTx(ctx, tx, orgID, userID, role, siteID)
+		sr, err := s.sites.RegimeInTx(ctx, tx, orgID, userID, role, siteID)
 		if err != nil {
 			return err
 		}
+		site, ds := sr.Site, sr.Data
 		out, err = listRoster(ctx, tx, orgID, site.ID, !all)
+		markExpected(out, ds, time.Now())
 		return err
 	})
 	if err = finish(err, "roster"); err != nil {
@@ -422,16 +424,18 @@ func (s *Service) AddToRoster(ctx context.Context, orgID, userID, role, siteID, 
 		created bool
 	)
 	err := s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
-		site, err := s.sites.GetInTx(ctx, tx, orgID, userID, role, siteID)
+		sr, err := s.sites.RegimeInTx(ctx, tx, orgID, userID, role, siteID)
 		if err != nil {
 			return err
 		}
+		site, ds := sr.Site, sr.Data
 		if _, err := workers.GetWorker(ctx, tx, orgID, workerID); isNotFound(err) {
 			return workers.ErrWorkerNotFound
 		} else if err != nil {
 			return err
 		}
 		if out, err = liveRosterEntry(ctx, tx, orgID, site.ID, workerID); err == nil {
+			out.Expected = expectedNow(*out, ds, time.Now())
 			return nil
 		} else if !isNotFound(err) {
 			return err
@@ -441,6 +445,9 @@ func (s *Service) AddToRoster(ctx context.Context, orgID, userID, role, siteID, 
 		}
 		created = true
 		out, err = liveRosterEntry(ctx, tx, orgID, site.ID, workerID)
+		if err == nil {
+			out.Expected = expectedNow(*out, ds, time.Now())
+		}
 		return err
 	})
 	if err = finish(err, "add to roster"); err != nil {
@@ -456,10 +463,11 @@ func (s *Service) RemoveFromRoster(ctx context.Context, orgID, userID, role, sit
 	}
 	var out *RosterEntry
 	err := s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
-		site, err := s.sites.GetInTx(ctx, tx, orgID, userID, role, siteID)
+		sr, err := s.sites.RegimeInTx(ctx, tx, orgID, userID, role, siteID)
 		if err != nil {
 			return err
 		}
+		site, ds := sr.Site, sr.Data
 		e, err := liveRosterEntry(ctx, tx, orgID, site.ID, workerID)
 		if isNotFound(err) {
 			return ErrNotOnRoster
@@ -474,6 +482,7 @@ func (s *Service) RemoveFromRoster(ctx context.Context, orgID, userID, role, sit
 		for i := range all {
 			if all[i].ID == e.ID {
 				out = &all[i]
+				out.Expected = expectedNow(*out, ds, time.Now())
 			}
 		}
 		return err
@@ -521,4 +530,28 @@ func equalPtr[T comparable](a, b *T) bool {
 		return a == b
 	}
 	return *a == *b
+}
+
+// expectedNow: a live entry added by hand, or one whose worker signed in on
+// the site within the regime's roster_lapse_days, as of today in its zone.
+// site_absent (000032) applies the same rule to any day.
+func expectedNow(e RosterEntry, ds *regimes.DataSet, now time.Time) bool {
+	if e.RemovedAt != nil {
+		return false
+	}
+	if e.AddedVia == "manual" {
+		return true
+	}
+	loc, err := time.LoadLocation(ds.Regime.TimeZone)
+	if err != nil {
+		loc = time.UTC
+	}
+	since := now.In(loc).AddDate(0, 0, -ds.Reminders.RosterLapseDays).Format(time.DateOnly)
+	return e.LastSignInOn != nil && *e.LastSignInOn >= since
+}
+
+func markExpected(es []RosterEntry, ds *regimes.DataSet, now time.Time) {
+	for i := range es {
+		es[i].Expected = expectedNow(es[i], ds, now)
+	}
 }

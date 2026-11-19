@@ -347,6 +347,7 @@ export interface Reminders {
   deadline_days_before: number[];
   action_escalation_days: number[];
   verification_stalled_days: number;
+  roster_lapse_days: number;
   source_ref: string;
 }
 

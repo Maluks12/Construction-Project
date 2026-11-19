@@ -3,6 +3,8 @@ package database_test
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -337,3 +339,75 @@ func TestSignInsOutOfOrderRace(t *testing.T) {
 	}
 }
 
+// The day register's absent list (M11 review): a past day's never changes
+// when the roster or a worker changes later; an entry a sign-in added lapses
+// after 14 days without a sign-in on the site.
+func TestPastDayAbsentNeverChanges(t *testing.T) {
+	seedRLS(t)
+	ctx := context.Background()
+	tx := beginAs(t, pool, rlsOrgA)
+	addActionMembers(t, tx)
+	ago := func(days int) time.Time { return time.Now().Add(-time.Duration(days) * 24 * time.Hour) }
+	day := func(days int) string { return ago(days).In(johannesburg()).Format(time.DateOnly) }
+	const worker = `INSERT INTO workers (id, org_id, name, created_by, created_at) VALUES ($1, $2, $3, $4, $5)`
+	const roster = `INSERT INTO site_roster (id, org_id, site_id, worker_id, added_via, added_by, added_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	manual, recent, stale := workerID(701), workerID(702), workerID(703)
+	for _, w := range []struct {
+		id, name, via string
+	}{{manual, "Manual Mpho", "manual"}, {recent, "Recent Rethabile", "sign_in"}, {stale, "Stale Sello", "sign_in"}} {
+		must(t, tx, 1, worker, w.id, rlsOrgA, w.name, rlsUserA, ago(40))
+		must(t, tx, 1, roster, fresh(), rlsOrgA, rlsSiteA, w.id, w.via, rlsUserA, ago(40))
+	}
+	// Rethabile last signed in 8 days ago, Sello 25 days ago.
+	okBatch(t, tx, signInA(signInID(701), recent, "tap", rlsUserA, ago(8)), signInA(signInID(702), stale, "tap", rlsUserA, ago(25)))
+
+	absentOn := func(date string) []string {
+		t.Helper()
+		rows, err := tx.Query(ctx, `SELECT worker_id::text || ' ' || name FROM site_absent($1, $2::date, 'Africa/Johannesburg', 14)`, rlsSiteA, date)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	past := day(3)
+	before := absentOn(past)
+	want := sorted(manual+" Manual Mpho", recent+" Recent Rethabile")
+	if !slices.Equal(sorted(before...), want) {
+		t.Fatalf("absent 3 days ago %v, want %v (Sello's sign-in lapsed after 14 days)", before, want)
+	}
+
+	// Today: Mpho removed and renamed, Rethabile deactivated, someone new added.
+	must(t, tx, 1, `UPDATE site_roster SET removed_by = $2, remove_reason = 'Left' WHERE worker_id = $1 AND removed_at IS NULL`, manual, supOnSite)
+	must(t, tx, 1, `UPDATE workers SET name = 'Mpho Renamed', updated_by = $2 WHERE id = $1`, manual, rlsUserA)
+	must(t, tx, 1, `UPDATE workers SET active = false, updated_by = $2 WHERE id = $1`, recent, rlsUserA)
+	newcomer := workerID(704)
+	must(t, tx, 1, workerSQL, newcomer, rlsOrgA, "New Nandi", nil, nil, rlsUserA)
+	must(t, tx, 1, `INSERT INTO site_roster (org_id, site_id, worker_id, added_via, added_by) VALUES ($1, $2, $3, 'manual', $4)`, rlsOrgA, rlsSiteA, newcomer, rlsUserA)
+	// A worker on the register for weeks, first added to this roster today.
+	veteran := workerID(705)
+	must(t, tx, 1, worker, veteran, rlsOrgA, "Veteran Vusi", rlsUserA, ago(40))
+	must(t, tx, 1, `INSERT INTO site_roster (org_id, site_id, worker_id, added_via, added_by) VALUES ($1, $2, $3, 'manual', $4)`, rlsOrgA, rlsSiteA, veteran, rlsUserA)
+	// Sello back today: his entry counts again from today, not on past days.
+	okBatch(t, tx, signInA(signInID(703), stale, "tap", rlsUserA, time.Now().Add(-time.Minute)))
+
+	if after := absentOn(past); !slices.Equal(after, before) {
+		t.Errorf("3 days ago changed: %v, was %v", after, before)
+	}
+	today := absentOn(day(0))
+	if !slices.Contains(today, newcomer+" New Nandi") || slices.ContainsFunc(today, func(s string) bool { return strings.HasPrefix(s, recent) }) {
+		t.Errorf("today %v: want New Nandi in, deactivated Rethabile out", today)
+	}
+	// Removed today: still expected today (the entry was live when the day began).
+	if !slices.Contains(today, manual+" Mpho Renamed") {
+		t.Errorf("today %v: Mpho was removed during the day, so is still expected today", today)
+	}
+	// A day before anyone was on the roster: nobody.
+	if got := absentOn(day(45)); len(got) != 0 {
+		t.Errorf("45 days ago %v, want nobody", got)
+	}
+	refused(t, tx, "42501", "", `UPDATE worker_history SET name = 'x' WHERE worker_id = $1`, manual)
+}

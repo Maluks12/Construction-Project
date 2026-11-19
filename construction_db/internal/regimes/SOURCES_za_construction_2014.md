@@ -423,6 +423,10 @@ These are product defaults (M11 D25), not law:
   - owners after 3.
 
   A verification counts as stalled after 2 days.
+- **The roster** (`roster_lapse_days`, 14): a worker a sign-in put on a
+  site's roster stops counting as expected after 14 days with no sign-in on
+  that site; workers added by hand stay until removed. A product default (M11
+  review), so the absent list doesn't grow forever.
 
 A practitioner should review these together with the severity wording.
 

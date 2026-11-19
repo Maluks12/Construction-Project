@@ -66,8 +66,20 @@ found"`). Other roles get 403 `"forbidden"`.
   Paper sign-ins before that day has a sheet photo are refused.
 - **Expected = the roster.** A worker's sign-in on a site puts them on its
   roster; owners, SHE officers and the site's supervisors add or remove
-  people by hand. The day's `absent` list is active roster workers without a
-  sign-in that day.
+  people by hand.
+  - **Who is absent:** the day's `absent` list is the roster as it stood
+    that day, showing workers by their names then:
+    - entries added before the day ended and not removed before it began;
+    - whose worker was active;
+    - and who didn't sign in.
+
+    A past day's list never changes when the roster or a worker changes
+    later.
+  - **Lapse:** an entry a sign-in added stops counting after 14 days with no
+    sign-in on the site (the regime's `roster_lapse_days`). Entries added by
+    hand stay until removed.
+  - **On the roster list,** `expected` says whether an entry counts today,
+    and `last_sign_in_on` is the worker's last sign-in there.
 - **Headcount:** distinct people who signed in that day, plus anyone who only
   signed a toolbox talk (matched on name, firm and clock number, or the
   signature's link to a worker). The diary shows it as the suggestion; the
@@ -243,6 +255,8 @@ export interface RosterEntry {
   removed_by: string | null;
   removed_at: string | null;
   remove_reason: string | null;
+  last_sign_in_on: string | null;
+  expected: boolean;
 }
 
 export interface RosterList {

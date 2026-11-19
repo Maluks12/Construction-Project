@@ -169,13 +169,15 @@ func evidenceStatus(ctx context.Context, db DBTX, orgID, siteID, id string) (str
 
 const rosterSQL = `
 	SELECT r.id::text, r.worker_id::text, w.name, w.firm, w.clock_number, w.active, r.added_via, r.added_by::text, r.added_at,
-	       r.removed_by::text, r.removed_at, r.remove_reason
+	       r.removed_by::text, r.removed_at, r.remove_reason,
+	       (SELECT max(x.sign_in_date)::text FROM site_sign_ins x
+	        WHERE x.site_id = r.site_id AND x.worker_id = r.worker_id AND x.retracted_at IS NULL)
 	FROM site_roster r JOIN workers w ON w.id = r.worker_id`
 
 func scanRoster(r pgx.CollectableRow) (RosterEntry, error) {
 	var e RosterEntry
 	err := r.Scan(&e.ID, &e.WorkerID, &e.Name, &e.Firm, &e.ClockNumber, &e.Active, &e.AddedVia, &e.AddedBy, &e.AddedAt,
-		&e.RemovedBy, &e.RemovedAt, &e.RemoveReason)
+		&e.RemovedBy, &e.RemovedAt, &e.RemoveReason, &e.LastSignInOn)
 	return e, err
 }
 
@@ -210,22 +212,21 @@ func removeFromRoster(ctx context.Context, db DBTX, orgID, id, by, reason string
 	return err
 }
 
-// absent: active roster workers of active register workers without a
-// standing sign-in on the site that day (D16).
-func absent(ctx context.Context, db DBTX, orgID, siteID, date string) ([]RosterEntry, error) {
-	rows, err := db.Query(ctx, rosterSQL+`
-		WHERE r.org_id = $1 AND r.site_id = $2 AND r.removed_at IS NULL AND w.active
-		  -- A roster entry made only by a sign-in later retracted ("different
-		  -- person") expects nobody.
-		  AND (r.added_via = $$manual$$ OR EXISTS (SELECT 1 FROM site_sign_ins x WHERE x.site_id = r.site_id
-		       AND x.worker_id = r.worker_id AND x.retracted_at IS NULL))
-		  AND NOT EXISTS (SELECT 1 FROM site_sign_ins s WHERE s.site_id = r.site_id AND s.worker_id = r.worker_id
-		                  AND s.sign_in_date = $3 AND s.retracted_at IS NULL)
-		ORDER BY lower(w.name)`, orgID, siteID, date)
+// absent is site_absent (000032): who was expected on that day and didn't
+// sign in, as the roster and the register stood then.
+func absent(ctx context.Context, db DBTX, siteID, date, zone string, lapseDays int) ([]RosterEntry, error) {
+	rows, err := db.Query(ctx, `
+		SELECT roster_id::text, worker_id::text, name, firm, clock_number, true, added_via, added_by::text, added_at,
+		       removed_by::text, removed_at, remove_reason, NULL::text
+		FROM site_absent($1, $2::date, $3, $4)`, siteID, date, zone, lapseDays)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, scanRoster)
+	out, err := pgx.CollectRows(rows, scanRoster)
+	for i := range out {
+		out[i].Expected = true
+	}
+	return out, err
 }
 
 // overlaps: the day's standing sign-ins here whose time overlaps a standing

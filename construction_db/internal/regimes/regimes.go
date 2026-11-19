@@ -202,12 +202,15 @@ type DocumentType struct {
 // ActionEscalationDays are days overdue for the action's owner and raiser,
 // then SHE officers, then owners.
 type Reminders struct {
-	WorkerExpiryDays        []int  `json:"worker_expiry_days"`
-	CompanyDocumentDays     []int  `json:"company_document_days"`
-	DeadlineDaysBefore      []int  `json:"deadline_days_before"`
-	ActionEscalationDays    []int  `json:"action_escalation_days"`
-	VerificationStalledDays int    `json:"verification_stalled_days"`
-	SourceRef               string `json:"source_ref"`
+	WorkerExpiryDays        []int `json:"worker_expiry_days"`
+	CompanyDocumentDays     []int `json:"company_document_days"`
+	DeadlineDaysBefore      []int `json:"deadline_days_before"`
+	ActionEscalationDays    []int `json:"action_escalation_days"`
+	VerificationStalledDays int   `json:"verification_stalled_days"`
+	// A roster entry a sign-in added stops counting as expected after this
+	// many days with no sign-in on the site (site_absent, 000032).
+	RosterLapseDays int    `json:"roster_lapse_days"`
+	SourceRef       string `json:"source_ref"`
 }
 
 type DataSet struct {

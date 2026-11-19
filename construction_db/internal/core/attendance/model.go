@@ -137,6 +137,11 @@ type RosterEntry struct {
 	RemovedBy    *string    `json:"removed_by"`
 	RemovedAt    *time.Time `json:"removed_at"`
 	RemoveReason *string    `json:"remove_reason"`
+	// The worker's last standing sign-in on the site (a local date).
+	LastSignInOn *string `json:"last_sign_in_on"`
+	// Counts as expected today: live, and added by hand or signed in on the
+	// site within the regime's roster_lapse_days (14).
+	Expected bool `json:"expected"`
 }
 
 type RemoveRequest struct {

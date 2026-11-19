@@ -37,7 +37,7 @@ const (
 	documentsJSON = `[{"key": "plan", "label": "Plan", "scope": "site", "required": true, "expiry": "none", "source_ref": "r"},
 		{"key": "lgs", "label": "LGS", "scope": "org", "required": true, "expiry": "required", "issuers": ["CF"], "source_ref": "r"}]`
 	remindersJSON = `{"worker_expiry_days": [30, 0], "company_document_days": [60, 0], "deadline_days_before": [2, 0],
-		"action_escalation_days": [0, 1, 3], "verification_stalled_days": 2, "source_ref": "r"}`
+		"action_escalation_days": [0, 1, 3], "verification_stalled_days": 2, "roster_lapse_days": 14, "source_ref": "r"}`
 )
 
 func validFS() fstest.MapFS {

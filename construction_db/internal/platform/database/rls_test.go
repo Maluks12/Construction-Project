@@ -93,6 +93,7 @@ type rlsTable struct {
 
 // In foreign-key-safe delete order.
 var rlsTables = []rlsTable{
+	{"worker_history", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"holiday_recomputations", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"notification_emails", "org_id", rlsOrgA, rlsOrgB, "status", deleteDenied},
 	{"notifications", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
@@ -451,6 +452,8 @@ func TestRLSWrites(t *testing.T) {
 				[]any{"4a000000-0000-0000-0000-00000000000b", rlsOrgB}},
 			"holiday_recomputations": {`INSERT INTO holiday_recomputations (org_id, jurisdiction, holiday_date, recomputed) VALUES ($1, 'ZA', '2026-12-26', 0)`,
 				[]any{rlsOrgB}},
+			"worker_history": {`INSERT INTO worker_history (org_id, worker_id, name, active, changed_at, changed_by) VALUES ($1, $2, 'Smuggled', true, now(), $3)`,
+				[]any{rlsOrgB, "41000000-0000-0000-0000-00000000000b", rlsUserB}},
 			"site_appointments": {appointmentSQL, []any{"48000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, "41000000-0000-0000-0000-00000000000b",
 				"risk_assessor", "49000000-0000-0000-0000-00000000000b", nil, rlsUserB}},
 			"documents":         {docSQL, []any{"46000000-0000-0000-0000-0000000000bb", rlsOrgB, nil, "org", "cidb_registration", rlsUserB}},

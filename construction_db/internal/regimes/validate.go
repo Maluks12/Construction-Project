@@ -308,6 +308,9 @@ func (ds *DataSet) validate(dir string) error {
 	if rem.VerificationStalledDays < 1 || rem.VerificationStalledDays > 60 {
 		add(fileReminders, "verification_stalled_days must be 1-60")
 	}
+	if rem.RosterLapseDays < 1 || rem.RosterLapseDays > 365 {
+		add(fileReminders, "roster_lapse_days must be 1-365")
+	}
 	need(fileReminders, "reminders", "source_ref", rem.SourceRef)
 
 	return errors.Join(errs...)

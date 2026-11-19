@@ -77,8 +77,11 @@ function friendly(status: number, raw: string) {
 async function send(path: string, init: RequestInit) {
   try {
     return await fetch(`${API_URL}${path}`, init);
-  } catch {
-    throw new ApiError(0, "Can't reach SiteProof. Check your signal and try again.");
+  } catch (e) {
+    // Shows the address actually used: it's baked in when Expo builds the
+    // app, so a wrong or stale EXPO_PUBLIC_API_URL is the usual cause.
+    const reason = e instanceof Error ? e.message : String(e);
+    throw new ApiError(0, `Can't reach SiteProof at ${API_URL} (${reason}). Check your signal and try again.`);
   }
 }
 

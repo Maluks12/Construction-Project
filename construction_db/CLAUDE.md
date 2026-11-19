@@ -1735,6 +1735,55 @@ the site diary, settings.
     - The script (Node) is not in the repo.
     - `go test -p 4 ./...` passes.
 
+  - **Review fixes (Thu 19 Nov), migrations 000030-000035**, each its own
+    commit after step 11.12:
+    - **Email never recorded sent when it wasn't** (000033; full).
+      - Without SMTP_URL the worker refuses to start unless EMAIL_MODE=log.
+      - Log mode records 'logged', never 'sent' (sending -> logged in the
+        guard).
+    - **Reminders say who and what** (000034).
+      - notifications_due takes p_labels (the regime's labels), and titles
+        name the worker, type and site.
+      - Emails are one plain sentence (`notifications.Render`): no codes,
+        no medical outcome.
+    - **The day register for past days** (000032).
+      - `worker_history` (append-only, by trigger) and
+        `site_absent(site, day, zone, lapse)`: the roster as it stood
+        that day, the worker's state then.
+      - Sign-in-added entries lapse after reminders.json's
+        `roster_lapse_days` (14).
+    - **One sign-in at a time, any arrival order** (000031; full).
+      `site_sign_in_ends_at` is the earliest of the sign-out, 16 h or the
+      next sign-in, and `SignIn.ends_at` shows it.
+    - **Documents and their current version can be retracted** (000035).
+      - `document_current_version` is the highest standing version.
+      - Readiness and reminders ignore retracted documents.
+    - **Holiday recompute** (000030).
+      - The replacement row's dates were already recomputed by
+        `deadlines_insert` (000017); the function now passes r's values,
+        and the test compares them with deadline_due.
+      - The closed row is unchanged, satisfied duties are untouched, and a
+        second run changes nothing.
+    - **Smaller:** not_signed skips sign-ins that ended before the talk; an
+      on-the-spot worker_id with other details is 409.
+    - **Verification:** Docker Desktop stopped answering during the fixes.
+      gofmt, vet, the unit tests and TestAPIDoc ran; the database and HTTP
+      tests and the mutation runs for the fixes wait for Docker.
+
+- **M12 answers (Thu 19 Nov), for the site compliance summary:**
+  - **Expiring** means each record's own state (its reminder window).
+  - **Counts against a site:**
+    - missing or expired required H&S file documents;
+    - expired required vault documents (shown on every site of the
+      organisation);
+    - unactioned findings;
+    - overdue actions, with their escalation step;
+    - stalled verifications;
+    - today's sign-ins with warnings (no valid medical, unfit, an expired
+      competency).
+  - **Shown, not counted:** absent roster workers.
+  - **Not shown:** reminders.
+
 ## Finding severity
 
 A fixed product scale (decided 9 Nov 2026), not regime data, so findings

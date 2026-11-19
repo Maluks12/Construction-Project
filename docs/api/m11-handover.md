@@ -136,6 +136,43 @@ so copy types from there.
   `subject_state: "superseded"` reminders greyed out (the thing was renewed,
   satisfied or closed).
 
+## Changed in the M11 review (Thu 19 Nov)
+
+- **Sign-ins:**
+  - `SignIn.ends_at`: presence ends at the earliest of the sign-out, 16
+    hours, or the worker's next sign-in on the site. An earlier sign-in
+    arriving late from an offline phone is accepted and ends at the next one.
+  - `lapsed` means ended without a sign-out.
+  - An on-the-spot `worker_id` already on the register with other details is
+    409 `"id already used with different details"`.
+- **Roster:**
+  - `RosterEntry.last_sign_in_on` and `expected` are new.
+  - The day's `absent` list is the roster as it stood that day (names then),
+    so a past day never changes.
+  - Entries a sign-in added stop counting after 14 days without a sign-in on
+    the site.
+- **Toolbox:** `not_signed` leaves out people whose sign-in ended before the
+  talk started.
+- **Documents:**
+  - `POST …/:documentId/retract` and `POST …/:documentId/versions/:n/retract`
+    are new.
+  - `DocumentSummary`, `Document` and `Version` gain `retraction`.
+  - A version's `state` can be `retracted`.
+  - `current` is the highest version not retracted.
+- **Reminders:**
+  - Titles say who and what: "Sipho Dlamini: Rope access operator licence",
+    "LGS 2026", with the site name for site things.
+  - Emails are a plain sentence such as "… expires on 12 Dec 2026, in 7 days".
+- **`Reminders.roster_lapse_days`** (regime types) is new.
+
+## Running the worker (M11 review)
+
+- **`SMTP_URL` is required.** Without it the worker refuses to start,
+  unless `EMAIL_MODE=log` is set explicitly.
+- **In log mode** each email is only written to the log and recorded
+  `logged`, never `sent`: for development only.
+- DEPLOY's list has both.
+
 ## Open, not in M11
 
 - **Channels:** push (Expo), SMS and WhatsApp reminders (BILL metering), and

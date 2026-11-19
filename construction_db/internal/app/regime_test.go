@@ -172,9 +172,13 @@ func regimeFS(codes ...string) fstest.MapFS {
 		fsys[code+"/regime.json"] = &fstest.MapFile{Data: []byte(`{"code": "` + code + `", "name": "Test",
 			"edition": "construction", "jurisdiction": "ZA", "version": "1", "effective_from": "2020-01-01",
 			"time_zone": "Africa/Johannesburg"}`)}
-		for _, f := range []string{"checklists.json", "deadlines.json", "taxonomies.json", "vocabulary.json", "toolbox_topics.json"} {
+		for _, f := range []string{"checklists.json", "deadlines.json", "taxonomies.json", "vocabulary.json", "toolbox_topics.json", "documents.json"} {
 			fsys[code+"/"+f] = &fstest.MapFile{Data: []byte("[]")}
 		}
+		fsys[code+"/workforce.json"] = &fstest.MapFile{Data: []byte(`{"competency_types": [], "appointment_types": [],
+			"medical": {"default_validity_months": 0, "source_ref": "t"}}`)}
+		fsys[code+"/reminders.json"] = &fstest.MapFile{Data: []byte(`{"worker_expiry_days": [0], "company_document_days": [0],
+			"deadline_days_before": [0], "action_escalation_days": [0, 1, 3], "verification_stalled_days": 2, "source_ref": "t"}`)}
 	}
 	return fsys
 }

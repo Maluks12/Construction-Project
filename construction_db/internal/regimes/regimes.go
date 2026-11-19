@@ -33,6 +33,9 @@ const (
 	fileTaxonomy      = "taxonomies.json"
 	fileVocabulary    = "vocabulary.json"
 	fileToolboxTopics = "toolbox_topics.json"
+	fileWorkforce     = "workforce.json"
+	fileDocuments     = "documents.json"
+	fileReminders     = "reminders.json"
 )
 
 // Regime mirrors a regulatory_regimes row. Version is the version of the law
@@ -136,6 +139,77 @@ type ToolboxTopic struct {
 	SourceRef string `json:"source_ref"`
 }
 
+// Expiry rules for a competency, appointment or document type.
+const (
+	ExpiryRequired = "required"
+	ExpiryOptional = "optional"
+	ExpiryNone     = "none"
+)
+
+// Document scopes: the organisation's vault, or a site's H&S file.
+const (
+	ScopeOrg  = "org"
+	ScopeSite = "site"
+)
+
+// CompetencyType is a certificate, licence, training or registration a
+// worker holds (M11 D9). Records belong to the organisation and name the
+// regime they were typed against (D1).
+type CompetencyType struct {
+	Key       string `json:"key"`
+	Label     string `json:"label"`
+	Kind      string `json:"kind"`
+	Expiry    string `json:"expiry"`
+	SourceRef string `json:"source_ref"`
+}
+
+// AppointmentType is a written appointment the regime requires, per site (D21).
+type AppointmentType struct {
+	Key       string `json:"key"`
+	Label     string `json:"label"`
+	Expiry    string `json:"expiry"`
+	SourceRef string `json:"source_ref"`
+}
+
+// MedicalRule: DefaultValidityMonths is what the app proposes for
+// expires_on; the certificate's own date wins. 0 proposes nothing.
+type MedicalRule struct {
+	DefaultValidityMonths int    `json:"default_validity_months"`
+	SourceRef             string `json:"source_ref"`
+}
+
+type Workforce struct {
+	CompetencyTypes  []CompetencyType  `json:"competency_types"`
+	AppointmentTypes []AppointmentType `json:"appointment_types"`
+	Medical          MedicalRule       `json:"medical"`
+}
+
+// DocumentType is a vault (org) or H&S file (site) document type. Required
+// types show as missing until present (D19). Issuers, when listed, are the
+// only ones accepted.
+type DocumentType struct {
+	Key       string   `json:"key"`
+	Label     string   `json:"label"`
+	Scope     string   `json:"scope"`
+	Required  bool     `json:"required"`
+	Expiry    string   `json:"expiry"`
+	Issuers   []string `json:"issuers"`
+	SourceRef string   `json:"source_ref"`
+}
+
+// Reminders are the worker's lead times (D25). Day lists run from the
+// earliest reminder to the day itself (0), strictly descending.
+// ActionEscalationDays are days overdue for the action's owner and raiser,
+// then SHE officers, then owners.
+type Reminders struct {
+	WorkerExpiryDays        []int  `json:"worker_expiry_days"`
+	CompanyDocumentDays     []int  `json:"company_document_days"`
+	DeadlineDaysBefore      []int  `json:"deadline_days_before"`
+	ActionEscalationDays    []int  `json:"action_escalation_days"`
+	VerificationStalledDays int    `json:"verification_stalled_days"`
+	SourceRef               string `json:"source_ref"`
+}
+
 type DataSet struct {
 	Regime        Regime              `json:"regime"`
 	Checklists    []ChecklistTemplate `json:"checklists"`
@@ -143,6 +217,9 @@ type DataSet struct {
 	Taxonomy      []IncidentType      `json:"taxonomy"`
 	Vocabulary    []Term              `json:"vocabulary"`
 	ToolboxTopics []ToolboxTopic      `json:"toolbox_topics"`
+	Workforce     Workforce           `json:"workforce"`
+	DocumentTypes []DocumentType      `json:"document_types"`
+	Reminders     Reminders           `json:"reminders"`
 }
 
 // Registry holds every loaded data set by regime code. It is built once at
@@ -174,7 +251,7 @@ func (r *Registry) Codes() []string {
 }
 
 // LoadFS loads every data set in fsys: one directory per regime, each with all
-// six files. It reports every problem it finds, not just the first, so one
+// nine files. It reports every problem it finds, not just the first, so one
 // failed startup (or test run) shows everything that needs fixing.
 func LoadFS(fsys fs.FS) (*Registry, error) {
 	entries, err := fs.ReadDir(fsys, ".")
@@ -218,6 +295,9 @@ func loadDataSet(fsys fs.FS, dir string) (*DataSet, error) {
 		{fileTaxonomy, &ds.Taxonomy},
 		{fileVocabulary, &ds.Vocabulary},
 		{fileToolboxTopics, &ds.ToolboxTopics},
+		{fileWorkforce, &ds.Workforce},
+		{fileDocuments, &ds.DocumentTypes},
+		{fileReminders, &ds.Reminders},
 	}
 
 	var errs []error
@@ -257,6 +337,20 @@ func loadDataSet(fsys fs.FS, dir string) (*DataSet, error) {
 	}
 	if ds.ToolboxTopics == nil {
 		ds.ToolboxTopics = []ToolboxTopic{}
+	}
+	if ds.Workforce.CompetencyTypes == nil {
+		ds.Workforce.CompetencyTypes = []CompetencyType{}
+	}
+	if ds.Workforce.AppointmentTypes == nil {
+		ds.Workforce.AppointmentTypes = []AppointmentType{}
+	}
+	if ds.DocumentTypes == nil {
+		ds.DocumentTypes = []DocumentType{}
+	}
+	for i := range ds.DocumentTypes {
+		if ds.DocumentTypes[i].Issuers == nil {
+			ds.DocumentTypes[i].Issuers = []string{}
+		}
 	}
 
 	if ds.Regime.Code != dir {
@@ -307,4 +401,32 @@ func (ds *DataSet) Topic(key string) (ToolboxTopic, bool) {
 		}
 	}
 	return ToolboxTopic{}, false
+}
+
+func (ds *DataSet) CompetencyType(key string) (CompetencyType, bool) {
+	for _, t := range ds.Workforce.CompetencyTypes {
+		if t.Key == key {
+			return t, true
+		}
+	}
+	return CompetencyType{}, false
+}
+
+func (ds *DataSet) AppointmentType(key string) (AppointmentType, bool) {
+	for _, t := range ds.Workforce.AppointmentTypes {
+		if t.Key == key {
+			return t, true
+		}
+	}
+	return AppointmentType{}, false
+}
+
+// DocumentType finds a type of the given scope.
+func (ds *DataSet) DocumentType(scope, key string) (DocumentType, bool) {
+	for _, t := range ds.DocumentTypes {
+		if t.Key == key && t.Scope == scope {
+			return t, true
+		}
+	}
+	return DocumentType{}, false
 }

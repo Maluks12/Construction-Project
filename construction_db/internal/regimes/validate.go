@@ -249,5 +249,68 @@ func (ds *DataSet) validate(dir string) error {
 		need(fileToolboxTopics, where, "source_ref", tp.SourceRef)
 	}
 
+	expiries := set(ExpiryRequired, ExpiryOptional, ExpiryNone)
+	seenComp := map[string]bool{}
+	for i, c := range ds.Workforce.CompetencyTypes {
+		where := fmt.Sprintf("competency_types[%d]", i)
+		key(fileWorkforce, where, c.Key, seenComp)
+		need(fileWorkforce, where, "label", c.Label)
+		oneOf(fileWorkforce, where, "kind", c.Kind, competencyKinds)
+		oneOf(fileWorkforce, where, "expiry", c.Expiry, expiries)
+		need(fileWorkforce, where, "source_ref", c.SourceRef)
+	}
+	seenAppt := map[string]bool{}
+	for i, a := range ds.Workforce.AppointmentTypes {
+		where := fmt.Sprintf("appointment_types[%d]", i)
+		key(fileWorkforce, where, a.Key, seenAppt)
+		need(fileWorkforce, where, "label", a.Label)
+		oneOf(fileWorkforce, where, "expiry", a.Expiry, expiries)
+		need(fileWorkforce, where, "source_ref", a.SourceRef)
+	}
+	if m := ds.Workforce.Medical.DefaultValidityMonths; m < 0 || m > 60 {
+		add(fileWorkforce, "medical: default_validity_months must be 0-60")
+	}
+	need(fileWorkforce, "medical", "source_ref", ds.Workforce.Medical.SourceRef)
+
+	seenDocs := map[string]bool{}
+	for i, d := range ds.DocumentTypes {
+		where := fmt.Sprintf("document_types[%d]", i)
+		key(fileDocuments, where, d.Key, seenDocs)
+		need(fileDocuments, where, "label", d.Label)
+		oneOf(fileDocuments, where, "scope", d.Scope, set(ScopeOrg, ScopeSite))
+		oneOf(fileDocuments, where, "expiry", d.Expiry, expiries)
+		need(fileDocuments, where, "source_ref", d.SourceRef)
+		for j, is := range d.Issuers {
+			if is == "" || slices.Index(d.Issuers, is) != j {
+				add(fileDocuments, "%s: issuers must be non-empty and distinct", where)
+			}
+		}
+	}
+
+	rem := ds.Reminders
+	days := func(field string, v []int) {
+		if len(v) == 0 {
+			add(fileReminders, "%s is required", field)
+		}
+		for i, d := range v {
+			if d < 0 || d > 365 || (i > 0 && d >= v[i-1]) {
+				add(fileReminders, "%s must be 0-365 days, strictly descending", field)
+				return
+			}
+		}
+	}
+	days("worker_expiry_days", rem.WorkerExpiryDays)
+	days("company_document_days", rem.CompanyDocumentDays)
+	days("deadline_days_before", rem.DeadlineDaysBefore)
+	if e := rem.ActionEscalationDays; len(e) != 3 || e[0] < 0 || e[1] <= e[0] || e[2] <= e[1] || e[2] > 365 {
+		add(fileReminders, "action_escalation_days must be three ascending days (owner and raiser, SHE officers, owners)")
+	}
+	if rem.VerificationStalledDays < 1 || rem.VerificationStalledDays > 60 {
+		add(fileReminders, "verification_stalled_days must be 1-60")
+	}
+	need(fileReminders, "reminders", "source_ref", rem.SourceRef)
+
 	return errors.Join(errs...)
 }
+
+var competencyKinds = set("certificate", "licence", "training", "registration")

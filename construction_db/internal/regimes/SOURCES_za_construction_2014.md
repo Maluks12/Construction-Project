@@ -280,6 +280,168 @@ signature captured with its stroke dynamics would be behavioural
 characterisation; Rev 4 §2.10 rules biometrics out, so a toolbox signature is a
 tap and stores no drawing.
 
+## Workforce, documents and reminders (`workforce.json`, `documents.json`, `reminders.json`, M11)
+
+CR 2014 quotes were read on **18 Nov 2026** from the same Acts Online copy (the
+ecr.co.za link now redirects to `turntable.kagiso.io/documents/SA_OSHACT.pdf`,
+the same file: "7 February 2014 – to date", 51 pp.). In each table below, the
+second column is the type's `source_ref`. `TestWorkforceTypesQuotedInSources`
+ties every key to its row.
+
+### Competency types
+
+CR 2014 doesn't list certificates as such. Each type is a competence that a
+regulation requires of the person doing the work.
+
+| key | source_ref | quote |
+|---|---|---|
+| `mobile_plant_operator` | CR 2014 reg 23(1)(d)(i) | "are operated by a person who - (i) has received appropriate training, is certified competent and in possession of proof of competency and is authorised in writing to operate those construction vehicles and mobile plant" |
+| `tower_crane_operator` | CR 2014 reg 22(e) | "the tower crane operators are competent to carry out the work safely" |
+| `scaffold_erector` | CR 2014 reg 16(1) | "all scaffold erectors, team leaders and inspectors are competent to carry out their work" |
+| `scaffold_inspector` | CR 2014 reg 16(1) | (as above) |
+| `suspended_platform_operator` | CR 2014 reg 17(1) | "all suspended platform erectors, operators and inspectors are competent to carry out their work" |
+| `rope_access_licence` | CR 2014 reg 18(1)(c) | "ensure that all rope access operators are competent and licensed to carry out their work" |
+| `construction_hs_officer_registration` | CR 2014 reg 8(6) | "the construction health and safety officer that he or she intends to appoint is registered with a statutory body approved by the Chief Inspector" |
+
+### Appointment types
+
+Every one is an appointment **in writing**. Left out:
+- reg 10(1)(a), fall protection: it says "designate a competent person", not appoint;
+- reg 13(1)(k), explosives in excavations: it says "appoint a competent person" without "in writing";
+- regs 21 and 22: they require competence, not an appointment.
+
+| key | source_ref | quote |
+|---|---|---|
+| `construction_manager` | CR 2014 reg 8(1) | "A principal contractor must in writing appoint one full-time competent person as the construction manager with the duty of managing all the construction work on a single site" |
+| `assistant_construction_manager` | CR 2014 reg 8(2) | "A principal contractor must upon having considered the size of the project, in writing appoint one or more assistant construction managers for different sections thereof" |
+| `construction_hs_officer` | CR 2014 reg 8(5) | "appoint a full-time or part-time construction health and safety officer in writing to assist in the control of all health and safety related aspects on the site" |
+| `construction_supervisor` | CR 2014 reg 8(7) | "A construction manager must in writing appoint construction supervisors responsible for construction activities and ensuring occupational health and safety compliance on the construction site." |
+| `assistant_construction_supervisor` | CR 2014 reg 8(8) | "A contractor must, upon having considered the size of the project, in writing appoint one or more competent employees for different sections thereof to assist the construction supervisor" |
+| `risk_assessor` | CR 2014 reg 9(1) | "have risk assessments performed by a competent person appointed in writing" |
+| `temporary_works_designer` | CR 2014 reg 12(1) | "A contractor must appoint a temporary works designer in writing to design, inspect and approve the erected temporary works on site before use." |
+| `temporary_works_supervisor` | CR 2014 reg 12(2) | "all temporary works operations are carried out under the supervision of a competent person who has been appointed in writing for that purpose" |
+| `excavation_supervisor` | CR 2014 reg 13(1)(a) | "ensure that all excavation work is carried out under the supervision of a competent person who has been appointed in writing for that purpose" |
+| `demolition_supervisor` | CR 2014 reg 14(1) | "A contractor must appoint a competent person in writing to supervise and control all demolition work on site." |
+| `scaffolding_supervisor` | CR 2014 reg 16(1) | "A contractor must appoint a competent person in writing who must ensure that all scaffolding work operations are carried out under his or her supervision" |
+| `suspended_platform_supervisor` | CR 2014 reg 17(1) | "A contractor must appoint a competent person in writing who must ensure that all suspended platforms work operations are carried out under his or her supervision" |
+| `rope_access_supervisor` | CR 2014 reg 18(1)(a) | "appoint a competent person in writing as a rope access supervisor with the duty of supervising all rope access work on the site" |
+| `material_hoist_inspector` | CR 2014 reg 19(8)(a) | "is inspected on daily basis by a competent person appointed in writing by the contractor" |
+| `bulk_mixing_plant_supervisor` | CR 2014 reg 20(1) | "the operation of a bulk mixing plant is supervised by a competent person who has been appointed in writing" |
+| `stacking_storage_supervisor` | CR 2014 reg 28(a) | "a competent person is appointed in writing with the duty of supervising all stacking and storage on a construction site" |
+
+### Medical certificate of fitness
+
+- **CR 2014 reg 7(8):** "A contractor must ensure that all his or her
+  employees have a valid medical certificate of fitness specific to the
+  construction work to be performed and issued by an occupational health
+  practitioner in the form of Annexure 3."
+  - Reg 1 defines it: "'medical certificate of fitness' means a certificate
+    contemplated in regulation 7(8)".
+  - Reg 7(1)(g) puts the same duty on a principal contractor.
+  - So Rev 4 §3.4's "Regulation 7(8)" is right.
+- **Validity is not in the regulations.** Neither reg 7 nor Annexure 3 says
+  how long a certificate lasts; Annexure 3 has a single "Date".
+  - Rev 4 §3.4's "valid for one year" is therefore a product default
+    (`default_validity_months: 12`), proposed to the user.
+  - The date on the certificate wins, and `expires_on` is always entered.
+- **Outcome.** Annexure 3's declaration is only "satisfied myself that the
+  abovementioned employee is fit to perform the duties as described by the
+  employer".
+  - `fit_with_restrictions` and `unfit` come from Rev 3 §2.9.4 ("fit /
+    fit-with-conditions / unfit").
+  - Rev 3 §2.9.4 also says to store "Not findings, diagnoses or restrictions".
+  - Annexure 3 also has an "ID Number" field; we don't store it.
+- **Practice number:** Annexure 3, "Practice Number".
+- **POPIA**, from a secondary copy read on 18 Nov 2026
+  (https://popia.co.za/section-26-prohibition-on-processing-of-special-personal-information/ and the section 32 page):
+  - **s26:** "A responsible party may, subject to section 27, not process
+    personal information concerning— ... the religious or philosophical
+    beliefs, race or ethnic origin, trade union membership, political
+    persuasion, health or sex life or biometric information of a data
+    subject".
+  - **s32(1)(f):** "administrative bodies, pension funds, employers or
+    institutions working for them, if such processing is necessary for— (i)
+    the implementation of the provisions of laws, pension regulations or
+    collective agreements which create rights dependent on the health or sex
+    life of the data subject".
+  - **s32(2):** "the information may only be processed by responsible parties
+    subject to an obligation of confidentiality by virtue of office,
+    employment, profession or legal provision".
+- **Who reads the certificate (decided 18 Nov, M11 D6).**
+  - **The spec:** Rev 4 §3.4 says "Status only, never contents", and §2.12
+    lets a SHE officer see health documents only "with the claims-handler
+    capability".
+  - **What we do:** we store the certificate itself, because inspectors and
+    principal contractors ask for the certificate, not a status. Only an
+    owner or SHE officer can open it, and every view is logged. A supervisor
+    can capture it but not read it back.
+  - **Why that's allowed:** it keeps processing to the reg 7(8) duty
+    (s32(1)(f)(i)) and to people bound by their employment (s32(2)).
+
+### Document types
+
+| key | source_ref | quote |
+|---|---|---|
+| `health_and_safety_specification` | CR 2014 reg 5(1)(b) | "prepare a suitable, sufficiently documented and coherent site specific health and safety specification for the intended construction work" |
+| `health_and_safety_plan` | CR 2014 reg 7(1)(a) | "provide and demonstrate to the client a suitable, sufficiently documented and coherent site specific health and safety plan" |
+| `risk_assessment` | CR 2014 reg 9(1) | "have risk assessments performed by a competent person appointed in writing, which risk assessments form part of the health and safety plan" |
+| `construction_work_permit` | CR 2014 reg 3(6) | "A client must ensure that the principal contractor keeps a copy of the construction work permit contemplated in subregulation (1) in the occupational health and safety file" |
+| `notification_of_construction_work` | CR 2014 reg 4(1) | "must at least 7 days before that work is to be carried out notify the provincial director in writing in a form similar to Annexure 2" |
+| `fall_protection_plan` | CR 2014 reg 10(1)(a) | "designate a competent person to be responsible for the preparation of a fall protection plan" |
+| `principal_contractor_appointment` | CR 2014 reg 5(1)(k) | "appoint every principal contractor in writing for the project or part thereof on the construction site" |
+| `coida_letter_of_good_standing` | Rev 4 §2.8 | "Issuer-aware: FEM, Compensation Fund or RMA for Letters of Good Standing." The Domain Reference §2.9 says "Letter of Good Standing, valid for 12 months". Not law: see Gaps. |
+| `coida_registration` | Domain Reference §2.9 | "Registration is mandatory for any employer with one or more employees … CF reference number". COIDA s80 ("Employer to register with Compensation Fund and to furnish particulars") was not read. |
+| `cidb_registration` | CIDB register of contractors | cidb.org.za, "Register of contractors: overview", as summarised (not quoted): a grade is valid for three years and must be updated annually. Not verified verbatim: see Gaps. |
+| `tax_compliance_status` | Rev 4 A.8 | "Organisation document vault P1 LGS, tax, insurances, B-BBEE, registrations". The spec never names the tax document; see Gaps. |
+| `public_liability_insurance` | Rev 4 A.8 | (as above: "insurances") |
+| `bbbee_certificate` | Rev 4 A.8 | (as above: "B-BBEE") |
+
+**The H&S file itself:**
+- CR 2014 reg 7(1)(b): "open and keep on site a health and safety file, which
+  must include all documentation required in terms of the Act and these
+  Regulations, which must be made available on request to an inspector, the
+  client, the client's agent or a contractor".
+- Reg 1: "'health and safety file' means a file, or other record containing
+  the information in writing required by these Regulations".
+- **Required site types** are the three the regulations require of every
+  project: the specification, the plan and the risk assessment. The others
+  depend on the work.
+
+### Reminders (`reminders.json`)
+
+These are product defaults (M11 D25), not law:
+- **Company documents:** 60, 30 and 7 days before, and on the day. Rev 4 §2.8:
+  "escalating expiry alerts at 60, 30 and 7 days".
+- **Competencies, medicals, appointments and H&S file documents:** 30, 14 and
+  7 days before, and on the day. Nothing in the spec sets these.
+- **Incident deadlines:** 2 days before and on the due day, then overdue.
+  Forthwith deadlines: at once.
+- **Actions:** Rev 4 A.4, "Escalation up the role hierarchy P1 To the owner on
+  lapse". When overdue:
+  - the action's owner and raiser at once;
+  - SHE officers after 1 day;
+  - owners after 3.
+
+  A verification counts as stalled after 2 days.
+
+A practitioner should review these together with the severity wording.
+
+### Gaps (M11)
+
+- **Letter of Good Standing:** neither COIDA's text nor the Compensation
+  Fund's pages were read.
+  - labour.gov.za has no page on it.
+  - Acts Online lists Notices 3200 and 3227 of 2025, "Extension of Letters of
+    Good Standing (LOG) Validity", but their bodies weren't readable.
+  - So `expires_on` is required and comes from the letter itself; no
+    validity is computed.
+- **CIDB:** only cidb.org.za's summary was read, not the CIDB Act 38 of 2000
+  or its Regulations. `expires_on` is entered from the certificate.
+- **Tax:** SARS's Tax Compliance Status page returned 404.
+  - The type is named `tax_compliance_status`, SARS's current term for what
+    replaced the tax clearance certificate. It has an optional expiry.
+  - To verify against SARS.
+
 ## Vocabulary (`vocabulary.json`)
 
 From Rev 4 §3.11: "Site diary (not daily log) · contract instruction (not

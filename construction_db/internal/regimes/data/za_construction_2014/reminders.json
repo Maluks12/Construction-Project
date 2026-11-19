@@ -1,0 +1,8 @@
+{
+  "worker_expiry_days": [30, 14, 7, 0],
+  "company_document_days": [60, 30, 7, 0],
+  "deadline_days_before": [2, 0],
+  "action_escalation_days": [0, 1, 3],
+  "verification_stalled_days": 2,
+  "source_ref": "Product defaults (M11 D25); Rev 4 §2.8 and A.4"
+}

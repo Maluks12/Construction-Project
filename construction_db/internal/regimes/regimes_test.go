@@ -31,6 +31,13 @@ const (
 		{"key": "near_miss", "label": "Near miss", "reportable": false}]`
 	vocabularyJSON = `[{"key": "site_diary", "label": "Site diary"}]`
 	topicsJSON     = `[{"key": "scaffolding", "title": "Scaffolding", "source_ref": "test ref"}]`
+	workforceJSON  = `{"competency_types": [{"key": "first_aid", "label": "First aid", "kind": "certificate", "expiry": "required", "source_ref": "r"}],
+		"appointment_types": [{"key": "supervisor", "label": "Supervisor", "expiry": "optional", "source_ref": "r"}],
+		"medical": {"default_validity_months": 12, "source_ref": "r"}}`
+	documentsJSON = `[{"key": "plan", "label": "Plan", "scope": "site", "required": true, "expiry": "none", "source_ref": "r"},
+		{"key": "lgs", "label": "LGS", "scope": "org", "required": true, "expiry": "required", "issuers": ["CF"], "source_ref": "r"}]`
+	remindersJSON = `{"worker_expiry_days": [30, 0], "company_document_days": [60, 0], "deadline_days_before": [2, 0],
+		"action_escalation_days": [0, 1, 3], "verification_stalled_days": 2, "source_ref": "r"}`
 )
 
 func validFS() fstest.MapFS {
@@ -41,6 +48,9 @@ func validFS() fstest.MapFS {
 		"test_regime/taxonomies.json":     {Data: []byte(taxonomyJSON)},
 		"test_regime/vocabulary.json":     {Data: []byte(vocabularyJSON)},
 		"test_regime/toolbox_topics.json": {Data: []byte(topicsJSON)},
+		"test_regime/workforce.json":      {Data: []byte(workforceJSON)},
+		"test_regime/documents.json":      {Data: []byte(documentsJSON)},
+		"test_regime/reminders.json":      {Data: []byte(remindersJSON)},
 	}
 }
 
@@ -210,6 +220,40 @@ func TestLoadFSRejects(t *testing.T) {
 		"topic without a source": {
 			with(validFS(), topicsFile, `[{"key": "a", "title": "A", "source_ref": ""}]`),
 			"toolbox_topics[0]: source_ref is required",
+		},
+		"missing workforce file": {
+			with(validFS(), "test_regime/workforce.json", ""),
+			"test_regime/workforce.json",
+		},
+		"competency without a source": {
+			with(validFS(), "test_regime/workforce.json", strings.Replace(workforceJSON, `"source_ref": "r"}],
+		"appointment_types"`, `"source_ref": ""}],
+		"appointment_types"`, 1)),
+			"competency_types[0]: source_ref is required",
+		},
+		"unknown competency kind": {
+			with(validFS(), "test_regime/workforce.json", strings.Replace(workforceJSON, `"certificate"`, `"diploma"`, 1)),
+			`competency_types[0]: kind "diploma" is not one of`,
+		},
+		"unknown expiry rule": {
+			with(validFS(), "test_regime/workforce.json", strings.Replace(workforceJSON, `"expiry": "optional"`, `"expiry": "sometimes"`, 1)),
+			`appointment_types[0]: expiry "sometimes" is not one of`,
+		},
+		"unknown document scope": {
+			with(validFS(), "test_regime/documents.json", strings.Replace(documentsJSON, `"scope": "site"`, `"scope": "project"`, 1)),
+			`document_types[0]: scope "project" is not one of`,
+		},
+		"duplicate issuer": {
+			with(validFS(), "test_regime/documents.json", strings.Replace(documentsJSON, `["CF"]`, `["CF", "CF"]`, 1)),
+			"document_types[1]: issuers must be non-empty and distinct",
+		},
+		"reminder days not descending": {
+			with(validFS(), "test_regime/reminders.json", strings.Replace(remindersJSON, "[30, 0]", "[0, 30]", 1)),
+			"worker_expiry_days must be 0-365 days, strictly descending",
+		},
+		"escalation not ascending": {
+			with(validFS(), "test_regime/reminders.json", strings.Replace(remindersJSON, "[0, 1, 3]", "[0, 3, 1]", 1)),
+			"action_escalation_days must be three ascending days",
 		},
 		"duplicate topic": {
 			with(validFS(), topicsFile, `[{"key": "a", "title": "A", "source_ref": "r"}, {"key": "a", "title": "B", "source_ref": "r"}]`),

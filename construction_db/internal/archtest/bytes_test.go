@@ -21,10 +21,11 @@ import (
 // them by accident. A tripwire for honest mistakes, not a sandbox: it matches
 // names, not types.
 var (
-	// Each method that reaches bytes, and the one file allowed to use it.
-	byteMethods = map[string]string{
-		"PresignGet":  "internal/core/evidence/access.go",   // after logging the view
-		"ReadVersion": "internal/core/evidence/complete.go", // server-side hashing; serves nothing
+	// Each method that reaches bytes, and the files allowed to use it: the
+	// evidence engine and the document files primitive (M11 D4).
+	byteMethods = map[string][]string{
+		"PresignGet":  {"internal/core/evidence/access.go", "internal/core/files/access.go"},     // after logging the view
+		"ReadVersion": {"internal/core/evidence/complete.go", "internal/core/files/complete.go"}, // server-side hashing; serves nothing
 	}
 	// Only these directories may talk to S3 directly.
 	s3Importers = []string{"internal/platform/storage/", "internal/platform/storagetest/"}
@@ -66,11 +67,11 @@ func byteViolations(files map[string]string) (violations []string, allowed map[s
 			want, reaches := byteMethods[sel.Sel.Name]
 			switch {
 			case !reaches:
-			case path == want:
+			case slices.Contains(want, path):
 				allowed[path]++
 			default:
 				violations = append(violations, fmt.Sprintf("%s:%d uses .%s, which reaches evidence bytes; only %s may (every view must be logged first)",
-					path, fset.Position(sel.Pos()).Line, sel.Sel.Name, want))
+					path, fset.Position(sel.Pos()).Line, sel.Sel.Name, strings.Join(want, " or ")))
 			}
 			return true
 		})
@@ -182,9 +183,11 @@ func TestEvidenceBytesGuard(t *testing.T) {
 	for _, v := range violations {
 		t.Error(v)
 	}
-	for method, file := range byteMethods {
-		if allowed[file] == 0 {
-			t.Errorf("%s no longer uses .%s; the guard would pass vacuously, so update it", file, method)
+	for method, files := range byteMethods {
+		for _, file := range files {
+			if allowed[file] == 0 {
+				t.Errorf("%s no longer uses .%s; the guard would pass vacuously, so update it", file, method)
+			}
 		}
 	}
 }

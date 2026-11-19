@@ -38,7 +38,7 @@ const signInSQL = `
 	SELECT id::text, site_id::text, worker_id::text, name, firm, clock_number, method, matched_existing, recorded_by::text,
 	       client_signed_in_at, received_at, sign_in_date::text, time_zone, received_after_close, device_id,
 	       sign_out_method, signed_out_by::text, client_signed_out_at, sign_out_received_at,
-	       retract_reason, retracted_by::text, retracted_at
+	       retract_reason, retracted_by::text, retracted_at, site_sign_in_ends_at(site_sign_ins.*)
 	FROM site_sign_ins`
 
 func scanSignIn(row pgx.Row) (*SignIn, error) {
@@ -51,7 +51,7 @@ func scanSignIn(row pgx.Row) (*SignIn, error) {
 	)
 	err := row.Scan(&s.ID, &s.SiteID, &s.WorkerID, &s.Name, &s.Firm, &s.ClockNumber, &s.Method, &s.MatchedExisting, &s.RecordedBy,
 		&s.ClientSignedInAt, &s.ReceivedAt, &s.SignInDate, &s.TimeZone, &s.ReceivedAfterClose, &s.DeviceID,
-		&outMethod, &outBy, &outAt, &outRecv, &reason, &retBy, &retAt)
+		&outMethod, &outBy, &outAt, &outRecv, &reason, &retBy, &retAt, &s.EndsAt)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func scanSignIn(row pgx.Row) (*SignIn, error) {
 	if reason != nil {
 		s.Retraction = &Retraction{Reason: *reason, RetractedBy: *retBy, RetractedAt: *retAt}
 	}
-	s.Lapsed = s.SignOut == nil && s.Retraction == nil && time.Since(s.ClientSignedInAt) > OpenWindow
+	s.Lapsed = s.SignOut == nil && s.Retraction == nil && !s.EndsAt.After(time.Now())
 	s.Warnings = []string{}
 	return &s, nil
 }

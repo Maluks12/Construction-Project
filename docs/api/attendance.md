@@ -35,15 +35,24 @@ found"`). Other roles get 403 `"forbidden"`.
     `received_after_close: true`.
   - A diary already saved keeps the headcount it was given;
     `headcount_suggested_now` includes the late arrival.
-- **Sign-out is optional.** A sign-in counts from its time until its
-  sign-out, or for 16 hours without one (night shifts work: nothing happens
-  at midnight). After 16 hours it shows `lapsed: true` and no sign-out can be
-  recorded any more.
-- **One sign-in at a time per worker per site.** Tapping someone who is
-  already signed in (another phone did it, or they never signed out) is 409
-  `AlreadySignedIn` with the standing sign-in's id: show it, don't
-  re-queue. A sign-in whose time falls inside one of the worker's earlier
-  sign-ins, open or closed, is refused the same way.
+- **Sign-out is optional.** A sign-in's presence (`ends_at`) ends at the
+  earliest of:
+  - its sign-out;
+  - 16 hours after it (night shifts work: nothing happens at midnight);
+  - the worker's next sign-in on the site.
+
+  Once it has ended without a sign-out it shows `lapsed: true`, and no
+  sign-out can be recorded any more.
+- **One sign-in at a time per worker per site, whatever order they arrive
+  in.**
+  - Tapping someone who is already signed in (another phone did it, or they
+    never signed out) is 409 `AlreadySignedIn` with the standing sign-in's
+    id: show it, don't re-queue.
+  - A sign-in whose time falls inside one of the worker's other sign-ins on
+    the site is refused the same way.
+  - An earlier sign-in arriving late from an offline phone (07:00 after 08:00
+    was recorded) is accepted and simply ends at the next one. It can be
+    signed out before 08:00, not after.
 - **Two sites at once** is allowed: phones are often offline and can't know.
   The day's register lists `overlaps` with other sites.
 - **Never refused for papers** (Rev 4's "clock-in block"): a sign-in carries
@@ -179,6 +188,7 @@ export interface SignIn {
   device_id: string | null;
   sign_out: SignOut | null;
   retraction: Retraction | null;
+  ends_at: string;
   lapsed: boolean;
   warnings: SignInWarning[];
 }

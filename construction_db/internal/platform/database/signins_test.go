@@ -236,3 +236,104 @@ func TestSignInTablesRefuseTruncate(t *testing.T) {
 	seedRLS(t)
 	refuseTruncates(t, beginAs(t, admin, ""), "site_roster", "site_sign_in_sheets", "site_sign_ins")
 }
+
+func endsAt(t *testing.T, tx pgx.Tx, id string) time.Time {
+	t.Helper()
+	var at time.Time
+	if err := tx.QueryRow(context.Background(), `SELECT site_sign_in_ends_at(s) FROM site_sign_ins s WHERE id = $1`, id).Scan(&at); err != nil {
+		t.Fatal(err)
+	}
+	return at
+}
+
+// Out of order (M11 review): an 08:00 sign-in is recorded first, then a
+// 07:00 one from an offline phone arrives. The 07:00 one is accepted and
+// ends at 08:00, so the worker is never signed in twice at once.
+func TestSignInsOutOfOrder(t *testing.T) {
+	seedRLS(t)
+	tx := beginAs(t, pool, rlsOrgA)
+	addActionMembers(t, tx)
+	w := workerID(601)
+	must(t, tx, 1, workerSQL, w, rlsOrgA, "Early Bird", nil, nil, rlsUserA)
+	eight, seven := signInID(601), signInID(602)
+	okBatch(t, tx, signInA(eight, w, "tap", supOnSite, localNov10(8, 0)))
+	okBatch(t, tx, signInA(seven, w, "tap", supOnSite, localNov10(7, 0)))
+	if got := endsAt(t, tx, seven); !got.Equal(localNov10(8, 0)) {
+		t.Errorf("the late 07:00 sign-in ends at %s, want 08:00 (the next sign-in)", got)
+	}
+	if got := endsAt(t, tx, eight); !got.Equal(localNov10(8, 0).Add(16 * time.Hour)) {
+		t.Errorf("the 08:00 sign-in ends at %s, want 16 hours on", got)
+	}
+	// Inside the 07:00 one's presence (07:00–08:00): refused.
+	refusedBatch(t, tx, "23514", "already signed in at that time", signInA(signInID(603), w, "tap", supOnSite, localNov10(7, 30)))
+	// The 08:00 one signed out at 12:00; back at 13:00 is a new sign-in. (With
+	// the late 07:00 standing for 16 hours, 13:00 would be refused.)
+	must(t, tx, 1, signOutSQL, eight, localNov10(12, 0), supOnSite)
+	okBatch(t, tx, signInA(signInID(604), w, "tap", supOnSite, localNov10(13, 0)))
+	// Signing the 07:00 one out before 08:00 works; after it, no.
+	refused(t, tx, "23514", "signed out after a later sign-in", signOutSQL, seven, localNov10(8, 30), supOnSite)
+	must(t, tx, 1, signOutSQL, seven, localNov10(7, 45), supOnSite)
+	if got := endsAt(t, tx, seven); !got.Equal(localNov10(7, 45)) {
+		t.Errorf("signed out at 07:45, ends at %s", got)
+	}
+	// A retracted next sign-in doesn't end an earlier one.
+	w2 := workerID(602)
+	must(t, tx, 1, workerSQL, w2, rlsOrgA, "Second Worker", nil, nil, rlsUserA)
+	okBatch(t, tx, signInA(signInID(605), w2, "tap", supOnSite, localNov10(9, 0)), signInA(signInID(606), w2, "tap", supOnSite, localNov10(6, 0)))
+	must(t, tx, 1, retractSignInSQL, signInID(605), supOnSite)
+	if got := endsAt(t, tx, signInID(606)); !got.Equal(localNov10(6, 0).Add(16 * time.Hour)) {
+		t.Errorf("with the next sign-in retracted, 06:00 ends at %s", got)
+	}
+	// A sign-in on another site never ends this one: that's an overlap (D14).
+	const otherSite = "22000000-0000-0000-0000-0000000000a3"
+	must(t, tx, 1, `INSERT INTO sites (id, org_id, regime_id, name) SELECT $1, $2, id, 'Other site' FROM regulatory_regimes LIMIT 1`, otherSite, rlsOrgA)
+	okBatch(t, tx, stmt{signInSQL, []any{signInID(607), rlsOrgA, otherSite, w, "tap", rlsUserA, localNov10(14, 0)}})
+	if got := endsAt(t, tx, signInID(604)); !got.Equal(localNov10(13, 0).Add(16 * time.Hour)) {
+		t.Errorf("13:00 here ends at %s after a 14:00 sign-in on another site; want 16 hours on", got)
+	}
+}
+
+// The same out-of-order pair arriving at once: the 07:00 insert waits on the
+// worker's row while the 08:00 one is uncommitted, then is accepted and ends
+// at 08:00. Forced: the 08:00 one is held open.
+func TestSignInsOutOfOrderRace(t *testing.T) {
+	if err := seedOrgC(); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	w := fresh()
+	if err := asC(ctx, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, workerSQL, w, orgC, "Order Worker "+w[:8], nil, nil, userC)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	eight := time.Now().Add(-time.Hour).Truncate(time.Second)
+	held, late := fresh(), fresh()
+	first := tenantTx(t)
+	defer first.Rollback(ctx)
+	if _, err := first.Exec(ctx, signInSQL, held, orgC, siteC, w, "tap", userC, eight); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- asC(ctx, func(tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, signInSQL, late, orgC, siteC, w, "tap", userC, eight.Add(-time.Hour))
+			return err
+		})
+	}()
+	waitingOn(t, "INSERT INTO site_sign_ins")
+	if err := first.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("the earlier sign-in arriving late: %v", err)
+	}
+	var end time.Time
+	if err := asC(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT site_sign_in_ends_at(s) FROM site_sign_ins s WHERE id = $1`, late).Scan(&end)
+	}); err != nil || !end.Equal(eight) {
+		t.Errorf("the late sign-in ends at %s, err %v; want %s", end, err, eight)
+	}
+}
+

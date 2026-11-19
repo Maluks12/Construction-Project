@@ -19,9 +19,12 @@ const (
 
 var Methods = []string{MethodTap, MethodPaper}
 
-// OpenWindow: a sign-in without a sign-out stands this long, and a sign-out
-// can be recorded at most this long after it. Mirrors site_sign_in_window()
-// (000026).
+// OpenWindow: a sign-in without a sign-out stands at most this long, and a
+// sign-out can be recorded at most this long after it. Mirrors
+// site_sign_in_window() (000026). A sign-in's presence ends at the earliest
+// of its sign-out, OpenWindow, or the worker's next sign-in on the site
+// (site_sign_in_ends_at, 000031): one at a time, whatever order phones'
+// records arrive in.
 const OpenWindow = 16 * time.Hour
 
 // SignInRequest signs a worker in under an id the device chose. Either
@@ -69,8 +72,11 @@ type SignIn struct {
 	DeviceID           *string     `json:"device_id"`
 	SignOut            *SignOut    `json:"sign_out"`
 	Retraction         *Retraction `json:"retraction"`
-	// No sign-out and more than 16 hours since the sign-in: none can be
-	// recorded any more.
+	// When presence ends: the sign-out, 16 hours after the sign-in, or the
+	// worker's next sign-in on the site, whichever is first.
+	EndsAt time.Time `json:"ends_at"`
+	// Ended without a sign-out (16 hours passed, or a later sign-in): none
+	// can be recorded any more.
 	Lapsed bool `json:"lapsed"`
 	// Never a refusal (D18): no_valid_medical, medical_unfit, competency_expired.
 	Warnings []string `json:"warnings"`

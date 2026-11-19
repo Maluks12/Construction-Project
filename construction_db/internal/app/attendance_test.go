@@ -247,3 +247,42 @@ func TestSignInWindowMatchesDatabase(t *testing.T) {
 		t.Errorf("site_sign_in_window() is %vs, attendance.OpenWindow %s", seconds, attendance.OpenWindow)
 	}
 }
+
+// M11 review: an on-the-spot worker id already on the register with other
+// details is 409; not_signed leaves out people whose presence ended before
+// the talk; a late earlier sign-in ends at the next one (ends_at).
+func TestSignInReviewFixes(t *testing.T) {
+	f := newEvidenceFixture(t, "signin-review")
+	existing := newWorker(t, f.router, f.owner, map[string]any{"name": "Already Here"})
+	wantError(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor,
+		signInBody(existing, time.Now().Add(-time.Hour), map[string]any{"new_worker": map[string]any{"name": "Someone Else"}})),
+		http.StatusConflict, "id already used with different details")
+	// The same details under that id: a retry, signed in.
+	wantStatus(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor,
+		signInBody(existing, time.Now().Add(-time.Hour), map[string]any{"new_worker": map[string]any{"name": "Already Here"}})), http.StatusCreated)
+
+	// Out of order through the API: 08:00 first, then 07:00, which ends at 08:00.
+	w := newWorker(t, f.router, f.owner, map[string]any{"name": "Order Person"})
+	eight := time.Now().Add(-90 * time.Minute).Truncate(time.Second)
+	wantStatus(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(w, eight, nil)), http.StatusCreated)
+	rec := do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(w, eight.Add(-time.Hour), nil))
+	wantStatus(t, rec, http.StatusCreated)
+	if si := decodeSignIn(t, rec); !si.EndsAt.Equal(eight) || !si.Lapsed {
+		t.Errorf("the late sign-in ends at %s (lapsed %v), want %s and lapsed", si.EndsAt, si.Lapsed, eight)
+	}
+
+	// Someone who signed in and out before the talk began isn't "not signed".
+	gone := newWorker(t, f.router, f.owner, map[string]any{"name": "Left Early"})
+	early := uuid.NewString()
+	start := time.Now().Add(-4 * time.Hour)
+	wantStatus(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, early), f.supervisor, signInBody(gone, start, nil)), http.StatusCreated)
+	wantStatus(t, do(t, f.router, http.MethodPost, signInPath(f.siteA, early)+"/sign-out", f.supervisor,
+		map[string]any{"method": "tap", "client_signed_out_at": rfc(start.Add(30 * time.Minute))}), http.StatusCreated)
+	talk := uuid.NewString()
+	wantStatus(t, do(t, f.router, http.MethodPut, talkPath(f.siteA, talk), f.supervisor, talkBody(map[string]any{"started_at": rfc(start.Add(time.Hour))})), http.StatusCreated)
+	for _, n := range decodeTalk(t, do(t, f.router, http.MethodGet, talkPath(f.siteA, talk), f.owner, nil)).NotSigned {
+		if n.WorkerID == gone {
+			t.Error("a worker who left before the talk is listed as not signed")
+		}
+	}
+}

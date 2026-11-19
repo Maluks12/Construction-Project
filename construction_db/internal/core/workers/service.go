@@ -181,7 +181,13 @@ func MatchOrCreate(ctx context.Context, tx DBTX, orgID, userID, workerID string,
 	if ps := ValidateWorker(req); len(ps) > 0 {
 		return nil, false, &Problem{ps[0]}
 	}
+	// The id is already a worker: the same person again (a retry), or the
+	// phone reused the id for someone else (409).
 	if existing, err := GetWorker(ctx, tx, orgID, workerID); err == nil {
+		if existing.Name != req.Name || !equalPtr(existing.Firm, req.Firm) || !equalPtr(existing.ClockNumber, req.ClockNumber) ||
+			(req.Trade != nil && !equalPtr(existing.Trade, req.Trade)) {
+			return nil, false, ErrIDReused
+		}
 		return existing, false, nil
 	} else if !isNotFound(err) {
 		return nil, false, err

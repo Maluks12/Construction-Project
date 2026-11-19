@@ -167,7 +167,8 @@ func listPhotos(ctx context.Context, db DBTX, orgID, talkID string) ([]TalkPhoto
 
 const attendanceSQL = `
 	SELECT a.id, a.talk_id, a.name, a.firm, a.clock_number, a.method, a.recorded_by, a.client_signed_at, a.signed_at, a.device_id,
-	       r.reason, r.retracted_by, r.client_retracted_at, r.retracted_at
+	       r.reason, r.retracted_by, r.client_retracted_at, r.retracted_at,
+	       (SELECT substr(p.person, 3) FROM (SELECT toolbox_attendance_person(a.id) AS person) p WHERE p.person LIKE 'w:%')
 	FROM toolbox_attendance a
 	LEFT JOIN toolbox_attendance_retractions r ON r.attendance_id = a.id`
 
@@ -178,7 +179,7 @@ func scanAttendance(row pgx.Row) (*Attendance, error) {
 		client, srv *time.Time
 	)
 	err := row.Scan(&a.ID, &a.TalkID, &a.Name, &a.Firm, &a.ClockNumber, &a.Method, &a.RecordedBy, &a.ClientSignedAt, &a.SignedAt, &a.DeviceID,
-		&reason, &by, &client, &srv)
+		&reason, &by, &client, &srv, &a.WorkerID)
 	if err != nil {
 		return nil, err
 	}
@@ -276,4 +277,35 @@ func insertPhoto(ctx context.Context, db DBTX, orgID, siteID, talkID, evidenceID
 		INSERT INTO toolbox_talk_evidence (org_id, site_id, talk_id, evidence_id, kind, added_by) VALUES ($1, $2, $3, $4, $5, $6)`,
 		orgID, siteID, talkID, evidenceID, kind, by)
 	return err
+}
+
+// autoLink links a new signature to the register worker with the same
+// identity key, if there is one (M11 D7). The signature itself never changes.
+func autoLink(ctx context.Context, db DBTX, orgID, siteID, attendanceID, by string) error {
+	_, err := db.Exec(ctx, `
+		INSERT INTO toolbox_attendance_workers (org_id, site_id, attendance_id, worker_id, method, linked_by)
+		SELECT $1, $2, a.id, w.id, $5, $4
+		FROM toolbox_attendance a JOIN workers w ON w.org_id = a.org_id AND w.identity_key = a.identity_key
+		WHERE a.id = $3`, orgID, siteID, attendanceID, by, linkAuto)
+	return err
+}
+
+const linkAuto = "auto"
+
+// listNotSigned: the workers signed in on the talk's site on its day, before
+// it ended (or now), who aren't the person of any standing signature of it.
+func listNotSigned(ctx context.Context, db DBTX, orgID, talkID string) ([]NotSigned, error) {
+	rows, err := db.Query(ctx, notSignedSQL, orgID, talkID)
+	if err != nil {
+		return nil, fmt.Errorf("list not signed: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (NotSigned, error) {
+		var n NotSigned
+		err := r.Scan(&n.WorkerID, &n.Name, &n.Firm, &n.ClockNumber, &n.SignInID)
+		return n, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list not signed: %w", err)
+	}
+	return out, nil
 }

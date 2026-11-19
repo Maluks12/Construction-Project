@@ -101,6 +101,9 @@ type Talk struct {
 	TalkHeader
 	Photos     []TalkPhoto  `json:"photos"`
 	Attendance []Attendance `json:"attendance"`
+	// Workers signed in on the site on the talk's day before it ended (or
+	// now, while open) who didn't sign it: absent or refused (M11 D17).
+	NotSigned []NotSigned `json:"not_signed"`
 }
 
 // TalkPhoto is a photo's id only; viewing it goes through the logged
@@ -124,6 +127,9 @@ type Attendance struct {
 	SignedAt       time.Time   `json:"signed_at"`
 	DeviceID       *string     `json:"device_id"`
 	Retraction     *Retraction `json:"retraction"`
+	// The register worker this signature counts as (M11 D7): its link, or
+	// the worker with the same name, firm and clock number. null otherwise.
+	WorkerID *string `json:"worker_id"`
 }
 
 type Retraction struct {
@@ -182,3 +188,13 @@ var (
 	ErrBadDate            = errors.New("date must be YYYY-MM-DD")
 	ErrBadLimit           = errors.New("limit must be 1-200")
 )
+
+// NotSigned is a worker signed in on site who hasn't signed the talk. Read
+// only: signatures are never inferred.
+type NotSigned struct {
+	WorkerID    string  `json:"worker_id"`
+	Name        string  `json:"name"`
+	Firm        *string `json:"firm"`
+	ClockNumber *string `json:"clock_number"`
+	SignInID    string  `json:"sign_in_id"`
+}

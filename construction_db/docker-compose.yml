@@ -4,6 +4,7 @@
 #   docker compose run --rm storage-init     create the evidence bucket (once)
 #   docker compose run --rm migrate up       apply migrations
 #   docker compose up -d --build api         build and start the API
+#   docker compose up -d --build worker      the reminder jobs (with redis and mailpit)
 #
 # DATABASE_URL is built here from the POSTGRES_* values in .env,
 # so the password only ever lives in one place. Likewise the MinIO root
@@ -28,6 +29,39 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+
+
+  # The reminder jobs (M11). Needs Redis for its schedule; emails go to
+  # Mailpit locally (http://localhost:8025 shows them).
+  worker:
+    build: .
+    entrypoint: ["/worker"]
+    env_file: .env
+    environment:
+      DATABASE_URL: *database-url
+      REDIS_URL: redis://redis:6379/0
+      SMTP_URL: ${SMTP_URL:-smtp://mailpit:1025?from=reminders@siteproof.local}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "8025:8025"
+      - "1025:1025"
 
   db:
     image: postgres:16-alpine

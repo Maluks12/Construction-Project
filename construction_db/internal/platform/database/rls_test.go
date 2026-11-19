@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -44,6 +45,8 @@ const (
 	rlsRevB      = "3e000000-0000-0000-0000-00000000000b"
 	rlsAddA      = "3f000000-0000-0000-0000-00000000000a"
 	rlsAddB      = "3f000000-0000-0000-0000-00000000000b"
+	rlsFileA     = "40000000-0000-0000-0000-00000000000a" // a verified competency certificate, viewed once
+	rlsFileB     = "40000000-0000-0000-0000-00000000000b"
 	rlsDiaryDate = "2026-01-15"
 )
 
@@ -90,6 +93,22 @@ type rlsTable struct {
 
 // In foreign-key-safe delete order.
 var rlsTables = []rlsTable{
+	{"worker_history", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"holiday_recomputations", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"notification_emails", "org_id", rlsOrgA, rlsOrgB, "status", deleteDenied},
+	{"notifications", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"site_appointments", "org_id", rlsOrgA, rlsOrgB, "retracted_at", deleteDenied},
+	{"document_versions", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"documents", "org_id", rlsOrgA, rlsOrgB, "latest_version", deleteDenied},
+	{"site_roster", "org_id", rlsOrgA, rlsOrgB, "removed_at", deleteDenied},
+	{"site_sign_in_sheets", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"site_sign_ins", "org_id", rlsOrgA, rlsOrgB, "retracted_at", deleteDenied},
+	{"toolbox_attendance_workers", "org_id", rlsOrgA, rlsOrgB, "unlinked_at", deleteDenied},
+	{"worker_medicals", "org_id", rlsOrgA, rlsOrgB, "retracted_at", deleteDenied},
+	{"worker_competencies", "org_id", rlsOrgA, rlsOrgB, "retracted_at", deleteDenied},
+	{"workers", "org_id", rlsOrgA, rlsOrgB, "trade", deleteDenied},
+	{"file_access_log", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"files", "org_id", rlsOrgA, rlsOrgB, "status", deleteDenied},
 	{"site_diary_addendum_evidence", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"site_diary_addenda", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"site_diary_revision_evidence", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
@@ -132,8 +151,10 @@ var rlsTables = []rlsTable{
 }
 
 // rlsRows: tables with more than one seeded row per org. An action with a
-// close-out has two events (its raise and the close-out).
-var rlsRows = map[string]int{"corrective_action_events": 2}
+// close-out has two events (its raise and the close-out); the worker has a
+// certificate, a medical and an appointment letter, and the vault a letter:
+// four files.
+var rlsRows = map[string]int{"corrective_action_events": 2, "files": 4}
 
 func rowsPerOrg(table string) int {
 	if n, ok := rlsRows[table]; ok {
@@ -266,6 +287,36 @@ var seedOnce = sync.OnceValue(func() error {
 			{revisionPhotoSQL, []any{org, site, rlsDiaryDate, rev, ev}},
 			{addendumSQL, []any{add, org, site, rlsDiaryDate, "Forgot the plant", "Crane idle", user, 1}},
 			{addendumPhotoSQL, []any{org, site, rlsDiaryDate, add, ev}},
+			// M11: a verified certificate, viewed once.
+			{fileSQL, []any{id("40"), org, nil, "competency", user, hash32(6), "verified"}},
+			{`INSERT INTO file_access_log (org_id, file_id, user_id, action, object_version_id) VALUES ($1, $2, $3, 'view_bytes', 'v1')`,
+				[]any{org, id("40"), user}},
+			// The worker who signed the talk, with that certificate, a medical
+			// and the signature linked to them.
+			{workerSQL, []any{id("41"), org, "RLS worker", nil, nil, user}},
+			{compSQL, []any{id("42"), org, id("41"), "scaffold_erector", id("40"), nil, user}},
+			{fileSQL, []any{id("44"), org, nil, "medical", user, hash32(8), "verified"}},
+			{medSQL, []any{id("43"), org, id("41"), "fit", id("44"), nil, user}},
+			{`INSERT INTO toolbox_attendance_workers (org_id, site_id, attendance_id, worker_id, method, linked_by) VALUES ($1, $2, $3, $4, 'auto', $5)`,
+				[]any{org, site, att, id("41"), user}},
+			// The worker signs in on paper (a sheet photo first), which puts
+			// them on the site's roster.
+			{`INSERT INTO site_sign_in_sheets (org_id, site_id, sheet_date, evidence_id, added_by) VALUES ($1, $2, '2026-01-15', $3, $4)`,
+				[]any{org, site, ev, user}},
+			{signInSQL, []any{id("45"), org, site, id("41"), "paper", user, time.Date(2026, 1, 15, 5, 0, 0, 0, time.UTC)}},
+			// A Letter of Good Standing in the vault.
+			{fileSQL, []any{id("47"), org, nil, "org_document", user, hash32(9), "verified"}},
+			{docSQL, []any{id("46"), org, nil, "org", "coida_letter_of_good_standing", user}},
+			{docVersionSQL, []any{org, nil, id("46"), 1, "org", id("47"), user}},
+			// The worker appointed scaffolding supervisor on the site.
+			{fileSQL, []any{id("49"), org, site, "appointment", user, hash32(10), "verified"}},
+			{appointmentSQL, []any{id("48"), org, site, id("41"), "scaffolding_supervisor", id("49"), nil, user}},
+			// A reminder of the action, its email still pending, and a holiday
+			// already recomputed.
+			{`INSERT INTO notifications (id, org_id, user_id, kind, subject_type, subject_id, threshold, title)
+			  VALUES ($1, $2, $3, 'action_overdue', 'action', $4, 'escalation_1', 'Fix it')`, []any{id("4a"), org, user, act}},
+			{`INSERT INTO notification_emails (notification_id, org_id, to_address) VALUES ($1, $2, 'rls@rls.test')`, []any{id("4a"), org}},
+			{`INSERT INTO holiday_recomputations (org_id, jurisdiction, holiday_date, recomputed) VALUES ($1, 'ZA', '2026-12-25', 0)`, []any{org}},
 		}
 		for _, s := range stmts {
 			if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
@@ -392,6 +443,31 @@ func TestRLSWrites(t *testing.T) {
 			"toolbox_talk_evidence":          {talkPhotoSQL, []any{rlsOrgB, rlsSiteB, rlsTalkB, rlsEvidenceB, "photo", rlsUserB}},
 			"toolbox_attendance":             {signSQL, []any{"3d000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, rlsTalkB, "Smuggled", nil, "tap", rlsUserB, signTime}},
 			"toolbox_attendance_retractions": {unsignSQL, []any{rlsAttB, rlsOrgB, rlsSiteB, "Smuggled", rlsUserB}},
+			"files":                          {fileSQL, []any{"40000000-0000-0000-0000-0000000000bb", rlsOrgB, nil, "competency", rlsUserB, hash32(7), "pending"}},
+			"file_access_log": {`INSERT INTO file_access_log (org_id, file_id, user_id, action, object_version_id) VALUES ($1, $2, $3, 'view_bytes', 'v1')`,
+				[]any{rlsOrgB, rlsFileB, rlsUserB}},
+			"notifications": {`INSERT INTO notifications (org_id, user_id, kind, subject_type, subject_id, threshold, title)
+			  VALUES ($1, $2, 'action_overdue', 'action', $3, 'escalation_2', 'Smuggled')`, []any{rlsOrgB, rlsUserB, rlsActionB}},
+			"notification_emails": {`INSERT INTO notification_emails (notification_id, org_id, to_address) VALUES ($1, $2, 'x@x.test')`,
+				[]any{"4a000000-0000-0000-0000-00000000000b", rlsOrgB}},
+			"holiday_recomputations": {`INSERT INTO holiday_recomputations (org_id, jurisdiction, holiday_date, recomputed) VALUES ($1, 'ZA', '2026-12-26', 0)`,
+				[]any{rlsOrgB}},
+			"worker_history": {`INSERT INTO worker_history (org_id, worker_id, name, active, changed_at, changed_by) VALUES ($1, $2, 'Smuggled', true, now(), $3)`,
+				[]any{rlsOrgB, "41000000-0000-0000-0000-00000000000b", rlsUserB}},
+			"site_appointments": {appointmentSQL, []any{"48000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, "41000000-0000-0000-0000-00000000000b",
+				"risk_assessor", "49000000-0000-0000-0000-00000000000b", nil, rlsUserB}},
+			"documents":         {docSQL, []any{"46000000-0000-0000-0000-0000000000bb", rlsOrgB, nil, "org", "cidb_registration", rlsUserB}},
+			"document_versions": {docVersionSQL, []any{rlsOrgB, nil, "46000000-0000-0000-0000-00000000000b", 2, "org", "47000000-0000-0000-0000-00000000000b", rlsUserB}},
+			"site_sign_ins":     {signInSQL, []any{"45000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, "41000000-0000-0000-0000-00000000000b", "tap", rlsUserB, localNov10(15, 0)}},
+			"site_sign_in_sheets": {`INSERT INTO site_sign_in_sheets (org_id, site_id, sheet_date, evidence_id, added_by) VALUES ($1, $2, '2026-11-11', $3, $4)`,
+				[]any{rlsOrgB, rlsSiteB, rlsEvidenceB, rlsUserB}},
+			"site_roster": {`INSERT INTO site_roster (org_id, site_id, worker_id, added_via, added_by) VALUES ($1, $2, $3, 'manual', $4)`,
+				[]any{rlsOrgB, rlsSiteB, "41000000-0000-0000-0000-00000000000b", rlsUserB}},
+			"workers":             {workerSQL, []any{"41000000-0000-0000-0000-0000000000bb", rlsOrgB, "Smuggled", nil, nil, rlsUserB}},
+			"worker_competencies": {compSQL, []any{"42000000-0000-0000-0000-0000000000bb", rlsOrgB, "41000000-0000-0000-0000-00000000000b", "k", rlsFileB, nil, rlsUserB}},
+			"worker_medicals":     {medSQL, []any{"43000000-0000-0000-0000-0000000000bb", rlsOrgB, "41000000-0000-0000-0000-00000000000b", "fit", "44000000-0000-0000-0000-00000000000b", nil, rlsUserB}},
+			"toolbox_attendance_workers": {`INSERT INTO toolbox_attendance_workers (org_id, site_id, attendance_id, worker_id, method, linked_by) VALUES ($1, $2, $3, $4, 'manual', $5)`,
+				[]any{rlsOrgB, rlsSiteB, rlsAttB, "41000000-0000-0000-0000-00000000000b", rlsUserB}},
 			"corrective_action_events": {`INSERT INTO corrective_action_events (id, org_id, site_id, action_id, seq, kind, actor_id, client_at, reason, status, owner_id, due_on)
 			  VALUES ('34000000-0000-0000-0000-0000000000bb', $1, $2, $3, 2, 'cancelled', $4, now(), 'Smuggled', 'cancelled', $4, current_date + 1)`,
 				[]any{rlsOrgB, rlsSiteB, rlsActionB, rlsUserB}},
@@ -488,6 +564,7 @@ var rlsAllowlist = []string{
 	"regulatory_regimes",        // public system data, read-only to siteproof_app
 	"public_holidays",           // the holiday calendar (000015): public data, read-only to siteproof_app
 	"holiday_calendar_coverage", // the calendar's date range (000015): same
+	"job_runs",                  // worker job runs (000029): system data, no org_id; written by cmd/worker
 	"schema_migrations",         // golang-migrate's bookkeeping (absent in tests)
 }
 

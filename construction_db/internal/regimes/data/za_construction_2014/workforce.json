@@ -1,0 +1,30 @@
+{
+  "competency_types": [
+    {"key": "mobile_plant_operator", "label": "Construction vehicle and mobile plant operator: proof of competency", "kind": "certificate", "expiry": "optional", "source_ref": "CR 2014 reg 23(1)(d)(i)"},
+    {"key": "tower_crane_operator", "label": "Tower crane operator", "kind": "certificate", "expiry": "optional", "source_ref": "CR 2014 reg 22(e)"},
+    {"key": "scaffold_erector", "label": "Scaffold erector", "kind": "training", "expiry": "optional", "source_ref": "CR 2014 reg 16(1)"},
+    {"key": "scaffold_inspector", "label": "Scaffold inspector", "kind": "training", "expiry": "optional", "source_ref": "CR 2014 reg 16(1)"},
+    {"key": "suspended_platform_operator", "label": "Suspended platform erector or operator", "kind": "training", "expiry": "optional", "source_ref": "CR 2014 reg 17(1)"},
+    {"key": "rope_access_licence", "label": "Rope access operator licence", "kind": "licence", "expiry": "required", "source_ref": "CR 2014 reg 18(1)(c)"},
+    {"key": "construction_hs_officer_registration", "label": "Construction health and safety officer: registration with a statutory body", "kind": "registration", "expiry": "required", "source_ref": "CR 2014 reg 8(6)"}
+  ],
+  "appointment_types": [
+    {"key": "construction_manager", "label": "Construction manager", "expiry": "optional", "source_ref": "CR 2014 reg 8(1)"},
+    {"key": "assistant_construction_manager", "label": "Assistant construction manager", "expiry": "optional", "source_ref": "CR 2014 reg 8(2)"},
+    {"key": "construction_hs_officer", "label": "Construction health and safety officer", "expiry": "optional", "source_ref": "CR 2014 reg 8(5)"},
+    {"key": "construction_supervisor", "label": "Construction supervisor", "expiry": "optional", "source_ref": "CR 2014 reg 8(7)"},
+    {"key": "assistant_construction_supervisor", "label": "Assistant construction supervisor", "expiry": "optional", "source_ref": "CR 2014 reg 8(8)"},
+    {"key": "risk_assessor", "label": "Risk assessor", "expiry": "optional", "source_ref": "CR 2014 reg 9(1)"},
+    {"key": "temporary_works_designer", "label": "Temporary works designer", "expiry": "optional", "source_ref": "CR 2014 reg 12(1)"},
+    {"key": "temporary_works_supervisor", "label": "Temporary works supervisor", "expiry": "optional", "source_ref": "CR 2014 reg 12(2)"},
+    {"key": "excavation_supervisor", "label": "Excavation supervisor", "expiry": "optional", "source_ref": "CR 2014 reg 13(1)(a)"},
+    {"key": "demolition_supervisor", "label": "Demolition supervisor", "expiry": "optional", "source_ref": "CR 2014 reg 14(1)"},
+    {"key": "scaffolding_supervisor", "label": "Scaffolding supervisor", "expiry": "optional", "source_ref": "CR 2014 reg 16(1)"},
+    {"key": "suspended_platform_supervisor", "label": "Suspended platform supervisor", "expiry": "optional", "source_ref": "CR 2014 reg 17(1)"},
+    {"key": "rope_access_supervisor", "label": "Rope access supervisor", "expiry": "optional", "source_ref": "CR 2014 reg 18(1)(a)"},
+    {"key": "material_hoist_inspector", "label": "Material hoist inspector", "expiry": "optional", "source_ref": "CR 2014 reg 19(8)(a)"},
+    {"key": "bulk_mixing_plant_supervisor", "label": "Bulk mixing plant supervisor", "expiry": "optional", "source_ref": "CR 2014 reg 20(1)"},
+    {"key": "stacking_storage_supervisor", "label": "Stacking and storage supervisor", "expiry": "optional", "source_ref": "CR 2014 reg 28(a)"}
+  ],
+  "medical": {"default_validity_months": 12, "source_ref": "CR 2014 reg 7(8)"}
+}

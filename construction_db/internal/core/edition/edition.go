@@ -4,7 +4,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"construction_db/internal/core/documents"
+	"construction_db/internal/core/files"
 	"construction_db/internal/core/sites"
+	"construction_db/internal/regimes"
 )
 
 // Edition is all core and app know about an edition; editions implement it,
@@ -17,6 +20,9 @@ type Edition interface {
 
 // Deps is what edition handlers may use from core.
 type Deps struct {
-	Pool  *pgxpool.Pool
-	Sites *sites.Service
+	Pool      *pgxpool.Pool
+	Sites     *sites.Service
+	Files     *files.Service     // sealed document files (M11)
+	Documents *documents.Service // versioned documents: the H&S file (M11)
+	Regimes   *regimes.Registry
 }

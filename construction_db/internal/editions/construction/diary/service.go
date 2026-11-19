@@ -113,6 +113,9 @@ func (s *Service) putRevisionOnce(ctx context.Context, orgID, userID, role, site
 		if err := checkSections(&req.Sections, days); err != nil {
 			return err
 		}
+		if err := checkLabourWorkers(ctx, tx, orgID, &req.Sections); err != nil {
+			return err
+		}
 		sections, err := json.Marshal(req.Sections)
 		if err != nil {
 			return err
@@ -331,6 +334,9 @@ func (s *Service) PutAddendum(ctx context.Context, orgID, userID, role, siteID, 
 				return err
 			}
 			if err := checkSections(&req.Sections, days); err != nil {
+				return err
+			}
+			if err := checkLabourWorkers(ctx, tx, orgID, &req.Sections); err != nil {
 				return err
 			}
 			sections, err := json.Marshal(req.Sections)
@@ -564,7 +570,7 @@ var sentinels = []error{
 	ErrSavedInFuture, ErrSavedBeforeDay, ErrLateReason, ErrNotLate, ErrDiaryClosed, ErrPastGrace, ErrBadDeviceID,
 	ErrBadAddendumID, ErrAddendumIDReused, ErrBadReason, ErrBadNote, ErrAddsNothing, ErrNoAddedAt, ErrAddedInFuture, ErrDiaryOpen,
 	ErrBadEvidenceIDs, ErrEvidenceNotFound, ErrEvidenceRejected, ErrEvidenceNotVerified,
-	ErrBadRowID, ErrBadText, ErrBadNumber, ErrBadChoice, ErrBadTime, ErrTwoOwnTeams, ErrTooManyRows, ErrMissingTime, ErrEndBeforeStart,
+	ErrBadRowID, ErrBadText, ErrBadNumber, ErrBadChoice, ErrBadTime, ErrTwoOwnTeams, ErrTooManyRows, ErrBadWorkerIDs, ErrMissingTime, ErrEndBeforeStart,
 	ErrBadRange, ErrBadLimit,
 }
 

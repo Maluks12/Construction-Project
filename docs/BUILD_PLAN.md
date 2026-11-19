@@ -39,7 +39,7 @@ How the forecast is built (fifth revision):
 | M8 Incidents | full | – | **done Sun 15 Nov** | Fri 13 Nov | Built in one day against a 6-day estimate; the dates below are recomputed from it |
 | M9 Corrective actions | full | – | **done Sun 15 Nov** | Sun 15 Nov | Built in one day against a 3-day estimate; the dates below are recomputed from it |
 | M10 Toolbox talks & site diary | light; full for attendance and closing | – | **done Mon 16 Nov** | Tue 17 Nov | Grew in planning (full rigour on signed attendance, closing, conflicts, addenda); built in one day |
-| M11 People & documents | light, plus the worker | 3 | Thu 19 Nov | Fri 20 Nov | 6 tasks with site sign-in (still 2 days), plus 1 for `cmd/worker` and Redis, new infrastructure |
+| M11 People & documents | light; full for sign-in, reminders, the file seal and the holiday recompute | – | **done Thu 19 Nov** | Fri 20 Nov | On the forecast date; grew in planning (sign-in, email, the holiday recompute at full rigour); built Wed 18–Thu 19 Nov, not yet reviewed. No later date moves |
 | M12 Reports & audit pack | full | 2 | Sat 21 Nov | Sun 22 Nov | 4 tasks; the audit pack may need to run in the worker |
 | SYNC Offline sync API | full | 3 | Tue 24 Nov | Wed 25 Nov | Set by hand (the task count gives 1): pull and push with conflict rules across every record type built so far |
 | ONBOARD Onboarding | light; the CSV import's all-or-nothing tested | 2 | Thu 26 Nov | Thu 26 Nov | 4 tasks, added Tue 17 Nov |
@@ -146,19 +146,58 @@ Rev 3 §2.3.4: "Ships with a content library -- foremen will not write safety co
 
 - [ ] Talk content per topic (what the presenter reads out), versioned append-only in the regime data like checklists, chosen by activity and season
 
-### M11: People & documents (due Fri 20 Nov; forecast Thu 19 Nov)
+### M11: People & documents (due Fri 20 Nov; forecast Thu 19 Nov; built Thu 19 Nov, not yet reviewed)
 
-- [ ] Worker register; competencies and appointments with expiry (due Wed 18 Nov)
-- [ ] H&S file document register with versions in S3 (due Thu 19 Nov)
-- [ ] Organisation-level company documents with expiry dates (the statutory vault): Letter of Good Standing, COIDA registration, CIDB, tax clearance. Separate from the site H&S file register; both feed the expiry reminders (due Thu 19 Nov; added Tue 17 Nov)
-- [ ] Daily site sign-in and sign-out from the worker register. A person taps their name on the supervisor's phone or a site tablet. Anyone not on the register yet is added on the spot (name, optional firm and clock number, no ID numbers), the same as at a toolbox talk. A photographed paper sign-in sheet is the fallback, like the paper talk register. The diary's headcount hint becomes the distinct people who signed in that day plus anyone who only signed a talk, matched on the same identity key. The supervisor's own number is still what's saved. With the register, the dashboard can show who was expected on site but didn't sign in. QR codes on workers' own phones are optional at most, never the main method. **Decisions to put before coding:** whether sign-out is required; what happens to people still signed in at midnight; whether a person can be signed in on two sites at once; and how a sign-in is matched to a worker register entry versus a name only (due Thu 19 Nov; decided Tue 17 Nov)
-- [ ] Deadline and expiry reminders in cmd/worker (Redis-backed) (due Fri 20 Nov). Also corrective actions: escalate overdue ones up the role hierarchy (Rev 3 "visible ageing and escalation of overdue actions", Rev 4 A.4 "escalation up the role hierarchy", both P1), and flag stalled verifications from `awaiting_since` (added Sun 15 Nov, M9)
-- [ ] Recompute open deadlines after a holiday-calendar migration (a newly proclaimed day): each recompute is a new deadline row superseding the old, so what the system said before stays on record. M8 ships the SQL that lists the deadlines a given date affects. Alert on job non-completion, not only failure (Rev 4 §2.3) (added Sun 15 Nov)
+- [x] Worker register; competencies and appointments with expiry (due Wed 18 Nov; done Thu 19 Nov)
+- [x] H&S file document register with versions in S3 (due Thu 19 Nov; done Thu 19 Nov)
+- [x] Organisation-level company documents with expiry dates (the statutory vault): Letter of Good Standing, COIDA registration, CIDB, tax clearance. Separate from the site H&S file register; both feed the expiry reminders (due Thu 19 Nov; added Tue 17 Nov)
+- [x] Daily site sign-in and sign-out from the worker register. A person taps their name on the supervisor's phone or a site tablet. Anyone not on the register yet is added on the spot (name, optional firm and clock number, no ID numbers), the same as at a toolbox talk. A photographed paper sign-in sheet is the fallback, like the paper talk register. The diary's headcount hint becomes the distinct people who signed in that day plus anyone who only signed a talk, matched on the same identity key. The supervisor's own number is still what's saved. With the register, the dashboard can show who was expected on site but didn't sign in. QR codes on workers' own phones are optional at most, never the main method. **Decisions to put before coding:** whether sign-out is required; what happens to people still signed in at midnight; whether a person can be signed in on two sites at once; and how a sign-in is matched to a worker register entry versus a name only (due Thu 19 Nov; decided Tue 17 Nov)
+- [x] Deadline and expiry reminders in cmd/worker (Redis-backed) (due Fri 20 Nov; done Thu 19 Nov). Also corrective actions: escalate overdue ones up the role hierarchy (Rev 3 "visible ageing and escalation of overdue actions", Rev 4 A.4 "escalation up the role hierarchy", both P1), and flag stalled verifications from `awaiting_since` (added Sun 15 Nov, M9)
+- [x] Recompute open deadlines after a holiday-calendar migration (a newly proclaimed day): each recompute is a new deadline row superseding the old, so what the system said before stays on record. M8 ships the SQL that lists the deadlines a given date affects. Alert on job non-completion, not only failure (Rev 4 §2.3) (added Sun 15 Nov)
+
+Plan approved Wed 18 Nov. The decisions (D1–D26) are in `construction_db/CLAUDE.md` (Status). The items above, with the rules decided:
+
+- **Workers.** A worker is a name, optional firm and clock number, and trade. They are active or not. There's no ID number, photo or biometrics, and one identity key per org (M10's name|firm|clock number).
+  - **Competencies:** each has a type from the regime that the record names, an issue date, an expiry as the type says, and a required document.
+  - **Medicals:** each has an outcome (fit, fit with restrictions, unfit), its dates, an optional practice number and the certificate. Only an owner or SHE officer can open the certificate, and every view is logged. There are no diagnoses or restrictions.
+  - **Renewal** is a new record superseding the old.
+  - **Links:** toolbox signatures link to workers through their own append-only table, and diary labour rows can name workers.
+  - **Validation:** reusable by ONBOARD's CSV import.
+- **Appointments** (Construction edition): per site, a register worker, a CR 2014 type from the site regime, dates, and a required document; superseded or retracted, never edited.
+- **H&S file and vault.**
+  - **Documents** have numbered, append-only versions. Each version is a file with its own server-checked SHA-256 (not the evidence chain), under Object Lock, with logged views.
+  - **The H&S file** is per site, with types from the site regime. It shows each required type as present, missing or expired.
+  - **The vault** is per organisation, for owners and SHE officers only, with types from the regime the record names. It's ready for BILL's gate and PC's cross-org read; neither is built.
+- **Site sign-in.**
+  - **Who signs in:** every sign-in is a register worker. Someone new is added on the spot, or matched to the worker with the same identity key; a wrong match is retracted and signed in again with a clock number.
+  - **Sign-out** is optional, recordable up to 16 hours after the sign-in, and nothing happens at midnight.
+  - **Open sign-ins:** one per worker per site. Two sites at once are allowed and flagged.
+  - **Time:** the phone's time counts. A sign-in that arrives late is accepted, and flagged after the diary's 48-hour grace.
+  - **Expected** means the site's roster.
+  - **Toolbox talks** show who was signed in but didn't sign the talk.
+  - **Lapsed credentials** produce warnings; a sign-in is never refused.
+  - **Headcount hint:** distinct people among the day's sign-ins and talk signatures.
+- **Reminders** (cmd/worker; Redis for timing, Postgres for once-only).
+  - **What they cover:**
+    - incident deadlines;
+    - overdue actions, escalated to SHE officers after 1 day and to owners after 3;
+    - stalled verifications;
+    - expiries of competencies, medicals, appointments and H&S file documents (30, 14 and 7 days before, and on the day);
+    - expiries of company documents (60, 30 and 7 days before, and on the day).
+  - **Delivery:** in-app and email. Each reminder goes once per item and threshold, across restarts and two workers. A renewed item's reminders stop.
+  - **Monitoring:** a job with no success for twice its interval is reported stale on `/health`.
+
+Proposed Wed 18 Nov (not scheduled):
+
+- [ ] Push notifications (Expo) to the mobile app (Rev 4 A.10, P1). Needs device-token registration and an Expo account
+- [ ] SMS and WhatsApp reminders, metered with BILL (Rev 4 A.10, SMS P2 "paid add-on")
+- [ ] Per-organisation reminder lead times (settings) overriding the regime defaults
+- [ ] Appointment letters and appointment gap detection (Rev 3 §2.3.8, P1; Rev 4 6.D allows deferring gap detection to early P2); induction records and site clearance (Rev 4 A.5, §5.3 `worker_site_clearance`)
 
 ### M12: Reports & audit pack (due Sun 22 Nov; forecast Sat 21 Nov)
 
 - [ ] Site compliance summary endpoint: open findings, overdue actions, expiring competencies (due Sat 21 Nov)
-- [ ] In the compliance summary, list each site's evidence still pending more than 24 hours after it was declared. A declared upload that's never completed stays pending forever, and any object it uploaded stays under Object Lock; this makes abandoned uploads visible rather than silent (due Sat 21 Nov)
+- [ ] In the compliance summary, list each site's evidence, and the organisation's document files (M11 `files`), still pending more than 24 hours after they were declared. A declared upload that's never completed stays pending forever, and any object it uploaded stays under Object Lock; this makes abandoned uploads visible rather than silent (due Sat 21 Nov)
 - [ ] Audit pack export with evidence manifest and chain verification result. Include each site's chain head hash and length: the chain alone can't detect its newest entries being deleted (with site_chain_heads rewound), but a pack someone already holds records how long it was (see internal/core/evidence/CHAIN.md). Until the daily signed anchor (P2) exists, this is the only external record. Verifying a long chain (it walks every entry) can take longer than REQUEST_TIMEOUT (default 10s), and a pack covers many sites, so the export may need to run in cmd/worker rather than inside a request. Include abandoned inspections, marked abandoned, with their answers and who abandoned them, when and why (decided 15 Nov) (due Sun 22 Nov)
 - [ ] Checkpoint: review the safety core against Rev 4 section 6.D; decide cuts here if behind (due Sun 22 Nov)
 
@@ -198,13 +237,15 @@ Rev 3 §2.3.4: "Ships with a content library -- foremen will not write safety co
 
 - [ ] RLS on users: visible if it's you or shares an org with the tenant; login and invite lookups by email/mobile via SECURITY DEFINER functions (before the production deploy)
 - [ ] Create a LOGIN role for siteproof_app with its own password; the production API connects with it, never superuser credentials. The migration owner must be a superuser or have BYPASSRLS (the token lookups are SECURITY DEFINER) (before the production deploy)
-- [ ] Evidence bucket retention: choose the Object Lock mode (governance or compliance) and default retention with a practitioner. Compliance can be extended per object but never shortened, and blocks POPIA deletion requests. Set it as the bucket default and EVIDENCE_LOCK_MODE to match; the API refuses to start otherwise (before the production deploy)
+- [ ] Evidence bucket retention: choose the Object Lock mode (governance or compliance) and default retention with a practitioner. Compliance can be extended per object but never shortened, and blocks POPIA deletion requests. The same locked bucket holds document files (M11), medical certificates of fitness among them, so this retention decision covers POPIA for health data too: a certificate under compliance retention can't be erased before it ends. Set it as the bucket default and EVIDENCE_LOCK_MODE to match; the API refuses to start otherwise (before the production deploy)
 - [ ] Evidence bucket in af-south-1: Object Lock and versioning on, SSE-KMS with its own evidence key (Rev 4 §2.13), all public access blocked (before the production deploy)
 - [ ] API IAM role on the evidence bucket only: s3:PutObject, GetObject, GetObjectVersion, GetObjectRetention, GetBucketObjectLockConfiguration. No Delete* and no BypassGovernanceRetention (before the production deploy)
 - [ ] Rate limiting on auth and evidence endpoints (Rev 3 security list, P1) (before the production deploy)
 - [ ] Evidence downloads logged by S3: server access logging or CloudTrail data events on the evidence bucket, to a separate bucket. The API's access log records that a 60-second view link was issued, not that it was used; this records the actual GETs (before the production deploy)
 - [ ] Set TRUSTED_PROXIES to the load balancer's addresses. Empty (the default) trusts no proxy, so behind a load balancer every access-log row would record the load balancer's IP; listing a range clients can reach lets them choose the logged IP (before the production deploy)
 - [ ] Decide who may see injury and treatment details in `incident_people` (POPIA special personal information: health). Today every owner, SHE officer and supervisor on the site can (added Sun 15 Nov) (before launch)
+- [ ] Worker email (M11): set SMTP_URL to SES SMTP (smtp://user:password@host:587?from=...) with a verified sender. The worker refuses to start without SMTP_URL unless EMAIL_MODE=log, which only logs emails and records them 'logged', never 'sent': never set EMAIL_MODE=log in production (before the production deploy)
+- [ ] Worker deploy (M11): run the image with entrypoint /worker beside the API, with REDIS_URL (ElastiCache or similar), and point the uptime monitor at /healthz/jobs (503 when a job has gone twice its interval without completing) (before the production deploy)
 - [ ] Production deploy: GHCR image, secrets, migrate step, health checks, backups (due Mon 30 Nov)
 - [ ] Smoke test the deployed API. Use a dedicated smoke-test org and site: evidence it uploads can never be deleted (due Mon 30 Nov)
 

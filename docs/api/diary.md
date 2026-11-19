@@ -51,14 +51,28 @@ supervisor only on sites they've been added to (any other site is 404
   and server time), why (`reason`, required) and what (a note, sections,
   photos: at least one). The original never changes; addenda are listed
   after it.
-- **Headcount.** `current.headcount_suggested` is the number of people who
-  signed that day's toolbox talks (not retracted, each person once: same
-  name, firm and clock number) when the revision arrived. A talk counts on
-  the day it started (`talk_date`), with every signature it got: a
-  night-shift talk at 23:40 counts on that day, even for people who signed
-  after midnight; `headcount_suggested_now` is the same count now. Both sit
-  beside the entered `headcount`, so a gap stays visible. M11's site sign-ins
-  will add to it.
+- **Headcount.** `current.headcount_suggested` is the number of distinct
+  people, counted when the revision arrived:
+  - who signed in on site that day (attendance.md: not retracted, on the
+    day of the phone's time);
+  - plus anyone who only signed that day's toolbox talks (not retracted).
+
+  Each person counts once. A sign-in is its register worker. A signature is
+  the worker it is linked to or matches by name, firm and clock number, else
+  that name, firm and clock number. So a worker who signed in and signed a
+  talk counts once.
+
+  A talk counts on the day it started (`talk_date`), with every signature it
+  got: a night-shift talk at 23:40 counts on that day, even for people who
+  signed after midnight.
+
+  `headcount_suggested_now` is the same count now, including sign-ins that
+  arrived late from an offline phone. Revisions saved before M11 kept the
+  talk-only count they were given. Both sit beside the entered `headcount`,
+  so a gap stays visible.
+- **Labour rows can name workers (M11).** A `labour` row's optional
+  `worker_ids` are register workers counted in it: each once, at most its
+  `headcount`. It doesn't change any count.
 - **Linked, not copied.** `toolbox_talk_ids` and `incident_ids` are that
   day's talks and incidents (by the incident's latest version's
   `occurred_at`). Fetch them from `docs/api/toolbox.md` and
@@ -99,7 +113,7 @@ A section problem names where it is:
 must be 1-500 characters (descriptions 1-2000)"`, `"number out of range (hours
 0-24, rain gauge 0-1000 mm, headcount 0-10000)"`, `"value is not one of the
 allowed choices"`, `"time must be on the diary's day"`, `"only one labour row
-can be own_team"`, `"at most 200 rows in a section"`, `"received_at is
+can be own_team"`, `"at most 200 rows in a section"`, `"worker_ids must be register workers, each once, at most the row's headcount"`, `"received_at is
 required"`, `"an end time must not be before its start"`.
 
 ### `GET /v1/construction/sites/:siteId/diary/:date` — a day's diary
@@ -203,6 +217,7 @@ export interface LabourRow {
   own_team: boolean;
   trade: string | null;
   headcount: number;
+  worker_ids?: string[];
 }
 
 export interface PlantRow {

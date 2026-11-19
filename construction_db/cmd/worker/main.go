@@ -58,7 +58,9 @@ func main() {
 	defer rc.Close()
 
 	var mailer notifications.Mailer = mail.Log{}
-	if cfg.SMTPURL != "" {
+	// config.LoadWorker refuses smtp mode without SMTP_URL: a missing URL
+	// never silently turns into log mode.
+	if cfg.EmailMode == config.EmailSMTP {
 		if mailer, err = mail.NewSMTP(cfg.SMTPURL); err != nil {
 			slog.Error("smtp", "error", err)
 			os.Exit(1)

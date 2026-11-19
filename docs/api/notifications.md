@@ -32,8 +32,11 @@ Lead times come from the regime (`reminders` in `GET
 - **A renewal, retraction, satisfaction or close** stops further reminders
   about the old subject, and cancels its queued emails. Earlier reminders
   stay in the inbox with `subject_state: "superseded"`.
-- **Email is sent at most once.** One interrupted mid-send is never repeated
-  (it may not have arrived); one that failed is not retried.
+- **Email:**
+  - each email is sent to SMTP and recorded `sent`; with `EMAIL_MODE=log`
+    (development) it is only logged and recorded `logged`, never `sent`;
+  - an email is sent at most once. One interrupted mid-send is never repeated
+    (it may not have arrived); one that failed is not retried.
 
 ## Endpoints
 

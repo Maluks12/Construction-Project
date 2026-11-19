@@ -153,7 +153,10 @@ type Worker struct {
 	DatabaseURL string
 	DBMaxConns  int32
 	RedisURL    string // required: the jobs' schedule
-	SMTPURL     string // optional: without it, emails are only logged
+	SMTPURL     string // required unless EmailMode is "log"
+	// "smtp" (the default: send through SMTP_URL) or "log" (only log each
+	// email, recorded 'logged', never 'sent'). Never chosen by a missing URL.
+	EmailMode string
 }
 
 const defaultWorkerMaxConns = 5
@@ -167,6 +170,7 @@ func LoadWorker() (*Worker, error) {
 		DBMaxConns:  defaultWorkerMaxConns,
 		RedisURL:    os.Getenv("REDIS_URL"),
 		SMTPURL:     os.Getenv("SMTP_URL"),
+		EmailMode:   os.Getenv("EMAIL_MODE"),
 	}
 	if s := os.Getenv("WORKER_DB_MAX_CONNS"); s != "" {
 		n, err := strconv.ParseInt(s, 10, 32)
@@ -185,5 +189,24 @@ func LoadWorker() (*Worker, error) {
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("missing required environment variable: %s", strings.Join(missing, ", "))
 	}
+	switch w.EmailMode {
+	case "", EmailSMTP:
+		w.EmailMode = EmailSMTP
+		if w.SMTPURL == "" {
+			return nil, fmt.Errorf("SMTP_URL is required; set EMAIL_MODE=log to only log emails (dev)")
+		}
+	case EmailLog:
+		if w.SMTPURL != "" {
+			return nil, fmt.Errorf("EMAIL_MODE=log with SMTP_URL set: choose one")
+		}
+	default:
+		return nil, fmt.Errorf("EMAIL_MODE must be smtp or log")
+	}
 	return w, nil
 }
+
+// Email modes for cmd/worker (EMAIL_MODE).
+const (
+	EmailSMTP = "smtp"
+	EmailLog  = "log"
+)

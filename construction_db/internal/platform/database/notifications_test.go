@@ -313,3 +313,22 @@ func johannesburg() *time.Location {
 	}
 	return loc
 }
+
+// 'logged' (EMAIL_MODE=log) comes only from sending, and is final.
+func TestEmailLoggedStatus(t *testing.T) {
+	seedRLS(t)
+	ctx := context.Background()
+	tx := beginAs(t, pool, rlsOrgA)
+	var id string
+	if err := tx.QueryRow(ctx, `INSERT INTO notifications (org_id, user_id, kind, subject_type, subject_id, threshold, title)
+		VALUES ($1, $2, 'action_overdue', 'action', $3, 'escalation_3', 'Fix it') RETURNING id::text`, rlsOrgA, rlsUserA, rlsActionA).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	must(t, tx, 1, `INSERT INTO notification_emails (notification_id, org_id, to_address) VALUES ($1, $2, 'a@b.test')`, id, rlsOrgA)
+	const set = `UPDATE notification_emails SET status = $2 WHERE notification_id = $1`
+	refused(t, tx, "23514", "pending can't become logged", set, id, "logged")
+	must(t, tx, 1, set, id, "sending")
+	must(t, tx, 1, set, id, "logged")
+	refused(t, tx, "23514", "logged can't become sent", set, id, "sent")
+	refused(t, tx, "23514", "logged can't become sending", set, id, "sending")
+}

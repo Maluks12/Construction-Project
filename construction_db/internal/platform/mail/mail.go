@@ -38,6 +38,8 @@ func NewSMTP(raw string) (*SMTP, error) {
 	return s, nil
 }
 
+func (s *SMTP) Delivers() bool { return true }
+
 func (s *SMTP) Send(_ context.Context, to, subject, body string) error {
 	if strings.ContainsAny(to+subject, "\r\n") {
 		return fmt.Errorf("refusing a header with a line break")
@@ -47,10 +49,12 @@ func (s *SMTP) Send(_ context.Context, to, subject, body string) error {
 	return smtp.SendMail(s.addr, s.auth, s.from, []string{to}, []byte(msg))
 }
 
-// Log only logs: dev and tests without SMTP_URL.
+// Log only logs (EMAIL_MODE=log): its emails are recorded 'logged'.
 type Log struct{}
 
+func (Log) Delivers() bool { return false }
+
 func (Log) Send(_ context.Context, to, subject, _ string) error {
-	slog.Info("email (not sent: no SMTP_URL)", "to", to, "subject", subject)
+	slog.Info("email logged, not sent (EMAIL_MODE=log)", "to", to, "subject", subject)
 	return nil
 }

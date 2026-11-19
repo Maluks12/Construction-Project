@@ -18,20 +18,27 @@ import (
 
 // recordingMailer remembers what it sent; fail makes every send fail.
 type recordingMailer struct {
-	mu   sync.Mutex
-	sent []string
-	fail bool
+	mu     sync.Mutex
+	sent   []string
+	bodies []string
+	fail   bool
+	// logOnly stands in for EMAIL_MODE=log.
+	logOnly bool
 }
 
-func (m *recordingMailer) Send(_ context.Context, to, subject, _ string) error {
+func (m *recordingMailer) Send(_ context.Context, to, subject, body string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.fail {
 		return errors.New("smtp: 451 try later")
 	}
 	m.sent = append(m.sent, to+" "+subject)
+	m.bodies = append(m.bodies, body)
 	return nil
 }
+
+// Delivers: the recording mailer stands in for SMTP unless logOnly.
+func (m *recordingMailer) Delivers() bool { return !m.logOnly }
 
 func (m *recordingMailer) count() int {
 	m.mu.Lock()
@@ -275,5 +282,26 @@ func TestEmailClaimSkipsLockedRows(t *testing.T) {
 	}
 	if n, _ := jobs.Emails(ctx); n != 1 || mailer.count() != 1 {
 		t.Errorf("after the first worker gave up its claim: sent %d (mailer %d), want 1", n, mailer.count())
+	}
+}
+
+// EMAIL_MODE=log: emails are recorded 'logged', never 'sent' (M11 review).
+func TestEmailsLoggedNotSent(t *testing.T) {
+	ctx := context.Background()
+	f := newEvidenceFixture(t, "email-log")
+	w := newWorker(t, f.router, f.owner, map[string]any{"name": "Logged Worker"})
+	expiringLicence(t, f, w, nil)
+	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: &recordingMailer{logOnly: true}, OnlyOrgs: []string{f.ownerMe.OrgID}}
+	if n, err := jobs.Reminders(ctx, time.Now()); err != nil || n != 1 {
+		t.Fatalf("reminders: %d, %v", n, err)
+	}
+	if _, err := jobs.Emails(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := countRows(t, `SELECT count(*) FROM notification_emails WHERE org_id = $1 AND status = 'logged'`, f.ownerMe.OrgID); n != 1 {
+		t.Errorf("%d emails logged, want 1", n)
+	}
+	if n := countRows(t, `SELECT count(*) FROM notification_emails WHERE org_id = $1 AND status = 'sent'`, f.ownerMe.OrgID); n != 0 {
+		t.Errorf("%d emails recorded as sent by a log-only mailer", n)
 	}
 }

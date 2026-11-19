@@ -33,9 +33,12 @@ var Schedule = map[string]time.Duration{
 // marked unknown and never sent again: at most once.
 const SendingTimeout = 10 * time.Minute
 
-// Mailer sends one email. SMTP in production, a log line without SMTP_URL.
+// Mailer sends one email: SMTP in production, or a log line with
+// EMAIL_MODE=log. Delivers says whether Send really sends: a log mailer's
+// emails are recorded 'logged', never 'sent'.
 type Mailer interface {
 	Send(ctx context.Context, to, subject, body string) error
+	Delivers() bool
 }
 
 // Jobs runs the worker's work, organisation by organisation, each in its own
@@ -179,6 +182,9 @@ func (j *Jobs) Emails(ctx context.Context) (sent int, err error) {
 			subject, body := render(q)
 			sendErr := j.Mailer.Send(ctx, q.to, subject, body)
 			status, msg := "sent", (*string)(nil)
+			if !j.Mailer.Delivers() {
+				status = "logged"
+			}
 			if sendErr != nil {
 				status = "failed"
 				m := truncate(sendErr.Error(), 1000)

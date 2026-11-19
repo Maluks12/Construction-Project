@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -90,12 +91,22 @@ func TestRemindersExactlyOnce(t *testing.T) {
 	if sent, err := jobs.Emails(ctx); err != nil || sent != 1 || mailer.count() != 1 {
 		t.Errorf("emails: sent %d (mailer %d), err %v; want 1", sent, mailer.count(), err)
 	}
+	// Who and what, in plain words (M11 review).
+	loc, _ := time.LoadLocation("Africa/Johannesburg")
+	expiry := time.Now().In(loc).AddDate(0, 0, 10).Format("2 Jan 2006")
+	if want := "SiteProof: Licensed Worker: Rope access operator licence"; !strings.HasSuffix(mailer.sent[0], want) {
+		t.Errorf("email %q, want the subject %q", mailer.sent[0], want)
+	}
+	if want := "Licensed Worker: Rope access operator licence expires on " + expiry + ", in 10 days."; !strings.HasPrefix(mailer.bodies[0], want) {
+		t.Errorf("body %q, want it to start %q", mailer.bodies[0], want)
+	}
 	if sent, _ := jobs.Emails(ctx); sent != 0 || mailer.count() != 1 {
 		t.Errorf("a second send run sent %d more", sent)
 	}
 
 	box := inbox(t, f.router, f.owner)
-	if len(box) != 1 || box[0].SubjectID != c1 || box[0].Threshold != "before_14d" || box[0].SubjectState != notifications.SubjectCurrent {
+	if len(box) != 1 || box[0].SubjectID != c1 || box[0].Threshold != "before_14d" || box[0].SubjectState != notifications.SubjectCurrent ||
+		box[0].Title != "Licensed Worker: Rope access operator licence" {
 		t.Fatalf("owner's inbox %+v", box)
 	}
 	if len(inbox(t, f.router, f.supervisor)) != 0 {
@@ -144,7 +155,7 @@ func TestRemindersTwoWorkers(t *testing.T) {
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO notifications (org_id, user_id, kind, subject_type, subject_id, threshold, title)
 		SELECT app_org_id(), user_id, kind, subject_type, subject_id, threshold, title
-		FROM notifications_due(now(), 'za_construction_2014', 'Africa/Johannesburg', ARRAY[30,14,7,0], ARRAY[60,30,7,0], ARRAY[2,0], ARRAY[0,1,3], 2)`); err != nil {
+		FROM notifications_due(now(), 'za_construction_2014', 'Africa/Johannesburg', ARRAY[30,14,7,0], ARRAY[60,30,7,0], ARRAY[2,0], ARRAY[0,1,3], 2, '{}')`); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan int, 1)

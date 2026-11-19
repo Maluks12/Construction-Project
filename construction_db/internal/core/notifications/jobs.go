@@ -79,7 +79,7 @@ func (j *Jobs) inOrg(ctx context.Context, orgID string, fn func(pgx.Tx) error) e
 // email either.
 const remindersSQL = `
 	WITH due AS (
-	    SELECT * FROM notifications_due($1, $2, $3, $4, $5, $6, $7, $8)
+	    SELECT * FROM notifications_due($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	), added AS (
 	    INSERT INTO notifications (org_id, user_id, kind, subject_type, subject_id, threshold, site_id, title, due_on, due_at)
 	    SELECT app_org_id(), user_id, kind, subject_type, subject_id, threshold, site_id, title, due_on, due_at FROM due
@@ -107,7 +107,7 @@ func (j *Jobs) Reminders(ctx context.Context, now time.Time) (int, error) {
 				r := ds.Reminders
 				var added, mailed int
 				if err := tx.QueryRow(ctx, remindersSQL, now, code, ds.Regime.TimeZone, r.WorkerExpiryDays, r.CompanyDocumentDays,
-					r.DeadlineDaysBefore, r.ActionEscalationDays, r.VerificationStalledDays).Scan(&added, &mailed); err != nil {
+					r.DeadlineDaysBefore, r.ActionEscalationDays, r.VerificationStalledDays, Labels(ds)).Scan(&added, &mailed); err != nil {
 					return err
 				}
 				total += added
@@ -124,6 +124,7 @@ func (j *Jobs) Reminders(ctx context.Context, now time.Time) (int, error) {
 type queued struct {
 	id, to, title, kind, threshold string
 	dueOn                          *string
+	dueAt                          *time.Time
 }
 
 // Emails sends the queued emails, at most once each:
@@ -164,14 +165,14 @@ func (j *Jobs) Emails(ctx context.Context) (sent int, err error) {
 				                              ORDER BY created_at LIMIT 50 FOR UPDATE SKIP LOCKED)
 				    RETURNING notification_id, to_address
 				)
-				SELECT c.notification_id::text, c.to_address, n.title, n.kind, n.threshold, n.due_on::text
+				SELECT c.notification_id::text, c.to_address, n.title, n.kind, n.threshold, n.due_on::text, n.due_at
 				FROM claimed c JOIN notifications n ON n.id = c.notification_id`)
 			if err != nil {
 				return err
 			}
 			batch, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (queued, error) {
 				var q queued
-				return q, r.Scan(&q.id, &q.to, &q.title, &q.kind, &q.threshold, &q.dueOn)
+				return q, r.Scan(&q.id, &q.to, &q.title, &q.kind, &q.threshold, &q.dueOn, &q.dueAt)
 			})
 			return err
 		})
@@ -179,7 +180,7 @@ func (j *Jobs) Emails(ctx context.Context) (sent int, err error) {
 			return sent, fmt.Errorf("emails for org %s: claim: %w", org, err)
 		}
 		for _, q := range batch {
-			subject, body := render(q)
+			subject, body := Render(q.title, q.kind, q.threshold, q.dueOn, q.dueAt, time.Now(), j.location())
 			sendErr := j.Mailer.Send(ctx, q.to, subject, body)
 			status, msg := "sent", (*string)(nil)
 			if !j.Mailer.Delivers() {
@@ -204,15 +205,6 @@ func (j *Jobs) Emails(ctx context.Context) (sent int, err error) {
 		}
 	}
 	return sent, nil
-}
-
-func render(q queued) (string, string) {
-	subject := "SiteProof: " + q.title
-	body := fmt.Sprintf("%s\n\nReminder: %s (%s).", q.title, q.kind, q.threshold)
-	if q.dueOn != nil {
-		body += "\nDue or expiring: " + *q.dueOn + "."
-	}
-	return truncate(subject, 200), body + "\n\nOpen SiteProof to see it.\n"
 }
 
 func truncate(s string, n int) string {

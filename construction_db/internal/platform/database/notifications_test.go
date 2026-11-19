@@ -13,7 +13,8 @@ import (
 // The regime's lead times, as reminders.json has them.
 const dueSQL = `
 	SELECT user_id::text, kind, subject_type, subject_id::text, threshold
-	FROM notifications_due($1, 'za_construction_2014', 'Africa/Johannesburg', ARRAY[30,14,7,0], ARRAY[60,30,7,0], ARRAY[2,0], ARRAY[0,1,3], 2)`
+	FROM notifications_due($1, 'za_construction_2014', 'Africa/Johannesburg', ARRAY[30,14,7,0], ARRAY[60,30,7,0], ARRAY[2,0], ARRAY[0,1,3], 2,
+	                       '{"competency": {"rope_access_licence": "Rope access operator licence"}}')`
 
 type due struct{ user, kind, subjectType, subject, threshold string }
 
@@ -85,11 +86,43 @@ func TestNotificationsDue(t *testing.T) {
 		}
 	})
 
+	t.Run("titles say who and what, never a medical outcome", func(t *testing.T) {
+		med := medID(501)
+		must(t, tx, 1, `
+			INSERT INTO worker_medicals (id, org_id, worker_id, regime_code, outcome, examined_on, expires_on, file_id, recorded_by, client_recorded_at)
+			VALUES ($1, $2, $3, 'za_construction_2014', 'unfit', '2026-01-01', $4, $5, $6, now())`,
+			med, rlsOrgA, w, in(5), verifiedFile(t, tx, 503, "medical"), rlsUserA)
+		titles := map[string]string{}
+		rows, err := tx.Query(ctx, `
+			SELECT DISTINCT subject_id::text, title FROM notifications_due($1, 'za_construction_2014', 'Africa/Johannesburg',
+			       ARRAY[30,14,7,0], ARRAY[60,30,7,0], ARRAY[2,0], ARRAY[0,1,3], 2, $2)`,
+			now, `{"competency": {"rope_access_licence": "Rope access operator licence"}}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for rows.Next() {
+			var id, title string
+			if err := rows.Scan(&id, &title); err != nil {
+				t.Fatal(err)
+			}
+			titles[id] = title
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		if got := titles[c1]; got != "Expiring Worker: Rope access operator licence" {
+			t.Errorf("competency title %q", got)
+		}
+		if got := titles[med]; got != "Expiring Worker: medical certificate of fitness" {
+			t.Errorf("medical title %q", got)
+		}
+	})
+
 	t.Run("each reminder once, however often it is inserted", func(t *testing.T) {
 		const insert = `
 			INSERT INTO notifications (org_id, user_id, kind, subject_type, subject_id, threshold, title)
 			SELECT $2, user_id, kind, subject_type, subject_id, threshold, title FROM notifications_due($1, 'za_construction_2014',
-			       'Africa/Johannesburg', ARRAY[30,14,7,0], ARRAY[60,30,7,0], ARRAY[2,0], ARRAY[0,1,3], 2)
+			       'Africa/Johannesburg', ARRAY[30,14,7,0], ARRAY[60,30,7,0], ARRAY[2,0], ARRAY[0,1,3], 2, '{}')
 			ON CONFLICT ON CONSTRAINT notifications_once DO NOTHING`
 		first, err := inSavepoint(ctx, tx, true, insert, now, rlsOrgA)
 		if err != nil || first == 0 {

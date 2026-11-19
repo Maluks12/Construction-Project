@@ -24,6 +24,15 @@ Lead times come from the regime (`reminders` in `GET
 | `appointment_expiry` | `appointment` | owners, SHE officers, the site's supervisors | as above |
 | `document_expiry` | `document` (H&S file or vault) | H&S file: owners, SHE officers, the site's supervisors; vault: owners and SHE officers | the vault `v2_before_60d`, `v2_before_30d`, `v2_before_7d`, `v2_on_day` (the version's number first); the H&S file as competencies |
 
+- **Titles say who and what:**
+  - `<worker>: <type>` for competencies;
+  - `<worker>: medical certificate of fitness`;
+  - `<worker>: <type> (<site>)` for appointments;
+  - a document's title, with `(<site>)` for H&S file documents;
+  - the rule or action with its site.
+
+  Never a medical outcome. Emails are the title and one plain sentence
+  ("expires on 12 Dec 2026, in 7 days", "overdue by 2 days").
 - **Each reminder comes once per subject and threshold.** A restart, or two
   workers at once, never repeats one.
 - When the first look is already past several lead times, only the latest

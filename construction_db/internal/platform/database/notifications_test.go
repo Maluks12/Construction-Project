@@ -3,6 +3,7 @@ package database_test
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -215,6 +216,17 @@ func TestHolidayRecompute(t *testing.T) {
 	}
 	before, _ := dueOf(dlID(601))
 	metBefore, _ := dueOf(dlID(602))
+	// The dates the deadline is computed with, as text, to compare whole.
+	const datesSQL = `SELECT due_at::text, due_on::text, coalesce(legal_latest_on::text, '-'), excluded_days::text FROM deadlines WHERE id = $1`
+	dates := func(id string) [4]string {
+		t.Helper()
+		var d [4]string
+		if err := tx.QueryRow(ctx, datesSQL, id).Scan(&d[0], &d[1], &d[2], &d[3]); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	oldDates, metDates := dates(dlID(601)), dates(dlID(602))
 
 	t.Run("only the recompute closes a deadline as recomputed, never a satisfied one", func(t *testing.T) {
 		refusedBatch(t, tx, "23514", "recomputed only by deadlines_recompute",
@@ -247,18 +259,49 @@ func TestHolidayRecompute(t *testing.T) {
 		if !after.After(before) || reason != "Recomputed for a new public holiday: Test Day (Test proclamation)" {
 			t.Errorf("due %s -> %s, reason %q", before, after, reason)
 		}
+		// The replacement's due_on and legal_latest_on are the calendar's
+		// with the new holiday: what deadline_due says now, which the old
+		// row (computed without it) doesn't.
+		var replacement string
+		if err := tx.QueryRow(ctx, `SELECT superseded_by::text FROM deadlines WHERE id = $1`, dlID(601)).Scan(&replacement); err != nil {
+			t.Fatal(err)
+		}
+		var want [4]string
+		if err := tx.QueryRow(ctx, `
+			SELECT r.due_at::text, r.due_on::text, coalesce(r.legal_latest_on::text, '-'), r.excluded_days::text
+			FROM deadlines d, deadline_due(d.basis_at, d.period, d.unit, d.direction, d.time_zone, d.jurisdiction) r WHERE d.id = $1`, dlID(601)).
+			Scan(&want[0], &want[1], &want[2], &want[3]); err != nil {
+			t.Fatal(err)
+		}
+		got := dates(replacement)
+		if got != want || got[1] == oldDates[1] || !strings.Contains(got[3], dayStr) {
+			t.Errorf("replacement dates %v, want %v (the calendar's, now excluding %s); the old row had %v", got, want, dayStr, oldDates)
+		}
+	})
+	t.Run("the closed row keeps the dates it had", func(t *testing.T) {
+		if got := dates(dlID(601)); got != oldDates {
+			t.Errorf("closed row's dates %v, were %v", got, oldDates)
+		}
 	})
 	t.Run("a satisfied deadline never changes", func(t *testing.T) {
 		at, closed := dueOf(dlID(602))
-		if closed != nil || !at.Equal(metBefore) {
+		if closed != nil || !at.Equal(metBefore) || dates(dlID(602)) != metDates {
 			t.Errorf("satisfied deadline: closed %v, due %s (was %s)", closed, at, metBefore)
 		}
 	})
 	t.Run("a closed deadline never changes; a holiday is done once", func(t *testing.T) {
 		refusedBatch(t, tx, "23514", "it never changes again", stmt{`UPDATE deadlines SET closed_as = 'withdrawn', superseded_by = NULL WHERE id = $1`, []any{dlID(601)}})
+		var rows int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM deadlines`).Scan(&rows); err != nil {
+			t.Fatal(err)
+		}
 		var again *int
 		if err := tx.QueryRow(ctx, `SELECT deadlines_recompute('ZA', $1)`, dayStr).Scan(&again); err != nil || again != nil {
 			t.Errorf("second recompute: %v, err %v; want NULL (already done)", again, err)
+		}
+		var after int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM deadlines`).Scan(&after); err != nil || after != rows {
+			t.Errorf("the second run changed the deadlines: %d rows, was %d", after, rows)
 		}
 	})
 }

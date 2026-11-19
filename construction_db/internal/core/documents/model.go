@@ -63,7 +63,13 @@ type DocumentSummary struct {
 	CreatedBy     string    `json:"created_by"`
 	CreatedAt     time.Time `json:"created_at"`
 	LatestVersion int       `json:"latest_version"`
-	Current       Version   `json:"current"`
+	// The highest version not retracted.
+	Current Version `json:"current"`
+	// Retracted documents stay in the register, marked; readiness and
+	// reminders ignore them.
+	Retraction *Retraction `json:"retraction"`
+
+	ret rawRetraction
 }
 
 type Document struct {
@@ -72,22 +78,52 @@ type Document struct {
 }
 
 type Version struct {
-	Version          int       `json:"version"`
-	FileID           string    `json:"file_id"`
-	Issuer           *string   `json:"issuer"`
-	Reference        *string   `json:"reference"`
-	IssuedOn         *string   `json:"issued_on"`
-	ExpiresOn        *string   `json:"expires_on"`
-	UploadedBy       string    `json:"uploaded_by"`
-	ClientUploadedAt time.Time `json:"client_uploaded_at"`
-	ReceivedAt       time.Time `json:"received_at"`
-	DeviceID         *string   `json:"device_id"`
-	// The current version's state; earlier versions are "superseded".
+	Version          int         `json:"version"`
+	FileID           string      `json:"file_id"`
+	Issuer           *string     `json:"issuer"`
+	Reference        *string     `json:"reference"`
+	IssuedOn         *string     `json:"issued_on"`
+	ExpiresOn        *string     `json:"expires_on"`
+	UploadedBy       string      `json:"uploaded_by"`
+	ClientUploadedAt time.Time   `json:"client_uploaded_at"`
+	ReceivedAt       time.Time   `json:"received_at"`
+	DeviceID         *string     `json:"device_id"`
+	Retraction       *Retraction `json:"retraction"`
+	// The current version's state; earlier versions are "superseded", or
+	// "retracted".
 	State string `json:"state"`
+
+	ret rawRetraction
 }
 
-// StateSuperseded marks a version that a later one replaced.
-const StateSuperseded = "superseded"
+type Retraction struct {
+	Reason      string    `json:"reason"`
+	RetractedBy string    `json:"retracted_by"`
+	RetractedAt time.Time `json:"retracted_at"`
+}
+
+type RetractRequest struct {
+	Reason string `json:"reason"`
+}
+
+type rawRetraction struct {
+	Reason, RetractedBy *string
+	RetractedAt         *time.Time
+}
+
+func (r rawRetraction) finish() *Retraction {
+	if r.Reason == nil {
+		return nil
+	}
+	return &Retraction{Reason: *r.Reason, RetractedBy: *r.RetractedBy, RetractedAt: *r.RetractedAt}
+}
+
+// StateSuperseded marks a version that a later one replaced;
+// StateRetracted one withdrawn as a mistake.
+const (
+	StateSuperseded = "superseded"
+	StateRetracted  = "retracted"
+)
 
 // Readiness is one type's place in the register: present (a current,
 // unexpired version), expired, or missing (R4 "inspection readiness").
@@ -129,4 +165,10 @@ var (
 	ErrVersionTaken     = errors.New("that version already exists with different details")
 	ErrNotNextVersion   = errors.New("version is not the next version of this document")
 	ErrFileUsed         = errors.New("file already attached to another document version")
+	ErrBadReason        = errors.New("reason must be 1-500 characters")
+	ErrCantRetract      = errors.New("only an owner or SHE officer can retract documents")
+	ErrRetracted        = errors.New("document was retracted")
+	ErrAlreadyRetracted = errors.New("already retracted with another reason")
+	ErrNotCurrent       = errors.New("only the current version can be retracted")
+	ErrOnlyVersion      = errors.New("the only standing version can't be retracted; retract the document instead")
 )

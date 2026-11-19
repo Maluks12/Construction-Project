@@ -35,13 +35,13 @@ func is(err error, targets ...error) bool {
 
 func writeError(c *gin.Context, err error) {
 	switch {
-	case errors.Is(err, ErrCantWrite):
+	case is(err, ErrCantWrite, ErrCantRetract):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, sites.ErrSiteNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "site not found"})
 	case is(err, ErrDocumentNotFound, ErrVersionNotFound, ErrRegimeNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-	case is(err, ErrIDReused, ErrVersionTaken, ErrNotNextVersion, ErrFileUsed):
+	case is(err, ErrIDReused, ErrVersionTaken, ErrNotNextVersion, ErrFileUsed, ErrRetracted, ErrAlreadyRetracted, ErrNotCurrent, ErrOnlyVersion):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case files.WriteError(c, err):
 	case isSentinel(err):
@@ -124,4 +124,36 @@ func (h *Handler) Mount(g gin.IRoutes) {
 	g.PUT("/:documentId", h.Create)
 	g.PUT("/:documentId/versions/:version", h.AddVersion)
 	g.POST("/:documentId/versions/:version/view", h.View)
+	// POST, but safe to repeat with the same reason (200).
+	g.POST("/:documentId/retract", h.Retract)
+	g.POST("/:documentId/versions/:version/retract", h.RetractVersion)
+}
+
+func (h *Handler) Retract(c *gin.Context) {
+	var req RetractRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	d, created, err := h.svc.Retract(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c), h.where(c), c.Param("documentId"), req)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(status(created), d)
+}
+
+func (h *Handler) RetractVersion(c *gin.Context) {
+	var req RetractRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	d, created, err := h.svc.RetractVersion(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c), h.where(c),
+		c.Param("documentId"), c.Param("version"), req)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(status(created), d)
 }

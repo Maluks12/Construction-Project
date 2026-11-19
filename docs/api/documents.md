@@ -49,6 +49,14 @@ All endpoints need `Authorization: Bearer <access token>`. Errors are
 - **Readiness** (Rev 4 "inspection readiness"): for each of the register's
   types, `present` (a current version not expired), `expired`, or `missing`.
   `required` marks the types every register must have.
+- **Retraction** (M11 review): a mistake is retracted, never deleted, by an
+  owner or SHE officer with a reason.
+  - **A whole document:** it stays in the register, marked `retraction`.
+    Readiness and reminders ignore it, and no version can be added to it.
+  - **The current version:** the previous version is current again. Never
+    the only standing version: retract the document instead.
+  - **Numbers keep counting:** after a retracted version 3, the next upload
+    is version 4.
 - **Ids and numbers come from the device:** an identical repeat answers 200;
   the same number with different details is 409.
 
@@ -85,7 +93,18 @@ must be the next number.
 | 400 | `"version must be a whole number from 2"`, `"file_id must be a UUID"`, `"issuer must be 1-200 characters, and one of the type's issuers when it lists them"`, `"reference must be 1-200 characters"`, `"issued_on and expires_on must be YYYY-MM-DD, expiry not before issue"`, `"expires_on is required for this type"`, `"this type has no expiry; leave expires_on out"`, `"client_uploaded_at is required"`, `"client_uploaded_at is in the future; check the device clock"`, `"device_id must be 1-200 bytes"`; the file's |
 | 403 | `"only an owner or SHE officer can add documents"` |
 | 404 | `"document not found"`, `"regime not found"` |
-| 409 | `"that version already exists with different details"`; `"version is not the next version of this document"`; `"file already attached to another document version"`; `"file not verified yet"` |
+| 409 | `"that version already exists with different details"`; `"version is not the next version of this document"`; `"document was retracted"`; `"file already attached to another document version"`; `"file not verified yet"` |
+
+### `POST {base}/:documentId/retract` — retract a document
+
+Body: `RetractRequest`. Owner or SHE officer. 201 retracted (`Document`),
+200 the same again; 400 `"reason must be 1-500 characters"`; 403 `"only an owner or SHE officer can retract documents"`; 404 `"document not found"`; 409 `"already retracted with another reason"`.
+
+### `POST {base}/:documentId/versions/:version/retract` — retract the current version
+
+Body: `RetractRequest`. Owner or SHE officer. 201 retracted (`Document`,
+with the previous version current), 200 the same again; 400, 403 as above;
+404 `"document not found"`, `"version not found"`; 409 `"only the current version can be retracted"`, `"the only standing version can't be retracted; retract the document instead"`, `"document was retracted"`, `"already retracted with another reason"`.
 
 ### `GET {base}/:documentId` — a document with every version
 
@@ -151,6 +170,7 @@ export interface DocumentSummary {
   created_at: string;
   latest_version: number;
   current: Version;
+  retraction: Retraction | null;
 }
 
 export interface Document {
@@ -164,6 +184,7 @@ export interface Document {
   created_at: string;
   latest_version: number;
   current: Version;
+  retraction: Retraction | null;
   versions: Version[];
 }
 
@@ -178,8 +199,19 @@ export interface Version {
   client_uploaded_at: string;
   received_at: string;
   device_id: string | null;
-  // VersionState for the current version; "superseded" for earlier ones.
+  retraction: Retraction | null;
+  // VersionState for the current version; "superseded" or "retracted" for the others.
   state: string;
+}
+
+export interface Retraction {
+  reason: string;
+  retracted_by: string;
+  retracted_at: string;
+}
+
+export interface RetractRequest {
+  reason: string;
 }
 
 export interface Readiness {

@@ -128,3 +128,59 @@ func TestDocumentVersionRace(t *testing.T) {
 		t.Fatalf("second version 2: %v, want 23505", err)
 	}
 }
+
+// Retraction (M11 review): the current version, by a lead, never the only
+// standing one; numbers keep counting; a retracted document takes no more
+// versions and never reminds.
+func TestDocumentRetraction(t *testing.T) {
+	seedRLS(t)
+	ctx := context.Background()
+	tx := beginAs(t, pool, rlsOrgA)
+	addActionMembers(t, tx)
+	doc := docID(801)
+	file := func(n int) string { return verifiedFile(t, tx, n, "org_document") }
+	okBatch(t, tx, stmt{docSQL, []any{doc, rlsOrgA, nil, "org", "coida_letter_of_good_standing", rlsUserA}},
+		stmt{docVersionSQL, []any{rlsOrgA, nil, doc, 1, "org", file(801), rlsUserA}},
+		stmt{docVersionSQL, []any{rlsOrgA, nil, doc, 2, "org", file(802), rlsUserA}},
+		stmt{docVersionSQL, []any{rlsOrgA, nil, doc, 3, "org", file(803), rlsUserA}},
+		stmt{`SET CONSTRAINTS ALL IMMEDIATE`, nil})
+	current := func() int {
+		t.Helper()
+		var n int
+		if err := tx.QueryRow(ctx, `SELECT document_current_version($1)`, doc).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	const retractV = `UPDATE document_versions SET retracted_by = $3, retract_reason = 'Wrong letter' WHERE document_id = $1 AND version = $2`
+	const retractDoc = `UPDATE documents SET retracted_by = $2, retract_reason = 'Not ours' WHERE id = $1`
+
+	refused(t, tx, "23514", "only the current version can be retracted", retractV, doc, 2, sheOfficer)
+	refused(t, tx, "23514", "only an owner or SHE officer can retract it", retractV, doc, 3, supOnSite)
+	must(t, tx, 1, retractV, doc, 3, sheOfficer)
+	if n := current(); n != 2 {
+		t.Errorf("after retracting v3, current is v%d, want v2", n)
+	}
+	refused(t, tx, "23514", "already retracted", retractV, doc, 3, rlsUserA)
+	must(t, tx, 1, retractV, doc, 2, sheOfficer)
+	refused(t, tx, "23514", "the only standing version; retract the document instead", retractV, doc, 1, sheOfficer)
+	// Numbers keep counting: the next is 4.
+	refusedBatch(t, tx, "23505", "", stmt{docVersionSQL, []any{rlsOrgA, nil, doc, 3, "org", file(804), rlsUserA}})
+	refusedBatch(t, tx, "23514", "version 5 is not the next version", stmt{docVersionSQL, []any{rlsOrgA, nil, doc, 5, "org", file(807), rlsUserA}})
+	okBatch(t, tx, stmt{docVersionSQL, []any{rlsOrgA, nil, doc, 4, "org", file(805), rlsUserA}})
+	if n := current(); n != 4 {
+		t.Errorf("current v%d, want v4", n)
+	}
+	refused(t, tx, "42501", "", `UPDATE document_versions SET reference = $$y$$ WHERE document_id = $1 AND version = 4`, doc)
+
+	// The whole document.
+	refused(t, tx, "23514", "only an owner or SHE officer can retract it", retractDoc, doc, supOnSite)
+	must(t, tx, 1, retractDoc, doc, sheOfficer)
+	refused(t, tx, "23514", "already retracted; it never changes again", retractDoc, doc, rlsUserA)
+	refusedBatch(t, tx, "23514", "retracted; no version can be added", stmt{docVersionSQL, []any{rlsOrgA, nil, doc, 5, "org", file(806), rlsUserA}})
+	refused(t, tx, "23514", "retracted; its versions don't change", retractV, doc, 4, sheOfficer)
+	var current4 bool
+	if err := tx.QueryRow(ctx, `SELECT notification_subject_current('document', $1, 'v4_before_7d')`, doc).Scan(&current4); err != nil || current4 {
+		t.Errorf("a retracted document's reminder subject is current: %v, err %v", current4, err)
+	}
+}

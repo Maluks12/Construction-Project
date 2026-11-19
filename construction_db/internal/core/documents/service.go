@@ -125,7 +125,7 @@ func readiness(ds *regimes.DataSet, scope string, docs []DocumentSummary) []Read
 		}
 		r := Readiness{TypeKey: t.Key, Label: t.Label, Required: t.Required, Status: StatusMissing, DocumentIDs: []string{}}
 		for _, d := range docs {
-			if d.TypeKey != t.Key || d.RegimeCode != ds.Regime.Code {
+			if d.TypeKey != t.Key || d.RegimeCode != ds.Regime.Code || d.Retraction != nil {
 				continue
 			}
 			r.DocumentIDs = append(r.DocumentIDs, d.ID)
@@ -258,6 +258,9 @@ func (s *Service) AddVersion(ctx context.Context, orgID, userID, role string, w 
 				out, err = s.view(ctx, tx, orgID, t, d.ID)
 				return err
 			}
+			if d.Retraction != nil {
+				return ErrRetracted
+			}
 			if n != d.LatestVersion+1 {
 				return ErrNotNextVersion
 			}
@@ -295,6 +298,8 @@ func versionErr(err error) error {
 		return errRetry
 	case isUniqueViolation(err, "document_versions_file_id_key"):
 		return ErrFileUsed
+	case isRule(err, "retracted; no version can be added"):
+		return ErrRetracted
 	}
 	return err
 }
@@ -350,10 +355,13 @@ func (s *Service) view(ctx context.Context, tx pgx.Tx, orgID string, t *target, 
 	now := time.Now()
 	s.setState(&out.Current, d.RegimeCode, t.scope, now)
 	for i := range out.Versions {
-		if out.Versions[i].Version == d.LatestVersion {
-			out.Versions[i].State = out.Current.State
-		} else {
-			out.Versions[i].State = StateSuperseded
+		switch v := &out.Versions[i]; {
+		case v.Retraction != nil:
+			v.State = StateRetracted
+		case v.Version == d.Current.Version:
+			v.State = out.Current.State
+		default:
+			v.State = StateSuperseded
 		}
 	}
 	return out, nil
@@ -506,6 +514,7 @@ var Sentinels = []error{
 	ErrDocumentNotFound, ErrVersionNotFound, ErrRegimeNotFound, ErrBadDocumentID, ErrBadVersion, ErrBadRegime, ErrRegimeForSite,
 	ErrBadType, ErrBadTitle, ErrBadIssuer, ErrBadReference, ErrBadDate, ErrExpiryNeeded, ErrExpiryNone, ErrNoUploadedAt,
 	ErrUploadedInFuture, ErrBadDeviceID, ErrBadFileID, ErrCantWrite, ErrIDReused, ErrVersionTaken, ErrNotNextVersion, ErrFileUsed,
+	ErrBadReason, ErrCantRetract, ErrRetracted, ErrAlreadyRetracted, ErrNotCurrent, ErrOnlyVersion,
 }
 
 func textOK(s *string, max int) bool {
@@ -521,4 +530,114 @@ func equalPtr[T comparable](a, b *T) bool {
 		return a == b
 	}
 	return *a == *b
+}
+
+// Retract withdraws a whole document entered in error: an owner or SHE
+// officer, with a reason, once. It stays in the register, marked; readiness
+// and reminders ignore it. Repeating it with the same reason answers 200.
+func (s *Service) Retract(ctx context.Context, orgID, userID, role string, w Where, docID string, req RetractRequest) (*Document, bool, error) {
+	if !textOK(&req.Reason, 500) {
+		return nil, false, ErrBadReason
+	}
+	if !isLead(role) {
+		return nil, false, ErrCantRetract
+	}
+	var (
+		out     *Document
+		created bool
+	)
+	err := s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
+		t, d, err := s.resolveDoc(ctx, tx, orgID, userID, role, w, docID)
+		if err != nil {
+			return err
+		}
+		if r := d.Retraction; r != nil {
+			if r.Reason != req.Reason {
+				return ErrAlreadyRetracted
+			}
+		} else {
+			if _, err := tx.Exec(ctx, `UPDATE documents SET retracted_by = $3, retract_reason = $4 WHERE org_id = $1 AND id = $2`,
+				orgID, d.ID, userID, req.Reason); err != nil {
+				return err
+			}
+			created = true
+		}
+		out, err = s.view(ctx, tx, orgID, t, d.ID)
+		return err
+	})
+	if err = finish(err, "retract document"); err != nil {
+		return nil, false, err
+	}
+	return out, created, nil
+}
+
+// RetractVersion withdraws a document's current version entered in error,
+// so the previous one is current again. Never the only standing version:
+// retract the document instead. The database checks the same, under the
+// document's row lock.
+func (s *Service) RetractVersion(ctx context.Context, orgID, userID, role string, w Where, docID, number string, req RetractRequest) (*Document, bool, error) {
+	n, err := strconv.Atoi(number)
+	if err != nil || n < 1 {
+		return nil, false, ErrVersionNotFound
+	}
+	if !textOK(&req.Reason, 500) {
+		return nil, false, ErrBadReason
+	}
+	if !isLead(role) {
+		return nil, false, ErrCantRetract
+	}
+	var (
+		out     *Document
+		created bool
+	)
+	err = s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
+		t, d, err := s.resolveDoc(ctx, tx, orgID, userID, role, w, docID)
+		if err != nil {
+			return err
+		}
+		versions, err := listVersions(ctx, tx, orgID, d.ID)
+		if err != nil {
+			return err
+		}
+		if n > len(versions) {
+			return ErrVersionNotFound
+		}
+		v := versions[n-1]
+		switch {
+		case v.Retraction != nil && v.Retraction.Reason != req.Reason:
+			return ErrAlreadyRetracted
+		case v.Retraction != nil:
+		case d.Retraction != nil:
+			return ErrRetracted
+		case n != d.Current.Version:
+			return ErrNotCurrent
+		default:
+			standing := 0
+			for _, x := range versions {
+				if x.Retraction == nil {
+					standing++
+				}
+			}
+			if standing < 2 {
+				return ErrOnlyVersion
+			}
+			_, err := tx.Exec(ctx, `UPDATE document_versions SET retracted_by = $4, retract_reason = $5
+				WHERE org_id = $1 AND document_id = $2 AND version = $3`, orgID, d.ID, n, userID, req.Reason)
+			switch {
+			case isRule(err, "only the current version can be retracted"):
+				return ErrNotCurrent
+			case isRule(err, "the only standing version"):
+				return ErrOnlyVersion
+			case err != nil:
+				return err
+			}
+			created = true
+		}
+		out, err = s.view(ctx, tx, orgID, t, d.ID)
+		return err
+	})
+	if err = finish(err, "retract document version"); err != nil {
+		return nil, false, err
+	}
+	return out, created, nil
 }

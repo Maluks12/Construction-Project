@@ -33,19 +33,21 @@ func isRule(err error, fragment string) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23514" && strings.Contains(pgErr.Message, fragment)
 }
 
-const docCols = `d.id::text, d.scope, d.site_id::text, d.regime_code, d.type_key, d.title, d.created_by::text, d.created_at, d.latest_version`
+const docCols = `d.id::text, d.scope, d.site_id::text, d.regime_code, d.type_key, d.title, d.created_by::text, d.created_at, d.latest_version,
+	d.retract_reason, d.retracted_by::text, d.retracted_at`
 
 const versionCols = `v.version, v.file_id::text, v.issuer, v.reference, v.issued_on::text, v.expires_on::text, v.uploaded_by::text,
-	v.client_uploaded_at, v.received_at, v.device_id`
+	v.client_uploaded_at, v.received_at, v.device_id, v.retract_reason, v.retracted_by::text, v.retracted_at`
 
 func versionDest(v *Version) []any {
-	return []any{&v.Version, &v.FileID, &v.Issuer, &v.Reference, &v.IssuedOn, &v.ExpiresOn, &v.UploadedBy, &v.ClientUploadedAt, &v.ReceivedAt, &v.DeviceID}
+	return []any{&v.Version, &v.FileID, &v.Issuer, &v.Reference, &v.IssuedOn, &v.ExpiresOn, &v.UploadedBy, &v.ClientUploadedAt, &v.ReceivedAt, &v.DeviceID,
+		&v.ret.Reason, &v.ret.RetractedBy, &v.ret.RetractedAt}
 }
 
 // listDocs: the documents of a scope (and site), each with its current version.
 func listDocs(ctx context.Context, db DBTX, orgID, scope string, siteID *string, where string, args ...any) ([]DocumentSummary, error) {
 	q := `SELECT ` + docCols + `, ` + versionCols + `
-		FROM documents d JOIN document_versions v ON v.document_id = d.id AND v.version = d.latest_version
+		FROM documents d JOIN document_versions v ON v.document_id = d.id AND v.version = document_current_version(d.id)
 		WHERE d.org_id = $1 AND d.scope = $2 AND d.site_id IS NOT DISTINCT FROM $3::uuid`
 	if where != "" {
 		q += ` AND ` + where
@@ -58,11 +60,14 @@ func listDocs(ctx context.Context, db DBTX, orgID, scope string, siteID *string,
 	out := []DocumentSummary{}
 	for rows.Next() {
 		var d DocumentSummary
-		dest := append([]any{&d.ID, &d.Scope, &d.SiteID, &d.RegimeCode, &d.TypeKey, &d.Title, &d.CreatedBy, &d.CreatedAt, &d.LatestVersion},
+		dest := append([]any{&d.ID, &d.Scope, &d.SiteID, &d.RegimeCode, &d.TypeKey, &d.Title, &d.CreatedBy, &d.CreatedAt, &d.LatestVersion,
+			&d.ret.Reason, &d.ret.RetractedBy, &d.ret.RetractedAt},
 			versionDest(&d.Current)...)
 		if err := rows.Scan(dest...); err != nil {
 			return nil, err
 		}
+		d.Retraction = d.ret.finish()
+		d.Current.Retraction = d.Current.ret.finish()
 		out = append(out, d)
 	}
 	return out, rows.Err()
@@ -92,6 +97,7 @@ func listVersions(ctx context.Context, db DBTX, orgID, docID string) ([]Version,
 		if err := rows.Scan(versionDest(&v)...); err != nil {
 			return nil, err
 		}
+		v.Retraction = v.ret.finish()
 		out = append(out, v)
 	}
 	return out, rows.Err()

@@ -150,3 +150,51 @@ func TestSafetyFile(t *testing.T) {
 	wantError(t, do(t, f.router, http.MethodGet, safetyFilePath(f.siteB, id), f.owner, nil), http.StatusNotFound, "document not found")
 	wantStatus(t, do(t, f.router, http.MethodGet, register, f.bookkeeper, nil), http.StatusForbidden)
 }
+
+// Retraction (M11 review): the current version goes back to the previous
+// one; a retracted document stays in the register, marked, and readiness
+// ignores it.
+func TestDocumentRetraction(t *testing.T) {
+	f := newEvidenceFixture(t, "doc-retract")
+	register := "/v1/construction/sites/" + f.siteA + "/safety-file"
+	id := uuid.NewString()
+	v1 := uploadFile(t, f.router, f.owner, files.PurposeSiteDocument, &f.siteA)
+	wantStatus(t, do(t, f.router, http.MethodPut, safetyFilePath(f.siteA, id), f.owner,
+		map[string]any{"type_key": "health_and_safety_plan", "title": "H&S plan", "version": versionReq(v1, nil)}), http.StatusCreated)
+	v2 := uploadFile(t, f.router, f.owner, files.PurposeSiteDocument, &f.siteA)
+	wantStatus(t, do(t, f.router, http.MethodPut, safetyFilePath(f.siteA, id)+"/versions/2", f.owner, versionReq(v2, nil)), http.StatusCreated)
+
+	wantError(t, do(t, f.router, http.MethodPost, safetyFilePath(f.siteA, id)+"/versions/2/retract", f.supervisor, reason("Wrong file")),
+		http.StatusForbidden, "only an owner or SHE officer can retract documents")
+	wantError(t, do(t, f.router, http.MethodPost, safetyFilePath(f.siteA, id)+"/versions/1/retract", f.owner, reason("Wrong file")),
+		http.StatusConflict, "only the current version can be retracted")
+	rec := do(t, f.router, http.MethodPost, safetyFilePath(f.siteA, id)+"/versions/2/retract", f.owner, reason("Wrong file"))
+	wantStatus(t, rec, http.StatusCreated)
+	if d := decodeDocument(t, rec.Body.Bytes()); d.Current.Version != 1 || d.Versions[1].State != documents.StateRetracted || d.Versions[1].Retraction == nil {
+		t.Errorf("after retracting v2: current v%d, versions %+v", d.Current.Version, d.Versions)
+	}
+	wantStatus(t, do(t, f.router, http.MethodPost, safetyFilePath(f.siteA, id)+"/versions/2/retract", f.owner, reason("Wrong file")), http.StatusOK)
+	wantError(t, do(t, f.router, http.MethodPost, safetyFilePath(f.siteA, id)+"/versions/1/retract", f.owner, reason("Wrong file")),
+		http.StatusConflict, "the only standing version can't be retracted; retract the document instead")
+
+	// The next upload is version 3.
+	v3 := uploadFile(t, f.router, f.owner, files.PurposeSiteDocument, &f.siteA)
+	wantError(t, do(t, f.router, http.MethodPut, safetyFilePath(f.siteA, id)+"/versions/2", f.owner, versionReq(v3, nil)),
+		http.StatusConflict, "that version already exists with different details")
+	wantStatus(t, do(t, f.router, http.MethodPut, safetyFilePath(f.siteA, id)+"/versions/3", f.owner, versionReq(v3, nil)), http.StatusCreated)
+
+	// The whole document: kept, marked, ignored by readiness, closed to new versions.
+	wantStatus(t, do(t, f.router, http.MethodPost, safetyFilePath(f.siteA, id)+"/retract", f.owner, reason("Plan for another site")), http.StatusCreated)
+	wantError(t, do(t, f.router, http.MethodPost, safetyFilePath(f.siteA, id)+"/retract", f.owner, reason("Other")),
+		http.StatusConflict, "already retracted with another reason")
+	r := decodeRegister(t, f.router, f.supervisor, register)
+	if len(r.Documents) != 1 || r.Documents[0].Retraction == nil {
+		t.Errorf("the register: %+v; want the document, marked retracted", r.Documents)
+	}
+	if p := readinessOf(r, "health_and_safety_plan"); p.Status != documents.StatusMissing || len(p.DocumentIDs) != 0 {
+		t.Errorf("readiness %+v; want missing, the retracted document ignored", p)
+	}
+	v4 := uploadFile(t, f.router, f.owner, files.PurposeSiteDocument, &f.siteA)
+	wantError(t, do(t, f.router, http.MethodPut, safetyFilePath(f.siteA, id)+"/versions/4", f.owner, versionReq(v4, nil)),
+		http.StatusConflict, "document was retracted")
+}

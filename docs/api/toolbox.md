@@ -28,8 +28,20 @@ supervisor only on sites they've been added to (any other site is 404
   `recorded_by`. A signature records the name as written, and optionally a
   firm and a clock number. It proves that this account recorded the person
   as present at that time; it doesn't prove who they are (SiteProof keeps no
-  biometrics). No ID numbers: M11's worker register will link signatures to
-  workers without changing them.
+  biometrics). No ID numbers.
+- **Workers (M11).** Each signature shows `worker_id`, the register worker
+  it counts as (workers.md):
+  - the worker it is linked to: linked automatically when signed with a
+    register worker's name, firm and clock number, or by hand by an owner or
+    SHE officer;
+  - else the register worker with those three;
+  - else null.
+
+  The signature itself never changes; a wrong link is unlinked.
+- **Not signed (M11).** A talk's `not_signed` lists the register workers
+  signed in on the site that day (attendance.md) before the talk ended (or
+  now, while it has no end) who didn't sign it: absent from the talk or
+  refused. Nothing is inferred about them; it is a list to act on.
 - **Paper registers.** Where people signed a paper sheet, photograph it, add
   the photo with `kind: "paper_register"`, then record each name with
   `method: "paper"`. Paper attendance is refused until the talk has a
@@ -238,6 +250,7 @@ export interface Talk {
   signed_count: number;
   photos: TalkPhoto[];
   attendance: Attendance[];
+  not_signed: NotSigned[];
 }
 
 export interface TalkList {
@@ -263,6 +276,7 @@ export interface Attendance {
   signed_at: string;
   device_id: string | null;
   retraction: Retraction | null;
+  worker_id: string | null;
 }
 
 export interface Retraction {
@@ -270,6 +284,14 @@ export interface Retraction {
   retracted_by: string;
   client_retracted_at: string;
   retracted_at: string;
+}
+
+export interface NotSigned {
+  worker_id: string;
+  name: string;
+  firm: string | null;
+  clock_number: string | null;
+  sign_in_id: string;
 }
 
 export interface AlreadySigned {

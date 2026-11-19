@@ -102,3 +102,8 @@ func (c Client) logUserAgent() *string {
 	}
 	return &ua
 }
+
+// LogIP and LogUserAgent are what an access log row stores; the files
+// primitive (M11) logs its views the same way.
+func (c Client) LogIP() *string        { return c.logIP() }
+func (c Client) LogUserAgent() *string { return c.logUserAgent() }

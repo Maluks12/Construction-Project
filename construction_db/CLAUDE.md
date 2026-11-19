@@ -173,6 +173,39 @@ Known spec issues:
   - **Law:** nothing found in Rev 4 on talks or the diary that contradicts
     it. A site diary is a contractual record (JBCC), not a statutory one.
     Not researched beyond the three documents.
+- Found in M11 (Nov 2026):
+  - **ID numbers.** Rev 4 §2.7 ("Worker register with encrypted ID
+    number") and §5.3 (`workers.id_number_enc`) store an ID number; R3
+    §2.9.4 too. We store none (M10 D1, M11 brief): a worker is a name,
+    optional firm and clock number, and trade.
+  - **Medical certificates (decided 18 Nov).** Rev 4 §3.4: "Status only,
+    never contents"; §2.12 lets a SHE officer see health documents only
+    "with the claims-handler capability". We store the certificate itself,
+    readable only by an owner or SHE officer, every view logged; a
+    supervisor can capture it but not read it back. Reason: inspectors and
+    principal contractors ask for the certificate. Everything else follows
+    R3 §2.9.4: outcome, dates and practice number, "Not findings, diagnoses
+    or restrictions". The change is also recorded in SOURCES and the M11
+    handover.
+  - **To check against the law in 11.1, not assumed:** Rev 4 §3.4's
+    "Regulation 7(8)" and "valid for one year" for the medical certificate,
+    and "tax" in the vault (the spec never names the document; SARS's
+    current instrument is to be confirmed).
+  - **Where things live.** Rev 4 §5.2 puts `/workers /attendance /vault
+    /notifications` in core and `/safetyfile /appointments` under
+    `editions/construction`. Rev 4 §5.3's `attendance_events` (direction
+    in/out) becomes sign-ins with an optional sign-out (D12); its
+    `worker_site_clearance` (induction, clearance) is not built.
+  - **"Clock-in block"** (Rev 4 §2.7, P1, "when a required credential,
+    medical or induction has lapsed"): a sign-in is never refused, it
+    carries warnings (D18). A gate record must be complete.
+  - **Expiry alerts.** Rev 4 §2.8 and A.8 give 60, 30 and 7 days for the
+    vault only; nothing in the spec sets lead times for competencies,
+    medicals or appointments. Ours are product defaults (D25).
+  - **Shifted rows** again: Rev 4 A.3–A.5, 6.B (second half) and 6.C; Rev 3
+    A.3, A.5 and A.8; the Domain Reference §3.6 and §4.1. Read in order,
+    e.g. `regime_document_types (regime_id, doc_type, default_issuer,
+    validity_days)`. Rev 4 §5.3 is aligned correctly.
 
 ## Commands
 
@@ -198,7 +231,39 @@ both errors.
 
 ## Layout
 
-- `cmd/api`: the server. `cmd/worker`: empty for now.
+- `cmd/api`: the server.
+- `cmd/worker` (M11): the reminder jobs.
+  - **Scheduling:** every 10 s it tries to claim each job in Redis
+    (`internal/platform/cache`, `SET NX` for the job's interval); the
+    instance that claims it runs it and records `job_runs`.
+  - **Jobs:** `reminders` (15 min), `emails` (1 min), `holidays` (6 h); see
+    `notifications.Schedule`.
+  - **Config:** `REDIS_URL` (required), `SMTP_URL` (optional: without it,
+    emails are logged), `WORKER_DB_MAX_CONNS` (default 5).
+  - **Deployment:** the same Docker image with entrypoint `/worker`.
+- M11 packages:
+  - **`internal/core/files`:** sealed document files. As evidence (declare,
+    presigned PUT, complete re-hashes the stored version) with no chain, and
+    `purpose` pins what a file attaches to. Only `files/access.go` and
+    `files/complete.go` reach bytes besides evidence's (`TestEvidenceBytesGuard`).
+    `LogView` logs a view in the caller's transaction and enforces the
+    medical rule; `Presign` signs it afterwards.
+  - **`internal/core/workers`:** the register, competencies, medicals,
+    signature links, the regime types endpoint, and the validators ONBOARD
+    reuses (`ValidateWorker`, `ValidateCompetency`, `CheckRows`).
+  - **`internal/core/attendance`:** sign-ins, sheets, roster, the day.
+  - **`internal/core/documents`:** versioned documents. Mounted by
+    `internal/core/vault` (org scope) and
+    `internal/editions/construction/safetyfile` (site scope).
+  - **`internal/core/notifications`:** inbox, the worker's jobs,
+    `/healthz/jobs`.
+  - **`internal/editions/construction/appointments`:** site appointments.
+  - **Edition routes:** they reach core through `edition.Deps`, which gained
+    `Files`, `Documents` and `Regimes`.
+  - **`site_headcount(site, day)`** (000026) is the diary's suggestion now;
+    `toolbox_headcount` stays for its tests.
+  - **`attendance.OpenWindow`** mirrors `site_sign_in_window()`
+    (`TestSignInWindowMatchesDatabase`).
 - `internal/core/{auth,sites,invites}`: features. Each has model.go, repo.go,
   service.go, handler.go, routes.go.
 - `internal/core/evidence`: the evidence feature (model, repo, service,
@@ -1424,6 +1489,318 @@ the site diary, settings.
       minutes of a day (it failed at 23:57). Both tests now use the day
       after tomorrow. Other diary tests compute "today" and "yesterday" at
       call time, so a run that straddles midnight can still flake.
+
+- **Milestone 11, People and documents** (due Fri 20 Nov; forecast Thu 19
+  Nov). Plan approved Wed 18 Nov. Rigour: light for the worker register,
+  vault, safety file and appointments; full for the file seal, the sign-in
+  rules (one open sign-in, distinct counting, double taps, the identity-key
+  match), reminders (once only, restart, two workers) and the holiday
+  recompute.
+  - **Decisions (18 Nov):**
+    - **D1 Org-level types.** Competencies, medicals and company documents
+      belong to the org, but a regime belongs to a site. Each record stores
+      the `regime_code` it was typed against, validated against that data
+      set (`GET /v1/regimes/:code/types`). Site-level records use the
+      site's regime.
+    - **D2 Homes** (Rev 4 §5.2): core `files`, `workers`, `attendance`,
+      `vault`, `notifications`; edition `safetyfile`
+      (`/v1/construction/sites/:id/safety-file`) and `appointments`
+      (`/v1/construction/sites/:id/appointments`; CR 2014 reg 8
+      appointments are per site). Versioned documents are core mechanics
+      used by vault and safetyfile.
+    - **D3 Rigour** as above.
+    - **D4 Document versions have their own hash, not the evidence
+      chain.** A `files` primitive copies evidence's flow (device id,
+      presigned PUT signing hash, length and type, server re-hash of the
+      stored S3 version, frozen, Object Lock, logged view). Org documents
+      have no site (the chain is per site), documents are PDFs, and order
+      comes from append-only version numbers; M12's pack lists the hashes.
+      `application/pdf`, `image/jpeg`, `image/png`, at most 20 MiB.
+    - **D5 Worker identity:** `identity_key` as M10's (`toolbox_norm` of
+      name, firm, clock number), unique per org, active or not. Leads edit;
+      supervisors create. No history table, no ID numbers, no photo.
+    - **D6 Medicals:** outcome (`fit`, `fit_with_restrictions`, `unfit`),
+      `examined_on`, `expires_on`, optional practice number, the document.
+      No restriction text, findings or diagnoses. The document: owner and
+      SHE officer only, every view logged (Known spec issues).
+    - **D7 Signature links:** an append-only link table; automatic at
+      signing when the identity key matches a worker, manual by a lead,
+      unlinked by a row with a reason. No bulk backfill.
+    - **D8 Diary labour rows:** optional `worker_ids` in new revisions
+      (each once, at most `headcount`); the headcount is unchanged.
+    - **D9 Competencies:** regime type, `issued_on`, `expires_on` as the
+      type says, optional number and issuer, a required document. Renewal
+      is a new record superseding the old (one successor, same worker and
+      type); a mistake is retracted by a lead with a reason.
+    - **D10 Validation** for ONBOARD's CSV: pure `ValidateWorker` and
+      `ValidateCompetency` returning field problems, and `CheckRows` for
+      identity-key clashes in the caller's transaction.
+    - **D11 Every sign-in is a register worker.** A tap sends `worker_id`;
+      on the spot sends a new worker, created in the same transaction, or,
+      if its identity key exists, that worker is signed in with
+      `matched_existing: true` and the worker shown. "Different person":
+      retract that sign-in and sign in a new worker with a clock number. A
+      retracted sign-in counts nowhere.
+    - **D12 Sign-out is optional.**
+    - **D13 Nothing happens at midnight.** A sign-in counts on the local day
+      it began; a sign-out can be recorded up to 16 hours after it. One open
+      sign-in per worker per site (no sign-out, not retracted, within 16
+      hours), checked under the worker row's lock; a double tap is 409 with
+      the open sign-in's id.
+    - **D14 Two sites at once: allowed** and flagged. The gate's phone is
+      often offline, so refusing on sync would throw away a presence record.
+    - **D15 Late arrivals:** the phone's time decides the day and the order
+      (5-minute future guard); accepted whenever they arrive, flagged
+      `received_after_close` after the diary's 48-hour grace. No sign-in
+      inside another recorded interval of the worker on the site.
+    - **D16 Expected:** a site roster (a first sign-in adds the worker;
+      leads and the site's supervisors add or remove, append-only).
+    - **D17 Toolbox `not_signed`:** read only; workers signed in on the site
+      that day before the talk ended and not linked to a signature of it.
+    - **D18 Never refuse a sign-in;** carry warnings (no valid medical, a
+      required competency expired).
+    - **Headcount:** `site_headcount(site, day)`, distinct people among the
+      day's sign-ins and talk signatures (unretracted); a person is the
+      linked worker where there is one, else the identity key.
+    - **D19 Documents:** (org [, site], type, title), several per type;
+      append-only numbered versions with file, issuer, reference,
+      `issued_on`, `expires_on`. The H&S file read shows each required type
+      `present`, `missing` or `expired`.
+    - **D20 Who:** vault, owner and SHE officer; safety file, leads write and
+      supervisors read their sites. BILL's gate goes on the vault route
+      group; the PC cross-org read is a later RLS policy. Neither is built.
+    - **D21 Appointments** per site: a register worker, a type from the site
+      regime, `appointed_on`, optional `expires_on`, a required document,
+      supersede and retract as D9. No letters, no gap detection.
+    - **D22 Channels:** in-app (the `notifications` row) and email (SMTP
+      from `SMTP_URL`, Mailpit locally, log-only without it) behind one
+      interface. SMS, WhatsApp and push are BUILD_PLAN tasks.
+    - **D23 Recipients** (both channels):
+      - incident deadlines: the version's submitter, owners, SHE officers,
+        the site's supervisors;
+      - overdue actions: the action's owner and raiser, then SHE officers
+        at +1 day and owners at +3;
+      - stalled verifications (more than 2 days): owners and SHE officers;
+      - competency and medical expiries: owners, SHE officers and the
+        supervisors of sites where the worker is on the roster;
+      - appointment and H&S file expiries: owners, SHE officers and the
+        site's supervisors;
+      - company documents: owners and SHE officers;
+      - a job that didn't complete: logged at error and `/health` reports
+        `jobs: stale`, not a tenant notification.
+    - **D24 Redis decides when, Postgres decides whether.** Redis holds the
+      schedule, a per-job lock with a token and a heartbeat (go-redis).
+      Notifications are unique on (recipient, kind, subject, threshold).
+      The worker runs per org under RLS (`worker_org_ids()`, SECURITY
+      DEFINER). Every run writes `job_runs`; a job with no success for 2×
+      its interval is stale. The holiday recompute adds a `recomputed`
+      close kind to `deadlines` (no incident version; why = the holiday's
+      `source_ref`), once per org per holiday.
+    - **D25 Lead times** (`reminders.json`, product defaults):
+      - competencies, medicals, appointments and H&S file documents: 30, 14
+        and 7 days before and on the day;
+      - company documents: 60, 30 and 7 days before and on the day (Rev 4
+        §2.8);
+      - incident deadlines: 2 days before, on the due day and overdue
+        (forthwith at once);
+      - actions: escalation at 0, 1 and 3 days overdue; a verification
+        stalls after 2 days.
+
+      Per-org settings aren't built.
+    - **D26 Once only.** A restart or a second worker inserts nothing new
+      (`ON CONFLICT DO NOTHING`). An email outbox row goes pending →
+      `sending` (claimed `FOR UPDATE SKIP LOCKED`, committed) → sent or
+      failed; one left in `sending` is marked `unknown` and never resent
+      (at most once). A superseded or retracted item leaves the due-item
+      functions, its pending emails are cancelled, and its notifications
+      show `subject_state: "superseded"`.
+  - **Steps:**
+    - 11.0 plan;
+    - 11.1 regime data (`workforce.json`, `documents.json`,
+      `reminders.json`) with SOURCES;
+    - 11.2 files (000024);
+    - 11.3 workers migration (000025);
+    - 11.4 workers API;
+    - 11.5 sign-in migration (000026);
+    - 11.6 sign-in API, with the toolbox and diary changes;
+    - 11.7 documents, vault and safety file (000027);
+    - 11.8 appointments (000028);
+    - 11.9 notifications migration and the holiday recompute (000029);
+    - 11.10 `cmd/worker`, Redis, email;
+    - 11.11 notifications API;
+    - 11.12 handover, BUILD_PLAN and the end-to-end walk.
+
+    If 11.9–11.10 run late, the holiday recompute is the piece to move
+    after M12.
+  - 11.0 (Wed 18 Nov), **done**: this plan, the Known spec issues, and
+    BUILD_PLAN's M11 items restated.
+  - 11.1 (Wed 18 Nov), **done**: `workforce.json` (7 competency types, 16
+    appointment types, the medical rule), `documents.json` (7 site, 6 org
+    types), `reminders.json`; loader and validation; keys locked in
+    `shipped.json`; SOURCES quotes the CR 2014 text read from the PDF.
+    - **Findings:** Rev 4's "reg 7(8)" is right; "valid for one year" is not
+      in the law (Annexure 3 has one date), so it is a product default.
+      Annexure 3 has an ID number field we don't store.
+    - **Gaps:** the LGS, CIDB and SARS texts were not readable (SOURCES,
+      Gaps M11).
+    - `TestWorkforceTypesQuotedInSources` ties each key to its row (2 of 2
+      mutations caught).
+  - 11.2, **done**: migration 000024 and `internal/core/files`.
+    - The freeze and append-only log hold for every role.
+    - `complete` checks size, hash, then type (PDF `%PDF-`, images decode),
+      max 20 MiB.
+    - The archtest bytes guard now allows a list of files per method.
+    - `evidence.Client` exports `LogIP` and `LogUserAgent`.
+  - 11.3–11.4, **done**: migration 000025 and `internal/core/workers`.
+    - **Records:** retraction is set-once columns, with a lead check in the
+      guard. One live successor is a partial unique index, so a retracted
+      renewal frees its place.
+    - **`toolbox_attendance_person(attendance)`** is the one definition of
+      who a signature is: its live link, else the same-key worker unless
+      unlinked from them, else its key.
+    - **Toolbox:** `Sign` auto-links in its transaction, and `Attendance`
+      gains `worker_id`.
+  - 11.5–11.6, **done**: migration 000026 and `internal/core/attendance`.
+    - **One rule:** no sign-in at a time inside another of the worker's
+      standing intervals on the site (open = 16 h without a sign-out),
+      checked under the worker row's lock.
+    - **Sign-outs:** after the sign-in, within 16 h, not after the next
+      sign-in.
+    - **Roster:** a sign-in adds the worker; `absent` ignores entries made
+      only by retracted sign-ins (a "different person" mistake).
+    - **Toolbox `not_signed`;** diary labour `worker_ids`, checked against
+      the register.
+    - **Forced races:** a double tap held open (DB and API); two phones
+      adding the same person on the spot (the second matches the first).
+  - 11.7, **done**: migration 000027, `internal/core/documents`, vault and
+    safety file.
+    - **Versions** use the `latest_version` advance pattern, and a document
+      is saved with version 1 (checked at commit).
+    - **Files** must be of the document's scope and site (two FKs, MATCH
+      SIMPLE for the site one).
+    - **Forced race:** two version-2 saves.
+    - **Edition routes** check the site's edition in `construction.onSite`.
+  - 11.8, **done**: migration 000028 and the edition's `appointments`,
+    reusing 000025's record triggers.
+  - 11.9–11.11, **done**: migration 000029, `internal/core/notifications`,
+    `internal/platform/cache`, `internal/platform/mail` and `cmd/worker`.
+    - **The reminder query:** `notifications_due(p_now, regime, zone, lead
+      times…)` is the one definition of what is due, testable at any
+      `p_now`. It only sees current subjects, so a renewal stops reminders.
+    - **The recompute:** `deadlines_recompute` closes live, unsatisfied
+      rows as `recomputed`. The guard allows that only under its setting,
+      never for a satisfied duty; the replacement keeps the rule's inputs.
+    - **Recompute records:** `holiday_recomputations`, one per org and
+      holiday.
+    - **System table:** `job_runs` is on the RLS allowlist.
+    - **Email claim:** `SKIP LOCKED`, plus `status = 'pending'` re-checked
+      outside the subquery.
+    - **Versions:** go-redis is pinned to v9.22.0 (v9.23 needs Go 1.26), and
+      the testcontainers redis module is v0.44.0.
+  - **Mutation checks** (a scratch runner: exact-string mutation, the named
+    tests, restore): **36 of 37 caught.**
+    - **Caught, by area:** sign-in 8 (the covering check, the worker lock,
+      retracted sign-ins standing, the window, sign-out after the next
+      sign-in, the paper rule, the API pre-check, the on-the-spot retry);
+      distinct counting 4; the identity-key match 4 (firm in the key, the
+      auto-link key check, `MatchOrCreate`, toolbox's auto-link join); once
+      only 6 of 7; the holiday guard 6; the file seal 7.
+    - **First run:** `SKIP LOCKED` survived, a real gap. Without it, a second
+      sender waited, then re-claimed a 'sending' row and sent it again. Fixed
+      by the outer status re-check plus `TestEmailClaimSkipsLockedRows`
+      (forced), and now caught.
+    - **Survivor by design:** removing that outer re-check, which only
+      matters without `SKIP LOCKED`.
+    - Two mutations first failed to compile and were redone.
+  - 11.12, **done**: docs and the end-to-end walk.
+    - **Docs:** `docs/api/{files,workers,attendance,documents,appointments,notifications}.md`
+      (each under `TestAPIDoc`); toolbox.md and diary.md updated;
+      `docs/api/m11-handover.md`.
+    - **Migrations:** up, down 6 and up again on a throwaway Postgres.
+    - **End-to-end walk** on the real API, worker, Postgres, MinIO, Redis and
+      Mailpit (compose project `-p siteproof-m11walk`, removed afterwards),
+      49 steps:
+      - a worker, a licence and a medical (PDFs to MinIO, sealed);
+      - a sign-in, a double tap 409 naming the first, someone new on the
+        spot with a warning, a sign-out, the day's headcount;
+      - the vault's LGS, the H&S file's plan (present), an appointment;
+      - Redis claims dropped to run the jobs now: two reminders and two
+        emails in Mailpit, a second run adding nothing;
+      - a renewal turning the old reminder superseded;
+      - `/healthz/jobs` 200, then 503 `stale: ["emails"]` two minutes after
+        the worker stopped.
+    - **Found by the walk:** the worker ran its jobs in map order, so a new
+      reminder's email could wait a minute. Now holidays, reminders, then
+      emails, in one tick.
+    - The script (Node) is not in the repo.
+    - `go test -p 4 ./...` passes.
+
+  - **Review fixes (Thu 19 Nov), migrations 000030-000035**, each its own
+    commit after step 11.12:
+    - **Email never recorded sent when it wasn't** (000033; full).
+      - Without SMTP_URL the worker refuses to start unless EMAIL_MODE=log.
+      - Log mode records 'logged', never 'sent' (sending -> logged in the
+        guard).
+    - **Reminders say who and what** (000034).
+      - notifications_due takes p_labels (the regime's labels), and titles
+        name the worker, type and site.
+      - Emails are one plain sentence (`notifications.Render`): no codes,
+        no medical outcome.
+    - **The day register for past days** (000032).
+      - `worker_history` (append-only, by trigger) and
+        `site_absent(site, day, zone, lapse)`: the roster as it stood
+        that day, the worker's state then.
+      - Sign-in-added entries lapse after reminders.json's
+        `roster_lapse_days` (14).
+    - **One sign-in at a time, any arrival order** (000031; full).
+      `site_sign_in_ends_at` is the earliest of the sign-out, 16 h or the
+      next sign-in, and `SignIn.ends_at` shows it.
+    - **Documents and their current version can be retracted** (000035).
+      - `document_current_version` is the highest standing version.
+      - Readiness and reminders ignore retracted documents.
+    - **Holiday recompute** (000030).
+      - The replacement row's dates were already recomputed by
+        `deadlines_insert` (000017); the function now passes r's values,
+        and the test compares them with deadline_due.
+      - The closed row is unchanged, satisfied duties are untouched, and a
+        second run changes nothing.
+    - **Smaller:** not_signed skips sign-ins that ended before the talk; an
+      on-the-spot worker_id with other details is 409.
+    - **Verification:**
+      - `go test -p 4 ./...` passes; the database package with `-count=3`.
+      - Migrations 000030-000035 go up, down 6 and up again on a throwaway
+        Postgres; the schema after down 6 matches a fresh up 29.
+      - The round trip found 000032's down dropping `workers_history()`
+        before its trigger; fixed.
+      - **Mutation runs:** 30 mutations, 27 caught.
+        - The first run caught 22 of 29.
+        - Four survivors were real gaps: a sign-in on another site ending
+          this one; a later sign-in, or a roster entry added later,
+          changing a past day; and the medical title.
+        - The medical title mutation had hit 000034, but 000035 re-issues
+          `notifications_due`. It was redone on 000035, alongside a new
+          competency-label mutation.
+        - Tests were added for each gap, and all are now caught.
+      - **The three survivors can't be caught by any test:**
+        - E2: allowing `sending` -> `sending`; the guard returns early on an
+          unchanged status.
+        - E8: accepting a misspelt mode; unknown modes are already refused.
+        - H7: the recompute passing the old dates; deadlines_insert
+          recomputes them anyway.
+
+- **M12 answers (Thu 19 Nov), for the site compliance summary:**
+  - **Expiring** means each record's own state (its reminder window).
+  - **Counts against a site:**
+    - missing or expired required H&S file documents;
+    - expired required vault documents (shown on every site of the
+      organisation);
+    - unactioned findings;
+    - overdue actions, with their escalation step;
+    - stalled verifications;
+    - today's sign-ins with warnings (no valid medical, unfit, an expired
+      competency).
+  - **Shown, not counted:** absent roster workers.
+  - **Not shown:** reminders.
 
 ## Finding severity
 

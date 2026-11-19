@@ -1,0 +1,15 @@
+[
+  {"key": "health_and_safety_specification", "label": "Client's health and safety specification", "scope": "site", "required": true, "expiry": "none", "source_ref": "CR 2014 reg 5(1)(b)"},
+  {"key": "health_and_safety_plan", "label": "Health and safety plan", "scope": "site", "required": true, "expiry": "none", "source_ref": "CR 2014 reg 7(1)(a)"},
+  {"key": "risk_assessment", "label": "Risk assessment", "scope": "site", "required": true, "expiry": "none", "source_ref": "CR 2014 reg 9(1)"},
+  {"key": "construction_work_permit", "label": "Construction work permit", "scope": "site", "required": false, "expiry": "none", "source_ref": "CR 2014 reg 3(6)"},
+  {"key": "notification_of_construction_work", "label": "Notification of construction work (Annexure 2)", "scope": "site", "required": false, "expiry": "none", "source_ref": "CR 2014 reg 4(1)"},
+  {"key": "fall_protection_plan", "label": "Fall protection plan", "scope": "site", "required": false, "expiry": "none", "source_ref": "CR 2014 reg 10(1)(a)"},
+  {"key": "principal_contractor_appointment", "label": "Principal contractor's appointment by the client", "scope": "site", "required": false, "expiry": "none", "source_ref": "CR 2014 reg 5(1)(k)"},
+  {"key": "coida_letter_of_good_standing", "label": "Letter of Good Standing (COIDA)", "scope": "org", "required": true, "expiry": "required", "issuers": ["Compensation Fund", "FEM", "RMA"], "source_ref": "Rev 4 §2.8"},
+  {"key": "coida_registration", "label": "COIDA registration (Compensation Fund reference)", "scope": "org", "required": true, "expiry": "none", "source_ref": "Domain Reference §2.9"},
+  {"key": "cidb_registration", "label": "CIDB registration and grading", "scope": "org", "required": false, "expiry": "required", "source_ref": "CIDB register of contractors"},
+  {"key": "tax_compliance_status", "label": "Tax compliance status (SARS)", "scope": "org", "required": false, "expiry": "optional", "source_ref": "Rev 4 A.8"},
+  {"key": "public_liability_insurance", "label": "Public liability insurance", "scope": "org", "required": false, "expiry": "required", "source_ref": "Rev 4 A.8"},
+  {"key": "bbbee_certificate", "label": "B-BBEE certificate or affidavit", "scope": "org", "required": false, "expiry": "required", "source_ref": "Rev 4 A.8"}
+]

@@ -374,6 +374,9 @@ func (s *Service) signOnce(ctx context.Context, orgID, userID, role, siteID, tal
 		if err != nil {
 			return err
 		}
+		if err := autoLink(ctx, tx, orgID, site.ID, id, userID); err != nil {
+			return err
+		}
 		created = true
 		a, err = getAttendance(ctx, tx, orgID, site.ID, id)
 		return err
@@ -548,6 +551,9 @@ func view(ctx context.Context, db DBTX, orgID, siteID, id string) (*Talk, error)
 		return nil, err
 	}
 	if t.Attendance, err = listAttendance(ctx, db, orgID, id); err != nil {
+		return nil, err
+	}
+	if t.NotSigned, err = listNotSigned(ctx, db, orgID, id); err != nil {
 		return nil, err
 	}
 	return t, nil

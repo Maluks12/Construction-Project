@@ -1,5 +1,47 @@
 {
   "za_construction_2014": {
+    "competency_types": [
+      "mobile_plant_operator",
+      "tower_crane_operator",
+      "scaffold_erector",
+      "scaffold_inspector",
+      "suspended_platform_operator",
+      "rope_access_licence",
+      "construction_hs_officer_registration"
+    ],
+    "appointment_types": [
+      "construction_manager",
+      "assistant_construction_manager",
+      "construction_hs_officer",
+      "construction_supervisor",
+      "assistant_construction_supervisor",
+      "risk_assessor",
+      "temporary_works_designer",
+      "temporary_works_supervisor",
+      "excavation_supervisor",
+      "demolition_supervisor",
+      "scaffolding_supervisor",
+      "suspended_platform_supervisor",
+      "rope_access_supervisor",
+      "material_hoist_inspector",
+      "bulk_mixing_plant_supervisor",
+      "stacking_storage_supervisor"
+    ],
+    "document_types": [
+      "health_and_safety_specification",
+      "health_and_safety_plan",
+      "risk_assessment",
+      "construction_work_permit",
+      "notification_of_construction_work",
+      "fall_protection_plan",
+      "principal_contractor_appointment",
+      "coida_letter_of_good_standing",
+      "coida_registration",
+      "cidb_registration",
+      "tax_compliance_status",
+      "public_liability_insurance",
+      "bbbee_certificate"
+    ],
     "toolbox_topics": [
       "fall_protection",
       "excavations",

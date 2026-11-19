@@ -4,7 +4,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"construction_db/internal/core/edition"
+	"construction_db/internal/editions/construction/appointments"
 	"construction_db/internal/editions/construction/diary"
+	"construction_db/internal/editions/construction/safetyfile"
 )
 
 type Edition struct{}
@@ -24,7 +26,9 @@ func (Edition) DefaultRegime() string {
 }
 
 // RegisterRoutes mounts the edition's endpoints under /v1/construction:
-// the site diary (Rev 4 §5.2).
+// the site diary, the H&S file and appointments (Rev 4 §5.2).
 func (Edition) RegisterRoutes(r *gin.RouterGroup, deps edition.Deps) {
 	diary.Register(r, diary.NewService(deps.Pool, deps.Sites))
+	safetyfile.Register(r, deps.Documents, onSite(deps))
+	appointments.Register(r, appointments.NewService(deps), onSite(deps))
 }

@@ -23,6 +23,9 @@ type shippedKeys struct {
 	Deadlines         []string                     `json:"deadlines"`
 	Taxonomy          []string                     `json:"taxonomy"`
 	ToolboxTopics     []string                     `json:"toolbox_topics"`
+	CompetencyTypes   []string                     `json:"competency_types"`
+	AppointmentTypes  []string                     `json:"appointment_types"`
+	DocumentTypes     []string                     `json:"document_types"`
 	ChecklistVersions map[string]map[string]string `json:"checklist_versions"`
 }
 
@@ -70,6 +73,19 @@ func missingKeys(reg *Registry, lock map[string]shippedKeys) []string {
 		report("deadline", want.Deadlines, deadlines)
 		report("taxonomy", want.Taxonomy, taxonomy)
 		report("toolbox topic", want.ToolboxTopics, topics)
+		comp, appt, docs := map[string]bool{}, map[string]bool{}, map[string]bool{}
+		for _, c := range ds.Workforce.CompetencyTypes {
+			comp[c.Key] = true
+		}
+		for _, a := range ds.Workforce.AppointmentTypes {
+			appt[a.Key] = true
+		}
+		for _, d := range ds.DocumentTypes {
+			docs[d.Key] = true
+		}
+		report("competency type", want.CompetencyTypes, comp)
+		report("appointment type", want.AppointmentTypes, appt)
+		report("document type", want.DocumentTypes, docs)
 	}
 	return missing
 }

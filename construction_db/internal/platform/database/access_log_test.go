@@ -29,20 +29,21 @@ func TestAccessLogIsAppendOnly(t *testing.T) {
 			t.Fatalf("insert second site: %v", err)
 		}
 
-		const insert = `INSERT INTO evidence_access_log (org_id, site_id, evidence_id, user_id, action, object_version_id, filter_status, filter_limit, result_count, ip, user_agent)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+		const insert = `INSERT INTO evidence_access_log (org_id, site_id, evidence_id, user_id, action, object_version_id, filter_status, filter_limit, result_count, ip, user_agent, export_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 		type row struct {
 			site, evidence, user, action string
 			version, filterStatus        *string
 			filterLimit, count           *int
 			userAgent                    *string
+			export                       any // the audit export a download came from (M12)
 		}
 		insertArgs := func(r row) []any {
 			var ev any
 			if r.evidence != "" {
 				ev = r.evidence
 			}
-			return []any{rlsOrgA, r.site, ev, r.user, r.action, r.version, r.filterStatus, r.filterLimit, r.count, "192.0.2.10", r.userAgent}
+			return []any{rlsOrgA, r.site, ev, r.user, r.action, r.version, r.filterStatus, r.filterLimit, r.count, "192.0.2.10", r.userAgent, r.export}
 		}
 		v1, verified, fifty, three, longUA := ptr("v1"), ptr("verified"), ptr(50), ptr(3), ptr(strings.Repeat("a", 513))
 
@@ -54,7 +55,10 @@ func TestAccessLogIsAppendOnly(t *testing.T) {
 			{"view_bytes", row{site: rlsSiteA, evidence: rlsEvidenceA, user: rlsUserA, action: "view_bytes", version: v1}, ""},
 			{"view_record", row{site: rlsSiteA, evidence: rlsEvidenceA, user: rlsUserA, action: "view_record"}, ""},
 			{"list", row{site: rlsSiteA, user: rlsUserA, action: "list", filterStatus: verified, filterLimit: fifty, count: three}, ""},
-			{"export", row{site: rlsSiteA, evidence: rlsEvidenceA, user: rlsUserA, action: "export"}, ""},
+			{"export", row{site: rlsSiteA, evidence: rlsEvidenceA, user: rlsUserA, action: "export", export: rlsExportA}, ""},
+			{"export without its export", row{site: rlsSiteA, evidence: rlsEvidenceA, user: rlsUserA, action: "export"}, "23514"},
+			{"a view naming an export", row{site: rlsSiteA, evidence: rlsEvidenceA, user: rlsUserA, action: "view_record", export: rlsExportA}, "23514"},
+			{"an export that was never built", row{site: rlsSiteA, evidence: rlsEvidenceA, user: rlsUserA, action: "export", export: "4b000000-0000-0000-0000-0000000000ff"}, "23503"},
 			{"share", row{site: rlsSiteA, evidence: rlsEvidenceA, user: rlsUserA, action: "share"}, ""},
 			{"unknown action", row{site: rlsSiteA, evidence: rlsEvidenceA, user: rlsUserA, action: "download"}, "23514"},
 			{"list naming one evidence", row{site: rlsSiteA, evidence: rlsEvidenceA, user: rlsUserA, action: "list", count: three}, "23514"},

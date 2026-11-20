@@ -46,6 +46,7 @@ const (
 	rlsAddA      = "3f000000-0000-0000-0000-00000000000a"
 	rlsAddB      = "3f000000-0000-0000-0000-00000000000b"
 	rlsFileA     = "40000000-0000-0000-0000-00000000000a" // a verified competency certificate, viewed once
+	rlsExportA   = "4b000000-0000-0000-0000-00000000000a" // a built audit export (M12)
 	rlsFileB     = "40000000-0000-0000-0000-00000000000b"
 	rlsDiaryDate = "2026-01-15"
 )
@@ -93,6 +94,12 @@ type rlsTable struct {
 
 // In foreign-key-safe delete order.
 var rlsTables = []rlsTable{
+	{"audit_export_downloads", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"audit_export_files", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"audit_export_evidence", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"audit_export_results", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"audit_export_attempts", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"audit_exports", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"toolbox_talk_history", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"member_history", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"site_history", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
@@ -321,6 +328,16 @@ var seedOnce = sync.OnceValue(func() error {
 			  VALUES ($1, $2, $3, 'action_overdue', 'action', $4, 'escalation_1', 'Fix it')`, []any{id("4a"), org, user, act}},
 			{`INSERT INTO notification_emails (notification_id, org_id, to_address) VALUES ($1, $2, 'rls@rls.test')`, []any{id("4a"), org}},
 			{`INSERT INTO holiday_recomputations (org_id, jurisdiction, holiday_date, recomputed) VALUES ($1, 'ZA', '2026-12-25', 0)`, []any{org}},
+			// An audit export, built (its attempt, result, contents) and downloaded
+			// once. The settle window is waived for the seed only.
+			{`SELECT set_config('siteproof.export_settle', '0 seconds', true)`, nil},
+			{exportSQL, []any{id("4b"), org, site, user}},
+			{`INSERT INTO audit_export_attempts (id, org_id, export_id, attempt, instance, claimed_at, lease_until)
+			  VALUES ($1, $2, $3, 1, 'rls', now(), clock_timestamp() + interval '1 hour')`, []any{id("4c"), org, id("4b")}},
+			{exportResultSQL, []any{id("4b"), org, id("4c")}},
+			{`INSERT INTO audit_export_evidence (org_id, export_id, site_id, evidence_id) VALUES ($1, $2, $3, $4)`, []any{org, id("4b"), site, ev}},
+			{`INSERT INTO audit_export_files (org_id, export_id, file_id) VALUES ($1, $2, $3)`, []any{org, id("4b"), id("40")}},
+			{`INSERT INTO audit_export_downloads (org_id, export_id, user_id) VALUES ($1, $2, $3)`, []any{org, id("4b"), user}},
 		}
 		for _, s := range stmts {
 			if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
@@ -472,6 +489,16 @@ func TestRLSWrites(t *testing.T) {
 			"worker_medicals":     {medSQL, []any{"43000000-0000-0000-0000-0000000000bb", rlsOrgB, "41000000-0000-0000-0000-00000000000b", "fit", "44000000-0000-0000-0000-00000000000b", nil, rlsUserB}},
 			"toolbox_attendance_workers": {`INSERT INTO toolbox_attendance_workers (org_id, site_id, attendance_id, worker_id, method, linked_by) VALUES ($1, $2, $3, $4, 'manual', $5)`,
 				[]any{rlsOrgB, rlsSiteB, rlsAttB, "41000000-0000-0000-0000-00000000000b", rlsUserB}},
+			"audit_exports": {exportSQL, []any{"4b000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, rlsUserB}},
+			"audit_export_attempts": {`INSERT INTO audit_export_attempts (id, org_id, export_id, attempt, instance, claimed_at, lease_until)
+			  VALUES (gen_random_uuid(), $1, $2, 1, 'x', now(), now() + interval '1 hour')`, []any{rlsOrgB, "4b000000-0000-0000-0000-00000000000b"}},
+			"audit_export_results": {exportResultSQL, []any{"4b000000-0000-0000-0000-00000000000b", rlsOrgB, "4c000000-0000-0000-0000-00000000000b"}},
+			"audit_export_evidence": {`INSERT INTO audit_export_evidence (org_id, export_id, site_id, evidence_id) VALUES ($1, $2, $3, $4)`,
+				[]any{rlsOrgB, "4b000000-0000-0000-0000-00000000000b", rlsSiteB, rlsEvidenceB}},
+			"audit_export_files": {`INSERT INTO audit_export_files (org_id, export_id, file_id) VALUES ($1, $2, $3)`,
+				[]any{rlsOrgB, "4b000000-0000-0000-0000-00000000000b", rlsFileB}},
+			"audit_export_downloads": {`INSERT INTO audit_export_downloads (org_id, export_id, user_id) VALUES ($1, $2, $3)`,
+				[]any{rlsOrgB, "4b000000-0000-0000-0000-00000000000b", rlsUserB}},
 			// History is written only by triggers: the app has no INSERT at all.
 			"organisation_history": {`INSERT INTO organisation_history (org_id, trading_name, changed_at) VALUES ($1, 'Smuggled', now())`, []any{rlsOrgB}},
 			"site_history":         {`INSERT INTO site_history (org_id, site_id, regime_id, name, status, changed_at) SELECT $1, $2, id, 'Smuggled', 'active', now() FROM regulatory_regimes LIMIT 1`, []any{rlsOrgB, rlsSiteB}},
@@ -718,3 +745,16 @@ func TestTokenLookups(t *testing.T) {
 		}
 	}
 }
+
+// An export of a site by its owner: $1 id, $2 org, $3 site, $4 requester.
+const exportSQL = `
+	INSERT INTO audit_exports (id, org_id, site_id, requested_by, requester_role, from_date, to_date, time_zone, as_of, pack_format,
+	                           regime_code, regime_version, regime_data_sha256, includes_health, client_requested_at)
+	VALUES ($1, $2, $3, $4, 'owner', '2026-01-01', '2026-01-31', 'Africa/Johannesburg', now(), 1,
+	        'za_construction_2014', '2014', decode(repeat('0b', 32), 'hex'), true, now())`
+
+// The result of export $1 (org $2) by attempt $3: one photo, one file.
+const exportResultSQL = `
+	INSERT INTO audit_export_results (export_id, org_id, attempt_id, sha256, size_bytes, object_key, object_version_id,
+	                                  evidence_count, file_count, chain_length, chain_head, chain_intact)
+	VALUES ($1, $2, $3, decode(repeat('0c', 32), 'hex'), 1, 'rls/export.zip', 'v1', 1, 1, 1, decode(repeat('0d', 32), 'hex'), true)`

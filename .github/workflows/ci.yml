@@ -47,6 +47,21 @@ jobs:
       - name: Test
         run: go test -race ./...
 
+      # The date-sensitive app tests again, as if at 00:30 SAST: Postgres runs
+      # under libfaketime (dbtest/faketime, built here in seconds) and the API
+      # on the same moved clock. Without -race: the step above already ran
+      # these under the race detector; this one checks dates. Keep the list in
+      # step with construction_db/CLAUDE.md (Commands).
+      - name: Test dates as if at 00:30 SAST
+        env:
+          SITEPROOF_TEST_SAST: "00:30"
+          DATE_TESTS: '^(TestRaise|TestAction|TestIncidentAction|TestCorrectedFindingActions|TestWaivers|TestCloseout|TestRemovedSupervisor|TestSignIn|TestOnTheSpot|TestNotSigned|TestReminders|TestEmail|TestJobRuns|TestWorker|TestSignatureWorkerLinks|TestVault|TestSafetyFile|TestDocumentRetraction|TestAppointments)'
+        run: |
+          set -o pipefail
+          go test -count=1 -v -run "$DATE_TESTS" ./internal/app/ 2>&1 | tee sast.log | grep -E '^(--- FAIL|FAIL|ok)|running as if'
+          # Fails if the run fell back to the real time.
+          grep -q 'running as if at .* 00:30' sast.log
+
       - name: Build
         run: go build ./...
 

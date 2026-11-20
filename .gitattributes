@@ -1,0 +1,13 @@
+# Line endings: LF in the repository and in every checkout, whatever the
+# platform's core.autocrlf, so gofmt, shell scripts and diffs agree.
+* text=auto eol=lf
+
+# Windows PowerShell 5.1 scripts keep CRLF.
+*.ps1 text eol=crlf
+
+# Binary: never converted or diffed as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.ico binary

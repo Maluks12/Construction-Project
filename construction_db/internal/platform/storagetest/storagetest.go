@@ -20,15 +20,18 @@ import (
 const Image = "cgr.dev/chainguard/minio@sha256:0a01100085e30fb08d2f39e39c9f5c9d83a95707f220b007d813b690cd41622d"
 
 const (
-	Bucket   = "evidence-test"
-	user     = "minioadmin"
-	password = "minioadmin"
+	Bucket = "evidence-test"
+	// ExportBucket holds audit packs: versioning on, no Object Lock (M12 D7).
+	ExportBucket = "exports-test"
+	user         = "minioadmin"
+	password     = "minioadmin"
 )
 
 type Env struct {
-	Store  *storage.S3
-	Admin  *s3.Client       // for fixtures: writes that bypass presigned URLs
-	Config storage.S3Config // Bucket is the locked test bucket
+	Store   *storage.S3
+	Exports *storage.S3      // ExportBucket
+	Admin   *s3.Client       // for fixtures: writes that bypass presigned URLs
+	Config  storage.S3Config // Bucket is the locked test bucket
 }
 
 // Start runs MinIO with Bucket created like production: Object Lock enabled
@@ -68,12 +71,29 @@ func Start(ctx context.Context) (*Env, func(), error) {
 		return nil, nil, err
 	}
 
+	if err := CreateBucket(ctx, admin, ExportBucket, false); err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	if _, err := admin.PutBucketVersioning(ctx, &s3.PutBucketVersioningInput{Bucket: aws.String(ExportBucket),
+		VersioningConfiguration: &types.VersioningConfiguration{Status: types.BucketVersioningStatusEnabled}}); err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("version %s: %w", ExportBucket, err)
+	}
+
 	store, err := storage.NewS3(ctx, cfg)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
 	}
-	return &Env{Store: store, Admin: admin, Config: cfg}, cleanup, nil
+	exportCfg := cfg
+	exportCfg.Bucket = ExportBucket
+	exports, err := storage.NewS3(ctx, exportCfg)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	return &Env{Store: store, Exports: exports, Admin: admin, Config: cfg}, cleanup, nil
 }
 
 func AdminClient(cfg storage.S3Config) *s3.Client {

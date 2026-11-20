@@ -1,10 +1,10 @@
 # Everything runs in Docker. Run all commands from the construction_db folder.
 #
 #   docker compose up -d db minio            start the database and evidence storage
-#   docker compose run --rm storage-init     create the evidence bucket (once)
+#   docker compose run --rm storage-init     create the evidence and export buckets (once)
 #   docker compose run --rm migrate up       apply migrations
 #   docker compose up -d --build api         build and start the API
-#   docker compose up -d --build worker      the reminder jobs (with redis and mailpit)
+#   docker compose up -d --build worker      the reminder jobs and audit packs (with redis and mailpit)
 #
 # DATABASE_URL is built here from the POSTGRES_* values in .env,
 # so the password only ever lives in one place. Likewise the MinIO root
@@ -31,8 +31,9 @@ services:
         condition: service_healthy
 
 
-  # The reminder jobs (M11). Needs Redis for its schedule; emails go to
-  # Mailpit locally (http://localhost:8025 shows them).
+  # The reminder jobs (M11) and the audit pack builder (M12). Needs Redis for
+  # its schedule; emails go to Mailpit locally (http://localhost:8025 shows
+  # them); packs go to the export bucket in MinIO.
   worker:
     build: .
     entrypoint: ["/worker"]
@@ -41,8 +42,11 @@ services:
       DATABASE_URL: *database-url
       REDIS_URL: redis://redis:6379/0
       SMTP_URL: ${SMTP_URL:-smtp://mailpit:1025?from=reminders@siteproof.local}
+      S3_ENDPOINT: http://minio:9000
     depends_on:
       db:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -98,9 +102,10 @@ services:
       timeout: 3s
       retries: 10
 
-  # One-off tool. Creates the bucket like production: Object Lock on, every
-  # object retained by default. GOVERNANCE for 1 day, so local data can still
-  # be wiped with "docker compose down -v".
+  # One-off tool. Creates the evidence bucket like production: Object Lock on,
+  # every object retained by default. GOVERNANCE for 1 day, so local data can
+  # still be wiped with "docker compose down -v". And the export bucket (M12):
+  # versioning on, no lock, packs deleted after 7 days.
   storage-init:
     image: cgr.dev/chainguard/minio-client@sha256:8419d1a4518c12889cf59f11043cb2318175841eb727c415e0aacbd0a749846f
     profiles: ["tools"]
@@ -110,7 +115,10 @@ services:
     command:
       - >-
         mc mb --ignore-existing --with-lock local/${S3_BUCKET} &&
-        mc retention set --default governance 1d local/${S3_BUCKET}
+        mc retention set --default governance 1d local/${S3_BUCKET} &&
+        mc mb --ignore-existing local/${S3_EXPORT_BUCKET} &&
+        mc version enable local/${S3_EXPORT_BUCKET} &&
+        mc ilm rule add --expire-days 7 --noncurrent-expire-days 1 local/${S3_EXPORT_BUCKET}
     depends_on:
       minio:
         condition: service_healthy

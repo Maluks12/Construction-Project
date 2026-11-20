@@ -4,9 +4,9 @@ Go backend, Construction edition only (Mining is not in this build). Everything 
 
 Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsDqW7ag36Fqt3ugKVuUY) on 28 Oct 2026. M5 onwards were reconstructed from Rev 4, not copied from an original roadmap. Tick items here as they're done.
 
-**Checkpoint, Sun 22 Nov:** if the safety core isn't done, cut from the end in this order: JBCC delay claims, then the principal-contractor tier, then IOD form assembly. Keep the IOD lifecycle.
+**Checkpoint, Sun 22 Nov: a review point, not a cut.** The original rule (cut JBCC, then the principal-contractor tier, then IOD form assembly) was withdrawn on Sun 15 Nov: no cuts, below.
 
-**Decided Sun 15 Nov: no cuts.** The full scope stays. The forecast below (seventh revision, Fri 20 Nov, at the checkpoint) puts v1.0.0 on **Tue 22 Dec** with every gap the checkpoint found, or **Wed 9 Dec** without them. The due date stays Sat 5 Dec. The Sun 22 Nov checkpoint stays as a review point, not a cut.
+**Decided Sun 15 Nov: no cuts.** The full scope stays. The forecast below (seventh revision, Fri 20 Nov, at the checkpoint) puts v1.0.0 on **Tue 22 Dec** with every gap the checkpoint found, or **Wed 9 Dec** without them. The due date stays Sat 5 Dec.
 
 **Decided Tue 17 Nov (the pricing, Enterprise and onboarding documents):**
 - **Pricing is per active site, never per user.** Users are unlimited on every plan; plans limit active sites.
@@ -446,7 +446,7 @@ Plan approved Fri 20 Nov (decisions D1–D16 in `construction_db/CLAUDE.md`, Sta
 - [ ] SMS/WhatsApp metering per organisation, billed at cost plus a margin. **Full rigour** (due Mon 30 Nov)
 - [ ] Stitch DebiCheck provider (sandbox) and verified webhooks. Declare the yearly increase on the mandate at signup, and set the maximum collection amount with headroom above the current invoice. Check Stitch's current documentation for both. **Full rigour** for the webhooks (due Mon 30 Nov)
 
-### DEPLOY: Deploy (due Mon 30 Nov; forecast Wed 2 Dec)
+### DEPLOY: Deploy (due Mon 30 Nov; forecast Thu 3 Dec)
 
 - [ ] RLS on users: visible if it's you or shares an org with the tenant; login and invite lookups by email/mobile via SECURITY DEFINER functions (before the production deploy)
 - [ ] Create a LOGIN role for siteproof_app with its own password; the production API connects with it, never superuser credentials. The migration owner must be a superuser or have BYPASSRLS (the token lookups are SECURITY DEFINER) (before the production deploy)
@@ -468,25 +468,25 @@ Plan approved Fri 20 Nov (decisions D1–D16 in `construction_db/CLAUDE.md`, Sta
 
 ## Claims & contractor tier (due Sat 5 Dec)
 
-### IOD: Injury on duty (COIDA) (due Tue 1 Dec; forecast Thu 3 Dec)
+### IOD: Injury on duty (COIDA) (due Tue 1 Dec; forecast Sat 5 Dec)
 
 - [ ] IOD case linked to an incident, with the W.Cl.2–6 lifecycle (per Rev 3) (due Tue 1 Dec)
 - [ ] IOD deadlines and reminders from regime rules. The 7-day W.Cl.2 clock already exists: M8 computes `coida_s39_employer_report` on the incident when an employee is injured. The IOD case reuses that deadline (its satisfaction is the W.Cl.2 being filed); it must not start a second one (decided Sun 15 Nov) (due Tue 1 Dec)
 - [ ] Assemble form data for each stage (structured data first, PDF later) (due Tue 1 Dec)
 - [ ] G35 (M12 checkpoint, Rev 4 A.9 P1): the doctor handout, shareable by WhatsApp or print, from the incident and worker
 
-### JBCC: Delay claims (due Wed 2 Dec; forecast Fri 4 Dec)
+### JBCC: Delay claims (due Wed 2 Dec; forecast Sun 6 Dec)
 
 - [ ] Delay event log, notice deadlines from regime data, evidence links (due Wed 2 Dec)
 
-### PC: Principal contractor tier (due Fri 4 Dec; forecast Sat 5 Dec)
+### PC: Principal contractor tier (due Fri 4 Dec; forecast Tue 8 Dec)
 
 - [ ] Link subcontractor orgs to a site; the principal contractor sees their compliance (due Thu 3 Dec)
 - [ ] Tests for cross-org visibility under RLS (due Fri 4 Dec)
 - [ ] Required appointments by the organisation's role on the site (added Fri 20 Nov, M12 D4): once a site records whether this organisation is the principal contractor, a principal contractor's missing construction manager (CR 2014 reg 8(1)) or construction supervisor (reg 8(7)) becomes red in the compliance summary, and a subcontractor's is not counted. Until then both are amber with a caveat
 - [ ] Quote and model GAR 8(3) (incidents to people other than employees: who reports) and OHSA s24(3) (exclusions, e.g. a traffic accident on a public road). Until then every reportable type starts its clocks and the GAR 8(1) deadlines carry a caveat (decided Sun 15 Nov; here because non-employees on a site are mostly subcontractors' workers)
 
-### REG4: Regulation 4 notification (proposed Sun 15 Nov; dated at the checkpoint, Fri 20 Nov: straight after M12, before SYNC, M12 D13)
+### REG4: Regulation 4 notification (proposed Sun 15 Nov; dated at the checkpoint, Fri 20 Nov: straight after M12, before SYNC, M12 D13; forecast Sat 21 Nov)
 
 Rev 4's construction pack has "Regulation 4 notification, P1, 7-day deadline and tracking", but no task existed. `editions/construction/reg4` is empty.
 

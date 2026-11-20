@@ -25,6 +25,7 @@ import (
 	"construction_db/internal/core/evidence"
 	"construction_db/internal/core/exports"
 	"construction_db/internal/core/files"
+	"construction_db/internal/core/notifications"
 	"construction_db/internal/editions/construction"
 	"construction_db/internal/platform/database"
 	"construction_db/internal/platform/storage"
@@ -826,5 +827,56 @@ func TestExportTooLarge(t *testing.T) {
 	}
 	if n := countRows(t, `SELECT count(*) FROM audit_export_results WHERE export_id = $1`, e.ID); n != 0 {
 		t.Error("a refused export has a result")
+	}
+}
+
+// slowUploads holds every pack upload for a while, as a big pack would.
+type slowUploads struct {
+	storage.Store
+	wait time.Duration
+}
+
+func (s slowUploads) PutStream(ctx context.Context, key string, r io.Reader, contentType string, size int64) (string, error) {
+	select {
+	case <-time.After(s.wait):
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	return s.Store.PutStream(ctx, key, r, contentType, size)
+}
+
+// A long healthy build heartbeats into job_runs while it runs, so
+// /healthz/jobs doesn't call exports stale (M12 review).
+func TestExportHeartbeat(t *testing.T) {
+	f := newEvidenceFixture(t, "exportheartbeat")
+	clk, ctx, org := newSASTClock(t), context.Background(), f.ownerMe.OrgID
+	e := queueExport(t, f, f.siteA, exportBody(clk.Today(), clk.Today()))
+
+	b := newBuilder(300 * time.Millisecond)
+	b.Exports, b.OnlyOrgs = slowUploads{Store: testExports, wait: 1500 * time.Millisecond}, []string{org}
+	b.Heartbeat = func(ctx context.Context) {
+		_ = notifications.RecordRun(ctx, testPool, notifications.JobExports, b.Instance, func(context.Context) (int, error) { return 0, nil })
+	}
+	time.Sleep(10 * time.Millisecond)
+	built := 0
+	err := notifications.RecordRun(ctx, testPool, notifications.JobExports, b.Instance+"-build", func(ctx context.Context) (int, error) {
+		n, err := b.RunOne(ctx)
+		built = n
+		return n, err
+	})
+	if err != nil || built != 1 {
+		t.Fatalf("run one: %d, %v", built, err)
+	}
+	if got := getExportStatus(t, f.router, f.owner, f.siteA, e.ID); got.Status != exports.StatusReady {
+		t.Fatalf("export %s", got.Status)
+	}
+	// Heartbeats finished while the build was still running.
+	n := countRows(t, `SELECT count(*) FROM job_runs h, job_runs r
+		WHERE h.instance = $1 AND r.instance = $1 || '-build' AND h.job = 'exports' AND h.ok AND h.finished_at < r.finished_at`, b.Instance)
+	if n < 3 {
+		t.Errorf("%d heartbeats during a 1.5 s build with a 300 ms lease, want at least 3", n)
+	}
+	if n, err := b.RunOne(ctx); err != nil || n != 0 {
+		t.Errorf("nothing left to build: %d, %v", n, err)
 	}
 }

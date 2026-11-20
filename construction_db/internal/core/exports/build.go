@@ -35,6 +35,9 @@ type Builder struct {
 	Settle, Lease, Backoff time.Duration
 	// OnlyOrgs limits RunOnce to these organisations (tests).
 	OnlyOrgs []string
+	// Heartbeat, when set, is called each time a build extends its lease:
+	// the worker records it, so a long healthy build isn't reported stale.
+	Heartbeat func(context.Context)
 }
 
 func (b *Builder) settle() time.Duration { return cmpOr(b.Settle, Settle) }
@@ -66,42 +69,55 @@ type Result struct {
 
 // RunOnce builds every claimable export, one at a time.
 func (b *Builder) RunOnce(ctx context.Context) (int, error) {
-	var orgs []string
-	err := database.WithTenant(ctx, b.Pool, database.Tenant{}, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT id::text FROM worker_org_ids() id`)
-		if err != nil {
-			return err
-		}
-		orgs, err = pgx.CollectRows(rows, pgx.RowTo[string])
-		return err
-	})
-	if err != nil {
-		return 0, fmt.Errorf("exports: list orgs: %w", err)
-	}
-	if len(b.OnlyOrgs) > 0 {
-		orgs = b.OnlyOrgs
-	}
 	built := 0
 	var errs []error
-	for _, org := range orgs {
-		for {
-			a, err := b.Claim(ctx, org)
+	for {
+		n, err := b.RunOne(ctx)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		if n == 0 {
+			return built, errors.Join(errs...)
+		}
+		built += n
+	}
+}
+
+// RunOne claims the first claimable export of any organisation and builds
+// it: 1 when it claimed one (built or not), 0 when there was none. The
+// worker records each call as its own 'exports' run.
+func (b *Builder) RunOne(ctx context.Context) (int, error) {
+	orgs := b.OnlyOrgs
+	if len(orgs) == 0 {
+		err := database.WithTenant(ctx, b.Pool, database.Tenant{}, func(tx pgx.Tx) error {
+			rows, err := tx.Query(ctx, `SELECT id::text FROM worker_org_ids() id`)
 			if err != nil {
-				errs = append(errs, err)
-				break
+				return err
 			}
-			if a == nil {
-				break
-			}
-			if err := b.Run(ctx, a); err != nil {
-				slog.Error("audit pack build failed", "export", a.ExportID, "attempt", a.Number, "err", err)
-				errs = append(errs, err)
-				continue
-			}
-			built++
+			orgs, err = pgx.CollectRows(rows, pgx.RowTo[string])
+			return err
+		})
+		if err != nil {
+			return 0, fmt.Errorf("exports: list orgs: %w", err)
 		}
 	}
-	return built, errors.Join(errs...)
+	var errs []error
+	for _, org := range orgs {
+		a, err := b.Claim(ctx, org)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if a == nil {
+			continue
+		}
+		if err := b.Run(ctx, a); err != nil {
+			slog.Error("audit pack build failed", "export", a.ExportID, "attempt", a.Number, "err", err)
+			return 1, err
+		}
+		return 1, nil
+	}
+	return 0, errors.Join(errs...)
 }
 
 // Claim returns nil when nothing is claimable. SKIP LOCKED: a second builder
@@ -308,6 +324,9 @@ func (b *Builder) keepLease(ctx context.Context, cancel context.CancelCauseFunc,
 			if err := b.Extend(ctx, a); err != nil {
 				cancel(fmt.Errorf("lost the lease: %w", err))
 				return
+			}
+			if b.Heartbeat != nil {
+				b.Heartbeat(ctx)
 			}
 		}
 	}

@@ -103,12 +103,26 @@ func main() {
 	}
 	builder := &exports.Builder{Pool: pool, Evidence: evidenceStore, Exports: exportStore,
 		Contributor: construction.New().ExportsContributor(), Instance: instance}
+	// A long build heartbeats into job_runs, so /healthz/jobs doesn't call it stale.
+	builder.Heartbeat = func(ctx context.Context) {
+		_ = notifications.RecordRun(ctx, pool, notifications.JobExports, instance, func(context.Context) (int, error) { return 0, nil })
+	}
 	go func() {
 		t := time.NewTicker(exportTick)
 		defer t.Stop()
 		for {
-			if err := notifications.RecordRun(ctx, pool, notifications.JobExports, instance, builder.RunOnce); err != nil && !errors.Is(err, context.Canceled) {
+			// Each build is its own run; an idle pass is one too.
+			built := 0
+			err := notifications.RecordRun(ctx, pool, notifications.JobExports, instance, func(ctx context.Context) (int, error) {
+				n, err := builder.RunOne(ctx)
+				built = n
+				return n, err
+			})
+			if err != nil && !errors.Is(err, context.Canceled) {
 				slog.Error("job failed", "job", notifications.JobExports, "error", err)
+			}
+			if built > 0 && ctx.Err() == nil {
+				continue // straight on to the next queued export
 			}
 			select {
 			case <-ctx.Done():

@@ -72,7 +72,8 @@ nothing). 404 `"notification not found"` (also for someone else's).
 ["emails"]}` when a worker job has gone twice its interval without
 completing (Rev 4 §2.3). The jobs are `reminders` (15 minutes), `emails`
 (1 minute), `holidays` (6 hours) and, since M12, `exports` (the audit pack
-builder; stale after 30 minutes without a finished pass).
+builder; 1 minute: each build is a run, an idle pass is one, and a long
+build records a heartbeat each time it renews its lease).
 
 ## Types for `web/src/lib/types.ts`
 

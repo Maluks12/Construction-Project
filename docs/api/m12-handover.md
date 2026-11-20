@@ -92,8 +92,9 @@ against the Go code, so copy types from there.
   it too, with versioning and a 7-day lifecycle rule.
 - **The worker** builds packs. Locally: `docker compose up -d --build
   worker` (or `go run ./cmd/worker`). It needs the S3 variables as the API
-  does. `/healthz/jobs` reports `exports` stale when no builder pass has
-  finished in 30 minutes.
+  does. `/healthz/jobs` reports `exports` stale after 2 minutes with no
+  finished pass, build or heartbeat (a long build heartbeats as it renews
+  its lease).
 
 ## Open, not in M12
 

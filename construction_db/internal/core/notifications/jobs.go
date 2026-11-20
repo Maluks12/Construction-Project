@@ -30,7 +30,7 @@ var Schedule = map[string]time.Duration{
 	JobReminders: 15 * time.Minute,
 	JobEmails:    time.Minute,
 	JobHolidays:  6 * time.Hour,
-	JobExports:   15 * time.Minute, // a pass lasts as long as its builds
+	JobExports:   time.Minute, // each build is a run, and a long one heartbeats
 }
 
 // SendingTimeout: an email claimed this long ago and still 'sending' was

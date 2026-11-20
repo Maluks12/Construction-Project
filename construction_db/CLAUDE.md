@@ -261,9 +261,10 @@ both errors.
     instance that claims it runs it and records `job_runs`.
   - **Jobs:** `reminders` (15 min), `emails` (1 min), `holidays` (6 h); see
     `notifications.Schedule`.
-  - **Audit packs (M12):** a loop of its own every 15 s runs
-    `exports.Builder.RunOnce` (recorded as job `exports`, stale after 30
-    min), so a long build never holds up the reminders. Postgres decides who
+  - **Audit packs (M12):** a loop of its own runs `exports.Builder.RunOne`:
+    each build, and each idle pass (every 15 s), is a run of job `exports`
+    (1 min), and a long build records a heartbeat run each time it renews
+    its lease, so it never looks stale nor holds up the reminders. Postgres decides who
     builds what (a claim with a lease; see `internal/core/exports`).
   - **Config:** `REDIS_URL` (required), `SMTP_URL` (required unless
     `EMAIL_MODE=log`), `WORKER_DB_MAX_CONNS` (default 5), and the S3

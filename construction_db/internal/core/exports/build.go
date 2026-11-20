@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"construction_db/internal/core/auth"
 	"construction_db/internal/core/evidence"
 	"construction_db/internal/platform/database"
 	"construction_db/internal/platform/storage"
@@ -507,10 +509,20 @@ func notes(e *ManifestExport) []string {
 		"The evidence chain lists every entry received by the cut-off with every input of its hash; its head hash and length are this site's record outside SiteProof's database.",
 	}
 	if e.IncludesHealth {
-		n = append(n, "Medical certificates of fitness and injury and treatment details are included: the export was requested by a "+
-			e.RequesterRole+", a role allowed to see them (POPIA s26 health information; SiteProof M12 D8).")
+		n = append(n, "Medical certificates of fitness and injury and treatment details are included: the export was requested by "+
+			roleInWords(e.RequesterRole)+", a role allowed to see them (POPIA s26 health information; SiteProof M12 D8).")
 	} else {
 		n = append(n, "Medical certificates of fitness and injury and treatment details are left out: the requester's role may not see them (POPIA s26).")
 	}
 	return n
+}
+
+func roleInWords(role string) string {
+	switch role {
+	case auth.RoleOwner:
+		return "an owner"
+	case auth.RoleSHEOfficer:
+		return "a SHE officer"
+	}
+	return "a " + strings.ReplaceAll(role, "_", " ")
 }

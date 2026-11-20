@@ -107,7 +107,10 @@ func writePack(ctx context.Context, w io.Writer, m *Manifest, files []packFile, 
 	if err != nil {
 		return fmt.Errorf("write pack: index: %w", err)
 	}
-	// "README.txt" < "files/" < "index.html" < "manifest.json".
+	// "CHAIN.md" < "README.txt" < "files/" < "index.html" < "manifest.json".
+	if err := put("CHAIN.md", []byte(evidence.ChainSpec())); err != nil {
+		return fmt.Errorf("write pack: %w", err)
+	}
 	if err := put("README.txt", []byte(readme(m))); err != nil {
 		return fmt.Errorf("write pack: %w", err)
 	}
@@ -171,11 +174,14 @@ func readme(m *Manifest) string {
 	fmt.Fprintf(&b, "As of %s UTC: records the server had received by then. Nothing received later is in this pack.\r\n\r\n",
 		e.AsOf.UTC().Format("2006-01-02 15:04:05.000000"))
 	b.WriteString("What is in it\r\n-------------\r\n")
+	b.WriteString("CHAIN.md       how the evidence chain is computed, to the byte, with test vectors.\r\n")
 	b.WriteString("index.html     the records, readable in a browser, in the order an inspector asks for them.\r\n")
 	b.WriteString("manifest.json  the same records as data, the evidence chain and every file's SHA-256.\r\n")
 	b.WriteString("files/         the original photos and documents, exactly as they were sealed.\r\n\r\n")
 	for _, n := range m.Notes {
-		b.WriteString("- " + n + "\r\n")
+		b.WriteString("- ")
+		b.WriteString(n)
+		b.WriteString("\r\n")
 	}
 	b.WriteString("\r\nHow to check it\r\n---------------\r\n")
 	b.WriteString("1. The SHA-256 of this ZIP file is recorded with the export in SiteProof. Compute it\r\n")
@@ -183,7 +189,7 @@ func readme(m *Manifest) string {
 	b.WriteString("2. Each file in files/ has its SHA-256 in manifest.json (\"files\"). It was checked against the\r\n")
 	b.WriteString("   hash sealed when the server received it, as it was written into this pack.\r\n")
 	b.WriteString("3. manifest.json \"chain\" lists every entry of the site's evidence chain with every input of its\r\n")
-	b.WriteString("   hash. The formulas and byte encoding are published (SiteProof's CHAIN.md):\r\n")
+	b.WriteString("   hash. The formulas, byte encoding and test vectors are in CHAIN.md in this pack:\r\n")
 	b.WriteString("   chain_hash = SHA-256(content_sha256 || server_received_at || site_id || prev_chain_hash || metadata_hash).\r\n")
 	b.WriteString("   The chain's head hash and length on this date are a record outside SiteProof's database: a later\r\n")
 	b.WriteString("   chain that no longer contains this head, or is shorter, has lost entries.\r\n\r\n")

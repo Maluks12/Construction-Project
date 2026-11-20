@@ -252,7 +252,7 @@ func TestExportPack(t *testing.T) {
 
 	// Inside: the entries in order, every file's sealed hash, every section.
 	m, entries, names := readManifest(t, pack)
-	if names[0] != "README.txt" || names[len(names)-2] != "index.html" || names[len(names)-1] != "manifest.json" || !slices.IsSorted(names) {
+	if names[0] != "CHAIN.md" || names[1] != "README.txt" || names[len(names)-2] != "index.html" || names[len(names)-1] != "manifest.json" || !slices.IsSorted(names) {
 		t.Errorf("entries %v", names)
 	}
 	for _, mf := range m.Files {
@@ -270,6 +270,12 @@ func TestExportPack(t *testing.T) {
 	}
 	if !bytes.Contains(entries["manifest.json"], []byte(f.medical)) || !strings.Contains(string(entries["index.html"]), "Sipho Dlamini") {
 		t.Error("the medical or the worker's name is missing")
+	}
+	// The chain's specification travels with the pack, from the same file
+	// the tests check; the README points at it and names the role in words.
+	if string(entries["CHAIN.md"]) != evidence.ChainSpec() || !strings.Contains(string(entries["README.txt"]), "CHAIN.md in this pack") ||
+		!strings.Contains(string(entries["README.txt"]), "requested by an owner, a role allowed") {
+		t.Error("CHAIN.md or the README's notes are wrong")
 	}
 	// An owner's export holds injury details (D8), and the in-progress
 	// inspection as its header only.

@@ -4,9 +4,13 @@ How SiteProof seals evidence into a per-site hash chain, specified to the
 byte, so that anyone (an auditor, an expert witness, a future version of this
 code) can recompute every hash without our software.
 
+<!-- repo-only -->
 The vectors and the SQL query below are not just examples: `chain_test.go`
 reads them from this file and checks the Go code and Postgres against them.
-If you change this file, the tests change with it.
+If you change this file, the tests change with it. Every audit pack carries
+this file as `CHAIN.md` (`evidence.ChainSpec`), without the blocks marked
+repo-only.
+<!-- /repo-only -->
 
 ## What the chain shows, and what it doesn't
 
@@ -30,18 +34,19 @@ to the database leave a chain that still verifies:
   entry's hashes, every hash after it, and the head. Nothing about the hash
   function prevents this; the chain only makes it more work.
 
+<!-- repo-only -->
 `TestRecomputeSQL`, `TestChainWalker` and `TestVerifyChain` demonstrate
-both. Catching them needs a site's head hash and length recorded somewhere
-outside the database, to compare against later. The verify endpoint returns
-exactly these (`head_hash`, `length`):
+both. The audit pack is `docs/api/exports.md`; `VerifyChainAsOf` walks the
+entries received by its cut-off.
+<!-- /repo-only -->
 
-- the daily signed chain anchor (Rev 4 §2.1, P2), written to a separate
-  append-only store;
-- the chain head and length included in every audit pack export (M12, built:
-  `docs/api/exports.md`), with every entry's hash inputs, so a pack someone
-  already holds proves what the chain was at its `as_of`, and its SHA-256 is
-  recorded with the export. `VerifyChainAsOf` walks the entries received by
-  then.
+Catching them needs a site's head hash and length recorded somewhere outside
+the database, to compare against later:
+
+- the daily signed chain anchor, written to a separate append-only store;
+- the chain head and length included in every audit pack export, with every
+  entry's hash inputs, so a pack someone already holds proves what the chain
+  was at its cut-off; the pack's SHA-256 is recorded with the export.
 
 Until one of those exists, the chain shows that the entries present are
 consistent with each other, not that none were removed from the end or
@@ -59,11 +64,15 @@ metadata_hash = SHA-256( format || evidence_id || client_captured_at
 
 `||` is byte concatenation. Every field is raw bytes, never hex or text.
 
-Rev 4 §2.1 specifies the first four fields of `chain_hash`. `metadata_hash`
-is our fifth field: without it the device timestamp, GPS, uploader and device
-could be edited without breaking the chain. Rev 4's four fields keep their
-order, so this extends the spec rather than replacing it. (See "Known spec
-issues" in `construction_db/CLAUDE.md`.)
+The first four fields of `chain_hash` are SiteProof's original specification.
+`metadata_hash` is a fifth field: without it the device timestamp, GPS,
+uploader and device could be edited without breaking the chain. The four
+fields keep their order, so this extends the specification rather than
+replacing it.
+<!-- repo-only -->
+Rev 4 §2.1 is that specification; see "Known spec issues" in
+`construction_db/CLAUDE.md`.
+<!-- /repo-only -->
 
 ### Chain preimage: 120 bytes
 

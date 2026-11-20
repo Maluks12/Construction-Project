@@ -44,6 +44,9 @@ retry) gives the same `sha256`.
 
 A ZIP (entries stored, not compressed):
 
+- `CHAIN.md`: how the evidence chain is computed, to the byte, with test
+  vectors and the SQL check: the same specification SiteProof's own tests
+  check, so anyone can recompute the chain from the manifest alone.
 - `README.txt`: what the pack is and how to check it.
 - `index.html`: every record, readable in a browser with nothing else, in
   the order an inspector asks for (Rev 3 §2.3.10): statutory documents,

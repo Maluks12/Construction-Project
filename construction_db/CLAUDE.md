@@ -1847,6 +1847,54 @@ under cmd/.
   - **Shown, not counted:** absent roster workers.
   - **Not shown:** reminders.
 
+- **Milestone 12, Reports and audit pack** (due Sun 22 Nov; estimate 4 days,
+  forecast Tue 24 Nov). Plan approved Fri 20 Nov. Rigour: full.
+  - **Decisions (Fri 20 Nov):**
+    - **D1 Status:** counts per category, each with its items (record ids)
+      and red/amber/green; the site's status is its worst colour; no score.
+      The rule is written in `docs/api/compliance.md`.
+    - **D2 Today:** the site regime's `time_zone`; no `?date=`.
+    - **D3 Rollup order:** status, red items, amber items, name. Org-level
+      items once, at the top.
+    - **D4 Required appointments:** `construction_manager` (reg 8(1)) and
+      `construction_supervisor` (reg 8(7)) are `required` in workforce.json.
+      A missing appointee is amber, with a caveat: whether they apply
+      depends on the organisation's role on the site. PC makes a principal
+      contractor's red and a subcontractor's uncounted.
+    - **D5 Pack format:** a ZIP whose entries are stored (no compression),
+      in sorted order, with a fixed mtime: `manifest.json`, `index.html`
+      (self-contained, Rev 3 §2.3.10's inspector order), `README.txt`,
+      `files/`.
+    - **D6 Evidence:** bytes for evidence in range or attached to an
+      included record, re-hashed as written (a mismatch fails the build).
+      The manifest lists the whole chain to the cut-off with every hash
+      input.
+    - **D7 Storage:** `S3_EXPORT_BUCKET`, no Object Lock, 7-day lifecycle
+      rule; download links last 5 minutes.
+    - **D8 Injury details:** in a pack only when an owner or SHE officer
+      exports (`canSeeHealthDetails`), and the pack says so.
+    - **D9 Exports:** owners and SHE officers only (Rev 4 §2.12).
+    - **D10 As of the queue time:** a pack is a pure function of its export
+      record and the data recorded by `as_of`. Columns edited in place are
+      read as of `as_of` from append-only history (new for sites,
+      organisations, members and talk headers), set-once columns by their
+      own time, derived state by replay. A build starts at least 2 minutes
+      after `as_of`.
+    - **D11/D16 /v1/me:** `role`, `full_name`, `org_name`, `capabilities`.
+      Capabilities are display hints from one table encoding today's route
+      guards; no handler reads them. For a supervisor they mean "on your own
+      sites". Computed per request from the live membership. The table and
+      the guards change together when the role matrix is approved.
+    - **D12 Checkpoint:** every P1 row of Rev 4 6.A and 6.B, the P2 rows
+      built, the keep/defer list.
+    - **D13 REG4:** straight after M12, before SYNC.
+    - **D14 Gaps:** new milestones after PC, before V1; each new record type
+      includes its sync adapter.
+  - **Depends on the unapproved role matrix:** supervisors' summary scope;
+    expired vault items on supervisors' sites; D8 and D9 (Rev 4 §2.12 gives
+    health documents to the claims handler); org-level pending files for
+    leads only; the capability table; the other three roles get nothing.
+
 ## Finding severity
 
 A fixed product scale (decided 9 Nov 2026), not regime data, so findings

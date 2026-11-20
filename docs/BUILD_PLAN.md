@@ -221,6 +221,12 @@ Proposed Wed 18 Nov (not scheduled):
 - [ ] Audit pack export with evidence manifest and chain verification result. Include each site's chain head hash and length: the chain alone can't detect its newest entries being deleted (with site_chain_heads rewound), but a pack someone already holds records how long it was (see internal/core/evidence/CHAIN.md). Until the daily signed anchor (P2) exists, this is the only external record. Verifying a long chain (it walks every entry) can take longer than REQUEST_TIMEOUT (default 10s), and a pack covers many sites, so the export may need to run in cmd/worker rather than inside a request. Include abandoned inspections, marked abandoned, with their answers and who abandoned them, when and why (decided 15 Nov) (due Sun 22 Nov)
 - [ ] Checkpoint: review the safety core against Rev 4 section 6.D; decide cuts here if behind (due Sun 22 Nov)
 
+Plan approved Fri 20 Nov (decisions D1–D16 in `construction_db/CLAUDE.md`, Status). **M12 no longer fits 2 days:** the org rollup, the extra summary items and an audit pack that can be rebuilt as of its queue time make it about 4 days (summary and rollup 1, history tables and as-of reads 0.5–1, export storage, worker, pack and races 2, checkpoint 0.5), finishing Tue 24 Nov. The forecast is recomputed at the checkpoint, below. The items above, with the rules decided:
+- **GET /v1/me:** `role`, `full_name`, `org_name` and `capabilities`. Capabilities are display hints from one table of today's route guards; no handler reads them. For a supervisor they mean "on your own sites". The table and the guards change together when the role matrix is approved.
+- **Compliance summary** per site and an organisation rollup, with counts, items by record id and red/amber/green per category; the site's status is its worst. "Today" is in the site regime's zone. Also open incident deadlines, expiring competencies, medicals and appointments of roster workers, and required appointments with no live appointee (amber, with a caveat; see PC).
+- **Pending uploads:** evidence and files pending more than 24 hours after they were declared, per site; files with no site in the rollup, for leads only.
+- **Audit pack:** built by `cmd/worker` as a deterministic ZIP (`manifest.json`, `index.html` in inspector order, `README.txt`, the original files), as of the time the export was queued, so a rebuild gives the same SHA-256. Each export is an append-only record with the pack's hash; downloads are logged. Packs live 7 days in their own bucket. Owners and SHE officers only.
+
 ## Sync, onboarding, billing & deploy (due Mon 30 Nov)
 
 ### SYNC: Offline sync API (due Wed 25 Nov; forecast Tue 24 Nov)
@@ -286,6 +292,7 @@ Proposed Wed 18 Nov (not scheduled):
 
 - [ ] Link subcontractor orgs to a site; the principal contractor sees their compliance (due Thu 3 Dec)
 - [ ] Tests for cross-org visibility under RLS (due Fri 4 Dec)
+- [ ] Required appointments by the organisation's role on the site (added Fri 20 Nov, M12 D4): once a site records whether this organisation is the principal contractor, a principal contractor's missing construction manager (CR 2014 reg 8(1)) or construction supervisor (reg 8(7)) becomes red in the compliance summary, and a subcontractor's is not counted. Until then both are amber with a caveat
 - [ ] Quote and model GAR 8(3) (incidents to people other than employees: who reports) and OHSA s24(3) (exclusions, e.g. a traffic accident on a public road). Until then every reportable type starts its clocks and the GAR 8(1) deadlines carry a caveat (decided Sun 15 Nov; here because non-employees on a site are mostly subcontractors' workers)
 
 ### REG4: Regulation 4 notification (proposed Sun 15 Nov; not yet scheduled, date it at the Sun 22 Nov checkpoint)

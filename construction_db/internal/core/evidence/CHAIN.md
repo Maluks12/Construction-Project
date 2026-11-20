@@ -37,8 +37,11 @@ exactly these (`head_hash`, `length`):
 
 - the daily signed chain anchor (Rev 4 §2.1, P2), written to a separate
   append-only store;
-- the chain head and length included in every audit pack export (M12), so a
-  pack someone already holds proves what the chain was on that day.
+- the chain head and length included in every audit pack export (M12, built:
+  `docs/api/exports.md`), with every entry's hash inputs, so a pack someone
+  already holds proves what the chain was at its `as_of`, and its SHA-256 is
+  recorded with the export. `VerifyChainAsOf` walks the entries received by
+  then.
 
 Until one of those exists, the chain shows that the entries present are
 consistent with each other, not that none were removed from the end or

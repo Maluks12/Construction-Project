@@ -110,3 +110,9 @@ against the Go code, so copy types from there.
   uncounted for a subcontractor, in PC.
 - **Customer branding and versioned templates** on packs, and a generated
   safety file, are gap tasks G18, G32 and G33 (BUILD_PLAN, M12 checkpoint).
+- **Planned, not built (awaiting confirmation): `include_health`.** Today
+  every pack holds injury details, since only leads export. The plan adds
+  `include_health` to the export request (boolean, default `false`; `true`
+  only for owners and SHE officers). It becomes part of the export, so a
+  repeat with a different value is 409. Plan for a checkbox on the export
+  form; `exports.md` will say when it ships.

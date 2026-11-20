@@ -1903,7 +1903,8 @@ under cmd/.
   - **Not shown:** reminders.
 
 - **Milestone 12, Reports and audit pack** (due Sun 22 Nov; estimated at 4
-  days, **done Fri 20 Nov**, not yet reviewed). Plan approved Fri 20 Nov.
+  days, **done Fri 20 Nov**, reviewed Fri 20 Nov: approved with fixes,
+  below). Plan approved Fri 20 Nov.
   Rigour: full.
   - **Decisions (Fri 20 Nov):**
     - **D1 Status:** counts per category, each with its items (record ids)
@@ -2064,6 +2065,66 @@ under cmd/.
     their columns; `pack_format` is bumped when what a pack holds changes.
     Postgres can't type a parameter a section doesn't use, so `RunSection`
     types all seven once.
+  - **Review fixes (Fri 20 Nov), migrations 000040–000043**, each its own
+    commit after the M12 steps:
+    1. **Backoff** (000040): a second attempt 1 minute after the first
+       ended, the third 5 minutes after the second (a lapsed attempt ended
+       when its lease ran out). `audit_export_retry_at` is the one
+       definition, used by the claim and the attempts guard.
+    2. **A seal mismatch is an integrity alarm** (000041): outcome
+       `integrity`, failed for good, logged at error with the export, site
+       and object, and an `integrity_alarm` notification (subject `export`)
+       to active owners and SHE officers, in-app and by email.
+    3. **The pack carries CHAIN.md** (`evidence.ChainSpec`: the repo file
+       minus its `repo-only` blocks); the health note names the role in
+       words. Still `pack_format` 1: nothing has shipped.
+    4. **One roster** (000042): `site_roster_on(site, day, zone, lapse)`,
+       used by `site_absent`, the summary's worker records and the reminder
+       recipients (`notifications_due` gains `p_lapse_days`).
+    5. **Pack size** (000043): the builder estimates the pack (an upper
+       bound) and `storage.PartSizeFor` grows the part size to fit 10,000
+       parts; above one object's limit (5 TiB) the export is `refused` for
+       good. A pack over 4 GiB (ZIP64) is byte-identical across builds.
+    6. **The rollup reads the vault once** per regime; an organisation with
+       no active site reads it by the edition's default regime. 25 sites:
+       459 ms on a dev laptop.
+    7. **`TestProductionUsesTheRealClock`** also refuses `Settle`, `Lease`,
+       `Backoff` and `OnlyOrgs` set under cmd/.
+    8. **`/healthz/jobs`:** each build and each idle pass is its own
+       `exports` run (1 min), and a long build records a heartbeat run each
+       time it renews its lease (`Builder.RunOne`, `Builder.Heartbeat`).
+    9. **`evidence.ClientOf`** in every handler that logs access
+       (`TestAccessLogClientFromClientOf`).
+    10. **BUILD_PLAN:** headings' forecast dates match the table; the
+        checkpoint is a review point.
+
+    **Mutation checks:** fix 1 4 of 4, fix 2 6 of 6, fix 4 5 of 5, fix 7 6
+    of 6, fix 8 1 of 1 (the heartbeat call), fix 9 2 of 2 (a hand-built
+    client, a spoofed forwarded IP).
+  - **Planned, awaiting confirmation (Fri 20 Nov): `include_health` opt-in.**
+    Today a pack always holds injury details, because only owners and SHE
+    officers export (D8, D9). The plan:
+    - `ExportRequest` gains `include_health` (boolean, default false);
+      `true` is allowed only for owners and SHE officers
+      (`CanSeeHealthDetails`), anyone else 403.
+    - The flag is part of the export record (an identical repeat compares
+      it; different is 409), so a rebuild stays deterministic;
+      `includes_health` on `Export` reports it.
+    - The pack's note says whether injury details were included, and why
+      not when they weren't ("not requested").
+    - Contract change: `exports.md` and `m12-handover.md` are updated in the
+      same commit; the dashboard adds a checkbox for leads.
+    - Not built until confirmed.
+
+- **SYNC answers (Fri 20 Nov),** for the SYNC milestone:
+  - **REG4's records** are in pull and push like every other record type.
+  - **Capabilities may be cached offline.** The phone refreshes them on
+    reconnect and after any 403, and signs out on a 401.
+  - **Batch push** carries declarations (evidence and files) and returns
+    fresh upload URLs for the pending ones; the upload itself and
+    `complete` stay one request per file.
+  - **Server-only:** the history tables (000032, 000037) and exports are
+    never pulled or pushed.
 
 ## Finding severity
 

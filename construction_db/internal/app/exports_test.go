@@ -32,7 +32,7 @@ func exportPath(site, id string) string { return "/v1/sites/" + site + "/exports
 func newBuilder(lease time.Duration) *exports.Builder {
 	return &exports.Builder{Pool: testPool, Evidence: testStore, Exports: testExports,
 		Contributor: construction.New().ExportsContributor(), Instance: "test-" + uuid.NewString()[:8],
-		Settle: time.Millisecond, Lease: lease}
+		Settle: time.Millisecond, Lease: lease, Backoff: time.Millisecond}
 }
 
 func exportBody(from, to string) map[string]any {
@@ -589,4 +589,115 @@ func TestExportDatabaseRules(t *testing.T) {
 		!strings.Contains(err.Error(), "requester_role") {
 		t.Errorf("an export claiming another role: %v", err)
 	}
+}
+
+// Retries back off (M12 review): a second attempt 1 minute after the
+// first ended, a third 5 minutes after the second. A failing build gets one
+// attempt per pass, not three in a row.
+func TestExportBackoff(t *testing.T) {
+	f := newEvidenceFixture(t, "exportbackoff")
+	clk, ctx, org := newSASTClock(t), context.Background(), f.ownerMe.OrgID
+	e := queueExport(t, f, f.siteA, exportBody(clk.Today(), clk.Today()))
+	time.Sleep(5 * time.Millisecond)
+
+	crash := &exports.Builder{Pool: testPool, Evidence: testStore, Exports: failingUploads{testExports},
+		Instance: "backoff", Settle: time.Millisecond, Lease: 10 * time.Second, OnlyOrgs: []string{org}}
+	_, err := crash.RunOnce(ctx)
+	if err == nil || !strings.Contains(err.Error(), "connection reset") || strings.Contains(err.Error(), "next attempt may start") {
+		t.Errorf("one pass: %v", err)
+	}
+	if n := countRows(t, `SELECT count(*) FROM audit_export_attempts WHERE export_id = $1`, e.ID); n != 1 {
+		t.Fatalf("a failing build got %d attempts in one pass, want 1", n)
+	}
+	if a, err := crash.Claim(ctx, org); err != nil || a != nil {
+		t.Errorf("claimed within a minute of the failure: %+v, %v", a, err)
+	}
+	// The database refuses it too, whatever the claim query says.
+	early := database.WithTenant(ctx, testPool, database.Tenant{OrgID: org}, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('siteproof.export_settle', '0 seconds', true)`); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO audit_export_attempts (id, org_id, export_id, attempt, instance, claimed_at, lease_until)
+			VALUES (gen_random_uuid(), $1, $2, 2, 'x', now(), clock_timestamp() + interval '1 minute')`, org, e.ID)
+		return err
+	})
+	if early == nil || !strings.Contains(early.Error(), "the next attempt may start") {
+		t.Errorf("an early second attempt: %v", early)
+	}
+
+	// A worker that stopped: its lease lapses, then the backoff runs from there.
+	e2 := queueExport(t, f, f.siteA, exportBody(clk.Today(), clk.Today()))
+	time.Sleep(5 * time.Millisecond)
+	stopped := &exports.Builder{Pool: testPool, Instance: "stopped", Settle: time.Millisecond, Lease: 200 * time.Millisecond}
+	if a, err := stopped.Claim(ctx, org); err != nil || a == nil || a.ExportID != e2.ID {
+		t.Fatalf("claim: %+v, %v", a, err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if a, err := stopped.Claim(ctx, org); err != nil || a != nil {
+		t.Errorf("re-claimed right after the lease lapsed: %+v, %v", a, err)
+	}
+
+	// The backoff runs from when the lease ran out, not from the claim.
+	e4 := queueExport(t, f, f.siteA, exportBody(clk.Today(), clk.Today()))
+	time.Sleep(5 * time.Millisecond)
+	timed := &exports.Builder{Pool: testPool, Instance: "timed", Settle: time.Millisecond, Lease: 300 * time.Millisecond,
+		Backoff: 200 * time.Millisecond}
+	claimE4 := func() *exports.Attempt {
+		t.Helper()
+		for {
+			a, err := timed.Claim(ctx, org)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if a == nil || a.ExportID == e4.ID {
+				return a
+			}
+			_ = timed.Fail(ctx, a, errors.New("not this test's export"))
+		}
+	}
+	if a := claimE4(); a == nil {
+		t.Fatal("no claim of e4")
+	}
+	time.Sleep(350 * time.Millisecond) // lapsed at 300 ms; may restart at 500
+	if a := claimE4(); a != nil {
+		t.Errorf("re-claimed 50 ms after the lease lapsed, inside the 200 ms backoff")
+	}
+	time.Sleep(250 * time.Millisecond)
+	if a := claimE4(); a == nil {
+		t.Error("no re-claim after the backoff")
+	}
+
+	// With a 100 ms base: the second attempt after 100 ms, the third after 500.
+	e3 := queueExport(t, f, f.siteA, exportBody(clk.Today(), clk.Today()))
+	quick := &exports.Builder{Pool: testPool, Evidence: testStore, Exports: failingUploads{testExports},
+		Instance: "quick", Settle: time.Millisecond, Lease: 10 * time.Second, Backoff: 100 * time.Millisecond}
+	runNext := func(want bool) {
+		t.Helper()
+		var a *exports.Attempt
+		for a == nil || a.ExportID != e3.ID {
+			if a, err = quick.Claim(ctx, org); err != nil {
+				t.Fatal(err)
+			}
+			if a == nil {
+				break
+			}
+			if a.ExportID != e3.ID {
+				_ = quick.Fail(ctx, a, errors.New("not this test's export"))
+			}
+		}
+		if (a != nil) != want {
+			t.Fatalf("claim of e3: got %+v, want a claim: %v", a, want)
+		}
+		if a != nil {
+			_ = quick.Run(ctx, a)
+		}
+	}
+	time.Sleep(5 * time.Millisecond)
+	runNext(true)
+	time.Sleep(150 * time.Millisecond)
+	runNext(true)
+	time.Sleep(150 * time.Millisecond)
+	runNext(false) // the third waits 500 ms
+	time.Sleep(450 * time.Millisecond)
+	runNext(true)
 }

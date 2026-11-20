@@ -28,8 +28,10 @@ type Builder struct {
 	Exports     storage.Store // the exports bucket: packs are written to it
 	Contributor Contributor   // the edition's sections; nil for none
 	Instance    string        // who is building, for the attempt row
-	// Settle and Lease are the defaults when zero; tests shorten them.
-	Settle, Lease time.Duration
+	// Settle, Lease and Backoff are the defaults when zero; tests shorten them.
+	Settle, Lease, Backoff time.Duration
+	// OnlyOrgs limits RunOnce to these organisations (tests).
+	OnlyOrgs []string
 }
 
 func (b *Builder) settle() time.Duration { return cmpOr(b.Settle, Settle) }
@@ -73,6 +75,9 @@ func (b *Builder) RunOnce(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("exports: list orgs: %w", err)
 	}
+	if len(b.OnlyOrgs) > 0 {
+		orgs = b.OnlyOrgs
+	}
 	built := 0
 	var errs []error
 	for _, org := range orgs {
@@ -104,11 +109,17 @@ func (b *Builder) Claim(ctx context.Context, orgID string) (*Attempt, error) {
 		if _, err := tx.Exec(ctx, `SELECT set_config('siteproof.export_settle', $1, true)`, interval(b.settle())); err != nil {
 			return err
 		}
+		if b.Backoff > 0 {
+			if _, err := tx.Exec(ctx, `SELECT set_config('siteproof.export_backoff', $1, true)`, interval(b.Backoff)); err != nil {
+				return err
+			}
+		}
 		var exportID string
 		err := tx.QueryRow(ctx, `
 			SELECT e.id::text FROM audit_exports e
 			WHERE NOT EXISTS (SELECT 1 FROM audit_export_results r WHERE r.export_id = e.id)
 			  AND e.as_of <= clock_timestamp() - audit_export_settle()
+			  AND audit_export_retry_at(e.id) <= clock_timestamp()
 			  AND NOT EXISTS (SELECT 1 FROM audit_export_attempts x
 			                  WHERE x.export_id = e.id AND x.finished_at IS NULL AND x.lease_until > clock_timestamp())
 			  AND (SELECT count(*) FROM audit_export_attempts x WHERE x.export_id = e.id

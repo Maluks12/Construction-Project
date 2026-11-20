@@ -103,7 +103,9 @@ The `Export` with its `status`. 404 `"export not found"`.
 - `ready`: `sha256`, `size_bytes`, the counts and the chain's
   `chain_length`, `chain_head` and `chain_intact` are set.
 - `failed`: three attempts failed (`last_error` says why). Queue a new
-  export.
+  export. Attempts back off: the second starts at least 1 minute after the
+  first ended, the third 5 minutes after the second, so a failing export
+  takes about 6 minutes to fail for good.
 - `expired`: built, but more than 7 days ago; the pack is gone, the record
   and its `sha256` stay.
 

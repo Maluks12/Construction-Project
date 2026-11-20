@@ -115,7 +115,7 @@ func TestActionRaiseRules(t *testing.T) {
 		refusedBatch(t, tx, "23514", "a new action is open", stmt{`
 			INSERT INTO corrective_actions (id, org_id, site_id, inspection_id, item_key, severity, title, raised_by, client_raised_at,
 			                                time_zone, owner_id, due_on, status)
-			VALUES ($1, $2, $3, $4, 'item', 'high', 'Fix', $5, now(), 'Africa/Johannesburg', $5, current_date + 1, 'closed')`,
+			VALUES ($1, $2, $3, $4, 'item', 'high', 'Fix', $5, now(), 'Africa/Johannesburg', $5, action_local_date(now(), 'Africa/Johannesburg') + 1, 'closed')`,
 			[]any{actID(1), rlsOrgA, rlsSiteA, rlsInspA, supOnSite}})
 		okBatch(t, tx, append(raiseOn(actID(2), rlsInspA, "item", "medium", supOnSite, open(supOnSite, 1), nil), stmt{checkNow, nil})...)
 	})
@@ -159,7 +159,7 @@ func TestActionRaiseRules(t *testing.T) {
 		if _, err := sp.Exec(ctx, `
 			INSERT INTO corrective_actions (id, org_id, site_id, inspection_id, item_key, severity, title, raised_by, client_raised_at,
 			                                time_zone, owner_id, due_on, due_at)
-			VALUES ($1, $2, $3, $4, 'item', 'medium', 'Fix', $5, now(), 'Africa/Johannesburg', $5, current_date + 1, '2000-01-01')`,
+			VALUES ($1, $2, $3, $4, 'item', 'medium', 'Fix', $5, now(), 'Africa/Johannesburg', $5, action_local_date(now(), 'Africa/Johannesburg') + 1, '2000-01-01')`,
 			actID(15), rlsOrgA, rlsSiteA, rlsInspA, supOnSite); err != nil {
 			t.Fatal(err)
 		}
@@ -187,13 +187,13 @@ func TestActionRaiseRules(t *testing.T) {
 		refusedBatch(t, tx, "23514", "client_raised_at is in the future", stmt{`
 			INSERT INTO corrective_actions (id, org_id, site_id, inspection_id, item_key, severity, title, raised_by, client_raised_at,
 			                                time_zone, owner_id, due_on)
-			VALUES ($1, $2, $3, $4, 'item', 'high', 'Fix', $5, now() + interval '1 hour', 'Africa/Johannesburg', $5, current_date + 1)`,
+			VALUES ($1, $2, $3, $4, 'item', 'high', 'Fix', $5, now() + interval '1 hour', 'Africa/Johannesburg', $5, action_local_date(now(), 'Africa/Johannesburg') + 1)`,
 			[]any{actID(4), rlsOrgA, rlsSiteA, rlsInspA, supOnSite}})
 		refusedBatch(t, tx, "23514", "due_on is before the day it was raised", raiseOn(actID(4), rlsInspA, "item", "medium", supOnSite, open(supOnSite, -1), nil)...)
 		refusedBatch(t, tx, "22023", "", stmt{`
 			INSERT INTO corrective_actions (id, org_id, site_id, inspection_id, item_key, severity, title, raised_by, client_raised_at,
 			                                time_zone, owner_id, due_on)
-			VALUES ($1, $2, $3, $4, 'item', 'high', 'Fix', $5, now(), 'Mars/Olympus', $5, current_date + 1)`,
+			VALUES ($1, $2, $3, $4, 'item', 'high', 'Fix', $5, now(), 'Mars/Olympus', $5, action_local_date(now(), 'Africa/Johannesburg') + 1)`,
 			[]any{actID(4), rlsOrgA, rlsSiteA, rlsInspA, supOnSite}})
 	})
 
@@ -343,7 +343,7 @@ func TestActionEventRules(t *testing.T) {
 		refusedBatch(t, tx, "23514", fmt.Sprintf("event %d is not the next event", seq-1), event(a, seq-1, "reassigned", rlsUserA, nil, state{"open", rlsUserA, nil, 0}))
 		refusedBatch(t, tx, "23514", "client_at is in the future", stmt{`
 			INSERT INTO corrective_action_events (id, org_id, site_id, action_id, seq, kind, actor_id, client_at, status, owner_id, due_on)
-			VALUES ($1, $2, $3, $4, $5, 'reassigned', $6, now() + interval '1 hour', 'open', $6, current_date)`,
+			VALUES ($1, $2, $3, $4, $5, 'reassigned', $6, now() + interval '1 hour', 'open', $6, action_local_date(now(), 'Africa/Johannesburg'))`,
 			[]any{evID(9999), rlsOrgA, rlsSiteA, a, seq, rlsUserA}})
 		refusedBatch(t, tx, "23514", "is not an owner, SHE officer or supervisor on its site",
 			event(a, seq, "due_changed", supOffSite, nil, state{"open", supOnSite2, "ABC Scaffolding", 1}))

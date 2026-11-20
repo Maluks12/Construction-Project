@@ -18,6 +18,7 @@ import (
 	"construction_db/internal/core/evidence"
 	"construction_db/internal/core/files"
 	"construction_db/internal/core/sites"
+	"construction_db/internal/platform/clock"
 	"construction_db/internal/platform/database"
 	"construction_db/internal/regimes"
 )
@@ -29,6 +30,8 @@ type Service struct {
 	sites *sites.Service
 	files *files.Service
 	reg   *regimes.Registry
+	// Clock is now for state and future checks; nil is the real time.
+	Clock clock.Clock
 }
 
 func NewService(pool *pgxpool.Pool, sitesSvc *sites.Service, filesSvc *files.Service, reg *regimes.Registry) *Service {
@@ -102,7 +105,7 @@ func (s *Service) Register(ctx context.Context, orgID, userID, role string, w Wh
 		if err != nil {
 			return err
 		}
-		now := time.Now()
+		now := s.Clock.Now()
 		for i := range docs {
 			s.setState(&docs[i].Current, docs[i].RegimeCode, t.scope, now)
 		}
@@ -153,7 +156,7 @@ func (s *Service) Create(ctx context.Context, orgID, userID, role string, w Wher
 	if !textOK(&req.Title, 200) {
 		return nil, false, ErrBadTitle
 	}
-	if err := normaliseVersion(&req.Version, time.Now()); err != nil {
+	if err := normaliseVersion(&req.Version, s.Clock.Now()); err != nil {
 		return nil, false, err
 	}
 	if !isLead(role) {
@@ -230,7 +233,7 @@ func (s *Service) AddVersion(ctx context.Context, orgID, userID, role string, w 
 	if err != nil || n < 2 {
 		return nil, false, ErrBadVersion
 	}
-	if err := normaliseVersion(&req, time.Now()); err != nil {
+	if err := normaliseVersion(&req, s.Clock.Now()); err != nil {
 		return nil, false, err
 	}
 	if !isLead(role) {
@@ -352,7 +355,7 @@ func (s *Service) view(ctx context.Context, tx pgx.Tx, orgID string, t *target, 
 	if out.Versions, err = listVersions(ctx, tx, orgID, id); err != nil {
 		return nil, err
 	}
-	now := time.Now()
+	now := s.Clock.Now()
 	s.setState(&out.Current, d.RegimeCode, t.scope, now)
 	for i := range out.Versions {
 		switch v := &out.Versions[i]; {

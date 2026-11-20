@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -18,7 +17,7 @@ func safetyFilePath(site, id string) string {
 }
 
 func versionReq(file string, fields map[string]any) map[string]any {
-	body := map[string]any{"file_id": file, "client_uploaded_at": rfc(time.Now())}
+	body := map[string]any{"file_id": file, "client_uploaded_at": rfc(testClock.Now())}
 	for k, v := range fields {
 		body = with(body, k, v)
 	}
@@ -56,8 +55,8 @@ func readinessOf(r documents.Register, key string) documents.Readiness {
 
 func TestVault(t *testing.T) {
 	f := newEvidenceFixture(t, "vault")
-	expires := time.Now().AddDate(0, 0, 20).Format(time.DateOnly)
-	later := time.Now().AddDate(1, 0, 0).Format(time.DateOnly)
+	c := newSASTClock(t)
+	expires, later := c.Day(20), c.Day(365)
 	lgs := func(file, issuer, exp string) map[string]any {
 		return map[string]any{"regime_code": "za_construction_2014", "type_key": "coida_letter_of_good_standing", "title": "LGS 2026",
 			"version": versionReq(file, map[string]any{"issuer": issuer, "expires_on": exp, "reference": "CF 990001234"})}

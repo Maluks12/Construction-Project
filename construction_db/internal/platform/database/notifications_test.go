@@ -226,7 +226,7 @@ func TestHolidayRecompute(t *testing.T) {
 	tx := beginAs(t, admin, "")
 	var day time.Time
 	if err := tx.QueryRow(ctx, `
-		SELECT min(d)::date FROM generate_series(current_date + 2, current_date + 9, interval '1 day') d
+		SELECT min(d)::date FROM generate_series(action_local_date(now(), 'Africa/Johannesburg') + 2, action_local_date(now(), 'Africa/Johannesburg') + 9, interval '1 day') d
 		WHERE extract(isodow FROM d) < 6 AND NOT EXISTS (SELECT 1 FROM public_holidays WHERE jurisdiction = 'ZA' AND holiday_date = d::date)`).Scan(&day); err != nil {
 		t.Fatal(err)
 	}
@@ -364,4 +364,57 @@ func TestEmailLoggedStatus(t *testing.T) {
 	must(t, tx, 1, set, id, "logged")
 	refused(t, tx, "23514", "logged can't become sent", set, id, "sent")
 	refused(t, tx, "23514", "logged can't become sending", set, id, "sending")
+}
+
+// notification_regime (000036): an email's dates are told in the site's
+// regime's zone, else the record's own regime (org-level records).
+func TestNotificationRegime(t *testing.T) {
+	seedRLS(t)
+	ctx := context.Background()
+	tx := beginAs(t, pool, rlsOrgA)
+	addActionMembers(t, tx)
+	var siteRegime string
+	if err := tx.QueryRow(ctx, `SELECT g.code FROM sites s JOIN regulatory_regimes g ON g.id = s.regime_id WHERE s.id = $1`, rlsSiteA).Scan(&siteRegime); err != nil {
+		t.Fatal(err)
+	}
+	w := workerID(511)
+	must(t, tx, 1, workerSQL, w, rlsOrgA, "Regime Worker", nil, nil, rlsUserA)
+	comp, med := compID(511), medID(511)
+	must(t, tx, 1, `
+		INSERT INTO worker_competencies (id, org_id, worker_id, regime_code, type_key, issued_on, expires_on, file_id, recorded_by, client_recorded_at)
+		VALUES ($1, $2, $3, 'other_regime', 'rope_access_licence', '2026-01-01', '2027-01-01', $4, $5, now())`,
+		comp, rlsOrgA, w, verifiedFile(t, tx, 511, "competency"), rlsUserA)
+	must(t, tx, 1, `
+		INSERT INTO worker_medicals (id, org_id, worker_id, regime_code, outcome, examined_on, expires_on, file_id, recorded_by, client_recorded_at)
+		VALUES ($1, $2, $3, 'medical_regime', 'fit', '2026-01-01', '2027-01-01', $4, $5, now())`,
+		med, rlsOrgA, w, verifiedFile(t, tx, 512, "medical"), rlsUserA)
+	doc := docID(511)
+	must(t, tx, 1, `INSERT INTO documents (id, org_id, site_id, scope, regime_code, type_key, title, created_by)
+		VALUES ($1, $2, NULL, 'org', 'vault_regime', 'coida_letter_of_good_standing', 'LGS', $3)`, doc, rlsOrgA, rlsUserA)
+
+	regimeOf := func(kind, subjectType, subject string, site any) *string {
+		t.Helper()
+		var code *string
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO notifications (org_id, user_id, kind, subject_type, subject_id, threshold, site_id, title)
+			VALUES ($1, $2, $3, $4, $5, 'before_7d', $6, 't')
+			RETURNING notification_regime(notifications)`, rlsOrgA, rlsUserA, kind, subjectType, subject, site).Scan(&code); err != nil {
+			t.Fatal(err)
+		}
+		return code
+	}
+	for _, c := range []struct {
+		name, kind, subjectType, subject string
+		site                             any
+		want                             string
+	}{
+		{"a site thing takes the site's regime", "action_overdue", "action", rlsActionA, rlsSiteA, siteRegime},
+		{"a competency its own", "competency_expiry", "competency", comp, nil, "other_regime"},
+		{"a medical its own", "medical_expiry", "medical", med, nil, "medical_regime"},
+		{"a vault document its own", "document_expiry", "document", doc, nil, "vault_regime"},
+	} {
+		if got := regimeOf(c.kind, c.subjectType, c.subject, c.site); got == nil || *got != c.want {
+			t.Errorf("%s: %v, want %s", c.name, got, c.want)
+		}
+	}
 }

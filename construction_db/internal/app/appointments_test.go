@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -22,8 +21,9 @@ func TestAppointments(t *testing.T) {
 	manager := newWorker(t, f.router, f.owner, map[string]any{"name": "Site Manager"})
 	next := newWorker(t, f.router, f.owner, map[string]any{"name": "Next Manager"})
 	letter := uploadFile(t, f.router, f.owner, files.PurposeAppointment, &f.siteA)
-	body := map[string]any{"worker_id": manager, "type_key": "construction_manager", "appointed_on": time.Now().Format(time.DateOnly),
-		"file_id": letter, "client_recorded_at": rfc(time.Now())}
+	c := newSASTClock(t)
+	body := map[string]any{"worker_id": manager, "type_key": "construction_manager", "appointed_on": c.Today(),
+		"file_id": letter, "client_recorded_at": rfc(c.Now())}
 
 	id := uuid.NewString()
 	wantError(t, do(t, f.router, http.MethodPut, appointmentPath(f.siteA, id), f.supervisor, body), http.StatusForbidden,

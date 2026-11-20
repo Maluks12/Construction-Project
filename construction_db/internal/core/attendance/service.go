@@ -17,6 +17,7 @@ import (
 	"construction_db/internal/core/evidence"
 	"construction_db/internal/core/sites"
 	"construction_db/internal/core/workers"
+	"construction_db/internal/platform/clock"
 	"construction_db/internal/platform/database"
 	"construction_db/internal/regimes"
 )
@@ -27,6 +28,8 @@ type Service struct {
 	pool  *pgxpool.Pool
 	sites *sites.Service
 	reg   *regimes.Registry
+	// Clock is now for state and future checks; nil is the real time.
+	Clock clock.Clock
 }
 
 func NewService(pool *pgxpool.Pool, sitesSvc *sites.Service, reg *regimes.Registry) *Service {
@@ -68,7 +71,7 @@ func (s *Service) SignIn(ctx context.Context, orgID, userID, role, siteID, signI
 		return nil, false, ErrBadWorkerID
 	}
 	req.WorkerID = wid.String()
-	now := time.Now()
+	now := s.Clock.Now()
 	switch {
 	case !slices.Contains(Methods, req.Method):
 		return nil, false, ErrBadMethod
@@ -173,7 +176,7 @@ func (s *Service) SignIn(ctx context.Context, orgID, userID, role, siteID, signI
 }
 
 func (s *Service) warn(ctx context.Context, tx pgx.Tx, orgID string, si *SignIn) error {
-	w, err := workers.WarningsFor(ctx, tx, s.reg, orgID, si.WorkerID, time.Now())
+	w, err := workers.WarningsFor(ctx, tx, s.reg, orgID, si.WorkerID, s.Clock.Now())
 	si.Warnings = w
 	return err
 }
@@ -194,7 +197,7 @@ func (s *Service) SignOut(ctx context.Context, orgID, userID, role, siteID, sign
 	switch {
 	case req.ClientSignedOutAt.IsZero():
 		return nil, false, ErrNoSignedOutAt
-	case req.ClientSignedOutAt.After(time.Now().Add(clockSkew)):
+	case req.ClientSignedOutAt.After(s.Clock.Now().Add(clockSkew)):
 		return nil, false, ErrSignedOutFuture
 	}
 	req.ClientSignedOutAt = micro(req.ClientSignedOutAt)
@@ -367,7 +370,7 @@ func (s *Service) Day(ctx context.Context, orgID, userID, role, siteID, date str
 			if err != nil {
 				return err
 			}
-			date = time.Now().In(loc).Format(time.DateOnly)
+			date = s.Clock.Now().In(loc).Format(time.DateOnly)
 		}
 		site := sr.Site.ID
 		d = &Day{SiteID: site, Date: date}
@@ -408,7 +411,7 @@ func (s *Service) Roster(ctx context.Context, orgID, userID, role, siteID string
 		}
 		site, ds := sr.Site, sr.Data
 		out, err = listRoster(ctx, tx, orgID, site.ID, !all)
-		markExpected(out, ds, time.Now())
+		markExpected(out, ds, s.Clock.Now())
 		return err
 	})
 	if err = finish(err, "roster"); err != nil {
@@ -435,7 +438,7 @@ func (s *Service) AddToRoster(ctx context.Context, orgID, userID, role, siteID, 
 			return err
 		}
 		if out, err = liveRosterEntry(ctx, tx, orgID, site.ID, workerID); err == nil {
-			out.Expected = expectedNow(*out, ds, time.Now())
+			out.Expected = expectedNow(*out, ds, s.Clock.Now())
 			return nil
 		} else if !isNotFound(err) {
 			return err
@@ -446,7 +449,7 @@ func (s *Service) AddToRoster(ctx context.Context, orgID, userID, role, siteID, 
 		created = true
 		out, err = liveRosterEntry(ctx, tx, orgID, site.ID, workerID)
 		if err == nil {
-			out.Expected = expectedNow(*out, ds, time.Now())
+			out.Expected = expectedNow(*out, ds, s.Clock.Now())
 		}
 		return err
 	})
@@ -482,7 +485,7 @@ func (s *Service) RemoveFromRoster(ctx context.Context, orgID, userID, role, sit
 		for i := range all {
 			if all[i].ID == e.ID {
 				out = &all[i]
-				out.Expected = expectedNow(*out, ds, time.Now())
+				out.Expected = expectedNow(*out, ds, s.Clock.Now())
 			}
 		}
 		return err

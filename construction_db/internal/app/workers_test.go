@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -31,14 +30,14 @@ func newWorker(t *testing.T, router http.Handler, token string, body map[string]
 	return id
 }
 
-func competencyBody(file, issued string, expires any) map[string]any {
+func competencyBody(c sastClock, file, issued string, expires any) map[string]any {
 	return map[string]any{"regime_code": "za_construction_2014", "type_key": "rope_access_licence", "issued_on": issued,
-		"expires_on": expires, "file_id": file, "client_recorded_at": rfc(time.Now())}
+		"expires_on": expires, "file_id": file, "client_recorded_at": rfc(c.Now())}
 }
 
-func medicalBody(file, outcome, examined, expires string) map[string]any {
+func medicalBody(c sastClock, file, outcome, examined, expires string) map[string]any {
 	return map[string]any{"regime_code": "za_construction_2014", "outcome": outcome, "examined_on": examined, "expires_on": expires,
-		"practice_number": "MP 0123456", "file_id": file, "client_recorded_at": rfc(time.Now())}
+		"practice_number": "MP 0123456", "file_id": file, "client_recorded_at": rfc(c.Now())}
 }
 
 func wantField(t *testing.T, rec *httptest.ResponseRecorder, field, msg string) {
@@ -123,14 +122,13 @@ func TestWorkerRecords(t *testing.T) {
 	w := newWorker(t, f.router, f.supervisor, map[string]any{"name": "Sipho Dlamini"})
 	compPath := func(id string) string { return workerPath(w) + "/competencies/" + id }
 	medPath := func(id string) string { return workerPath(w) + "/medicals/" + id }
-	today := time.Now().Format(time.DateOnly)
-	soon := time.Now().AddDate(0, 0, 10).Format(time.DateOnly)
-	later := time.Now().AddDate(1, 0, 0).Format(time.DateOnly)
+	clk := newSASTClock(t)
+	today, soon, later := clk.Today(), clk.Day(10), clk.Day(365)
 
 	// A supervisor captures a licence on site.
 	f1 := uploadFile(t, f.router, f.supervisor, files.PurposeCompetency, nil)
 	c1 := uuid.NewString()
-	rec := do(t, f.router, http.MethodPut, compPath(c1), f.supervisor, competencyBody(f1, today, soon))
+	rec := do(t, f.router, http.MethodPut, compPath(c1), f.supervisor, competencyBody(clk, f1, today, soon))
 	wantStatus(t, rec, http.StatusCreated)
 	var c workers.Competency
 	_ = json.Unmarshal(rec.Body.Bytes(), &c)
@@ -138,22 +136,22 @@ func TestWorkerRecords(t *testing.T) {
 		t.Errorf("a licence expiring in 10 days is %q", c.State)
 	}
 	// The licence type needs an expiry date.
-	wantField(t, do(t, f.router, http.MethodPut, compPath(uuid.NewString()), f.owner, competencyBody(f1, today, nil)), "expires_on", workers.MsgExpiryNeed)
-	wantField(t, do(t, f.router, http.MethodPut, compPath(uuid.NewString()), f.owner, with(competencyBody(f1, today, soon), "type_key", "astronaut")),
+	wantField(t, do(t, f.router, http.MethodPut, compPath(uuid.NewString()), f.owner, competencyBody(clk, f1, today, nil)), "expires_on", workers.MsgExpiryNeed)
+	wantField(t, do(t, f.router, http.MethodPut, compPath(uuid.NewString()), f.owner, with(competencyBody(clk, f1, today, soon), "type_key", "astronaut")),
 		"type_key", workers.MsgType)
 	// A file is one record's, of its own purpose, and verified.
-	wantError(t, do(t, f.router, http.MethodPut, compPath(uuid.NewString()), f.owner, competencyBody(f1, today, soon)),
+	wantError(t, do(t, f.router, http.MethodPut, compPath(uuid.NewString()), f.owner, competencyBody(clk, f1, today, soon)),
 		http.StatusConflict, "file already attached to another record")
 	medFile := uploadFile(t, f.router, f.supervisor, files.PurposeMedical, nil)
-	wantError(t, do(t, f.router, http.MethodPut, compPath(uuid.NewString()), f.owner, competencyBody(medFile, today, soon)),
+	wantError(t, do(t, f.router, http.MethodPut, compPath(uuid.NewString()), f.owner, competencyBody(clk, medFile, today, soon)),
 		http.StatusBadRequest, "file was uploaded for another purpose")
 
 	// Renewal: a new record superseding the old; nothing overwritten.
 	f2 := uploadFile(t, f.router, f.owner, files.PurposeCompetency, nil)
 	c2 := uuid.NewString()
-	wantStatus(t, do(t, f.router, http.MethodPut, compPath(c2), f.owner, with(competencyBody(f2, today, later), "supersedes_id", c1)), http.StatusCreated)
+	wantStatus(t, do(t, f.router, http.MethodPut, compPath(c2), f.owner, with(competencyBody(clk, f2, today, later), "supersedes_id", c1)), http.StatusCreated)
 	f3 := uploadFile(t, f.router, f.owner, files.PurposeCompetency, nil)
-	wantError(t, do(t, f.router, http.MethodPut, compPath(uuid.NewString()), f.owner, with(competencyBody(f3, today, later), "supersedes_id", c1)),
+	wantError(t, do(t, f.router, http.MethodPut, compPath(uuid.NewString()), f.owner, with(competencyBody(clk, f3, today, later), "supersedes_id", c1)),
 		http.StatusConflict, "that record already has a renewal")
 
 	// Retraction: leads only, once, kept.
@@ -171,10 +169,10 @@ func TestWorkerRecords(t *testing.T) {
 
 	// The medical: outcome and dates for everyone; the certificate for leads.
 	m1 := uuid.NewString()
-	wantStatus(t, do(t, f.router, http.MethodPut, medPath(m1), f.supervisor, medicalBody(medFile, "fit_with_restrictions", today, later)), http.StatusCreated)
-	wantField(t, do(t, f.router, http.MethodPut, medPath(uuid.NewString()), f.owner, medicalBody(medFile, "fit_for_heights", today, later)),
+	wantStatus(t, do(t, f.router, http.MethodPut, medPath(m1), f.supervisor, medicalBody(clk, medFile, "fit_with_restrictions", today, later)), http.StatusCreated)
+	wantField(t, do(t, f.router, http.MethodPut, medPath(uuid.NewString()), f.owner, medicalBody(clk, medFile, "fit_for_heights", today, later)),
 		"outcome", workers.MsgOutcome)
-	wantField(t, do(t, f.router, http.MethodPut, medPath(uuid.NewString()), f.owner, with(medicalBody(medFile, "fit", today, later), "practice_number", "no heights: epilepsy")),
+	wantField(t, do(t, f.router, http.MethodPut, medPath(uuid.NewString()), f.owner, with(medicalBody(clk, medFile, "fit", today, later), "practice_number", "no heights: epilepsy")),
 		"practice_number", workers.MsgPractice)
 	wantError(t, do(t, f.router, http.MethodPost, medPath(m1)+"/view", f.supervisor, nil), http.StatusForbidden,
 		"only an owner or SHE officer can open a medical certificate")

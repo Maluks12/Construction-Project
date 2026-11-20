@@ -102,9 +102,9 @@ func newActionFixture(t *testing.T, name string) actionFixture {
 	a := newAnswerFixture(t, name)
 	f := actionFixture{answerFixture: a, supervisorID: me(t, a.router, a.supervisor).UserID, ownerID: a.ownerMe.UserID}
 	f.item = a.tmpl.Items[0].Key
-	f.failPhoto = photoTakenAt(t, a.evidenceFixture, a.supervisor, a.siteA, time.Now().Add(-2*time.Hour))
-	f.fixPhoto = photoTakenAt(t, a.evidenceFixture, a.supervisor, a.siteA, time.Now())
-	f.fixPhoto2 = photoTakenAt(t, a.evidenceFixture, a.supervisor, a.siteA, time.Now())
+	f.failPhoto = photoTakenAt(t, a.evidenceFixture, a.supervisor, a.siteA, testClock.Now().Add(-2*time.Hour))
+	f.fixPhoto = photoTakenAt(t, a.evidenceFixture, a.supervisor, a.siteA, testClock.Now())
+	f.fixPhoto2 = photoTakenAt(t, a.evidenceFixture, a.supervisor, a.siteA, testClock.Now())
 	f.inspection = completeFailing(t, a, "", map[string]string{f.item: "high"}, f.failPhoto)
 	return f
 }
@@ -169,7 +169,8 @@ func wantProblem(t *testing.T, rec *httptest.ResponseRecorder, status int, msg s
 
 func TestRaiseAction(t *testing.T) {
 	f := newActionFixture(t, "raise")
-	raisedAt := time.Now().Add(-time.Minute).Truncate(time.Microsecond)
+	clk := newSASTClock(t)
+	raisedAt := clk.Earlier(time.Minute)
 	id := uuid.NewString()
 	body := f.raiseBody(f.supervisorID, raisedAt)
 
@@ -256,7 +257,7 @@ func TestRaiseAction(t *testing.T) {
 			"no title":          {with(body, "title", ""), actions.ErrBadTitle.Error()},
 			"bad owner":         {with(body, "owner_id", "me"), actions.ErrBadOwnerID.Error()},
 			"bad due":           {with(body, "due_on", "Friday"), actions.ErrBadDueOn.Error()},
-			"future":            {with(body, "client_raised_at", rfc(time.Now().Add(time.Hour))), actions.ErrRaisedInFuture.Error()},
+			"future":            {with(body, "client_raised_at", rfc(clk.Now().Add(time.Hour))), actions.ErrRaisedInFuture.Error()},
 			"no time":           {with(body, "client_raised_at", nil), actions.ErrNoRaisedAt.Error()},
 			"empty party":       {with(body, "responsible_party", ""), actions.ErrBadParty.Error()},
 			"incident severity": {with(with(body, "finding", nil), "incident", map[string]any{"incident_id": uuid.NewString(), "version": 1}), actions.ErrSeverityRequired.Error()},
@@ -288,10 +289,11 @@ func TestRaiseAction(t *testing.T) {
 
 func TestActionCloseoutAndVerification(t *testing.T) {
 	f := newActionFixture(t, "closeout")
-	now := time.Now().Truncate(time.Microsecond)
-	a := f.raise(t, f.supervisor, f.raiseBody(f.supervisorID, now.Add(-time.Minute)))
+	clk := newSASTClock(t)
+	now := clk.Now()
+	a := f.raise(t, f.supervisor, f.raiseBody(f.supervisorID, clk.Earlier(time.Minute)))
 	path := func(id string) string { return closeoutPath(f.siteA, a.ID, id) }
-	early := photoTakenAt(t, f.evidenceFixture, f.supervisor, f.siteA, now.Add(-30*time.Minute)) // after the source, before the raise
+	early := photoTakenAt(t, f.evidenceFixture, f.supervisor, f.siteA, clk.Earlier(30*time.Minute)) // after the source, before the raise
 
 	t.Run("photos that can't show the fix", func(t *testing.T) {
 		wantError(t, do(t, f.router, http.MethodPut, path(uuid.NewString()), f.supervisor, closeoutBody(now)), http.StatusBadRequest, actions.ErrNoPhotos.Error())
@@ -305,7 +307,7 @@ func TestActionCloseoutAndVerification(t *testing.T) {
 	})
 
 	t.Run("only the owner or a lead closes out", func(t *testing.T) {
-		mine := f.raise(t, f.owner, f.raiseBody(f.ownerID, now.Add(-time.Minute)))
+		mine := f.raise(t, f.owner, f.raiseBody(f.ownerID, clk.Earlier(time.Minute)))
 		wantError(t, do(t, f.router, http.MethodPut, closeoutPath(f.siteA, mine.ID, uuid.NewString()), f.supervisor, closeoutBody(now, f.fixPhoto)),
 			http.StatusForbidden, actions.ErrCantCloseOut.Error())
 	})
@@ -404,8 +406,9 @@ func TestActionCloseoutAndVerification(t *testing.T) {
 
 func TestActionEvents(t *testing.T) {
 	f := newActionFixture(t, "events")
-	now := time.Now().Truncate(time.Microsecond)
-	a := f.raise(t, f.owner, f.raiseBody(f.supervisorID, now.Add(-time.Minute)))
+	clk := newSASTClock(t)
+	now := clk.Now()
+	a := f.raise(t, f.owner, f.raiseBody(f.supervisorID, clk.Earlier(time.Minute)))
 	ev := func(token string, body map[string]any) *httptest.ResponseRecorder {
 		return do(t, f.router, http.MethodPut, eventPath(f.siteA, a.ID, uuid.NewString()), token, body)
 	}
@@ -492,17 +495,18 @@ func TestActionEvents(t *testing.T) {
 
 func TestActionRegister(t *testing.T) {
 	f := newActionFixture(t, "register")
-	now := time.Now()
+	clk := newSASTClock(t)
+	now := clk.Now()
 	// Raised three days ago, due the next day: overdue now.
 	old := f.raise(t, f.owner, f.raiseBody(f.supervisorID, now.AddDate(0, 0, -3)))
-	fresh := f.raise(t, f.owner, f.raiseBody(f.ownerID, now.Add(-time.Minute)))
+	fresh := f.raise(t, f.owner, f.raiseBody(f.ownerID, clk.Earlier(time.Minute)))
 
 	if old.State != actions.StateOverdue || fresh.State != actions.StateOpen {
 		t.Fatalf("states %s and %s, want overdue and open", old.State, fresh.State)
 	}
 
 	// An action on site B, where the supervisor isn't.
-	photoB := photoTakenAt(t, f.evidenceFixture, f.owner, f.siteB, now.Add(-time.Hour))
+	photoB := photoTakenAt(t, f.evidenceFixture, f.owner, f.siteB, clk.Earlier(time.Hour))
 	inspB := uuid.NewString()
 	wantStatus(t, do(t, f.router, http.MethodPut, inspectionPath(f.siteB, inspB), f.owner, startBody(f.tmpl)), http.StatusCreated)
 	answerAllBySQL(t, f.ownerMe.OrgID, inspB, len(f.tmpl.Items))
@@ -510,7 +514,7 @@ func TestActionRegister(t *testing.T) {
 	wantStatus(t, do(t, f.router, http.MethodPost, completePathFor(f.siteB, inspB), f.owner, completeBody()), http.StatusCreated)
 	onB := decodeAction(t, do(t, f.router, http.MethodPut, actionPath(f.siteB, uuid.NewString()), f.owner, map[string]any{
 		"finding": map[string]any{"inspection_id": inspB, "item_key": f.item}, "title": "Tidy up", "owner_id": f.ownerID,
-		"client_raised_at": rfc(now.Add(-time.Minute)),
+		"client_raised_at": rfc(clk.Earlier(time.Minute)),
 	}))
 
 	site := "/v1/sites/" + f.siteA + "/actions"
@@ -581,21 +585,22 @@ func TestActionRegister(t *testing.T) {
 
 func TestIncidentAction(t *testing.T) {
 	f := newActionFixture(t, "incaction")
-	now := time.Now()
+	clk := newSASTClock(t)
+	now := clk.Now()
 	inc := uuid.NewString()
-	wantStatus(t, do(t, f.router, http.MethodPut, versionPath(f.siteA, inc, 1), f.supervisor, versionBody(now.Add(-time.Hour), "near_miss")), http.StatusCreated)
+	wantStatus(t, do(t, f.router, http.MethodPut, versionPath(f.siteA, inc, 1), f.supervisor, versionBody(clk.Earlier(time.Hour), "near_miss")), http.StatusCreated)
 	body := map[string]any{
 		"incident": map[string]any{"incident_id": inc, "version": 1}, "severity": "medium", "title": "Barricade the edge",
-		"owner_id": f.supervisorID, "client_raised_at": rfc(now.Add(-time.Minute)),
+		"owner_id": f.supervisorID, "client_raised_at": rfc(clk.Earlier(time.Minute)),
 	}
 	a := f.raise(t, f.supervisor, body)
-	if a.Source != actions.SourceIncident || *a.IncidentVersion != 1 || *a.IncidentLatestVersion != 1 || a.DueOn != localDay(now.Add(-time.Minute), 7) {
+	if a.Source != actions.SourceIncident || *a.IncidentVersion != 1 || *a.IncidentLatestVersion != 1 || a.DueOn != localDay(clk.Earlier(time.Minute), 7) {
 		t.Errorf("incident action %+v", a.ActionHeader)
 	}
 	wantError(t, do(t, f.router, http.MethodPut, actionPath(f.siteA, uuid.NewString()), f.supervisor, with(body, "incident",
 		map[string]any{"incident_id": inc, "version": 2})), http.StatusBadRequest, actions.ErrIncidentNotFound.Error())
 
-	amend := with(versionBody(now.Add(-time.Hour), "near_miss", "first_aid"), "amend_reason", "Someone was hurt after all")
+	amend := with(versionBody(clk.Earlier(time.Hour), "near_miss", "first_aid"), "amend_reason", "Someone was hurt after all")
 	wantStatus(t, do(t, f.router, http.MethodPut, versionPath(f.siteA, inc, 2), f.supervisor, amend), http.StatusCreated)
 
 	rec := do(t, f.router, http.MethodPut, actionPath(f.siteA, uuid.NewString()), f.supervisor, body)
@@ -614,7 +619,7 @@ func TestIncidentAction(t *testing.T) {
 
 	t.Run("a close-out can't use the incident's own photo", func(t *testing.T) {
 		withPhoto := uuid.NewString()
-		v := with(versionBody(now.Add(-time.Hour), "near_miss"), "evidence_ids", []string{f.fixPhoto2})
+		v := with(versionBody(clk.Earlier(time.Hour), "near_miss"), "evidence_ids", []string{f.fixPhoto2})
 		wantStatus(t, do(t, f.router, http.MethodPut, versionPath(f.siteA, withPhoto, 1), f.supervisor, v), http.StatusCreated)
 		b := with(body, "incident", map[string]any{"incident_id": withPhoto, "version": 1})
 		act := f.raise(t, f.supervisor, b)
@@ -627,8 +632,9 @@ func TestIncidentAction(t *testing.T) {
 // same or lower severity; a higher one is unactioned and flags the action.
 func TestCorrectedFindingActions(t *testing.T) {
 	f := newActionFixture(t, "corrected")
-	now := time.Now()
-	a := f.raise(t, f.supervisor, f.raiseBody(f.supervisorID, now.Add(-time.Minute)))
+	clk := newSASTClock(t)
+	now := clk.Now()
+	a := f.raise(t, f.supervisor, f.raiseBody(f.supervisorID, clk.Earlier(time.Minute)))
 
 	correction := completeFailing(t, f.answerFixture, f.inspection, map[string]string{f.item: "critical"}, f.failPhoto)
 	findings := map[string]checklists.Finding{}
@@ -650,10 +656,10 @@ func TestCorrectedFindingActions(t *testing.T) {
 	wantError(t, do(t, f.router, http.MethodPut, actionPath(f.siteA, uuid.NewString()), f.supervisor, f.raiseBody(f.supervisorID, now)),
 		http.StatusConflict, actions.ErrFindingSuperseded.Error())
 
-	b := f.raiseBody(f.supervisorID, now.Add(-time.Minute))
+	b := f.raiseBody(f.supervisorID, clk.Earlier(time.Minute))
 	b["finding"] = map[string]any{"inspection_id": correction, "item_key": f.item}
 	onCorrection := f.raise(t, f.supervisor, b)
-	if onCorrection.Severity != "critical" || onCorrection.DueOn != localDay(now.Add(-time.Minute), 0) {
+	if onCorrection.Severity != "critical" || onCorrection.DueOn != localDay(clk.Earlier(time.Minute), 0) {
 		t.Errorf("action on the correction: severity %s, due %s; want critical, today", onCorrection.Severity, onCorrection.DueOn)
 	}
 	if got := listFindings(t, f.router, f.owner, f.siteA, "?coverage=unactioned"); len(got) != 0 {
@@ -671,10 +677,10 @@ func TestCorrectedFindingActions(t *testing.T) {
 
 func TestWaivers(t *testing.T) {
 	f := newActionFixture(t, "waivers")
-	now := time.Now()
+	clk := newSASTClock(t)
 	low := completeFailing(t, f.answerFixture, "", map[string]string{f.item: "low"}, f.failPhoto)
 	id := uuid.NewString()
-	body := map[string]any{"inspection_id": low, "item_key": f.item, "reason": "Paperwork only", "client_waived_at": rfc(now.Add(-time.Minute))}
+	body := map[string]any{"inspection_id": low, "item_key": f.item, "reason": "Paperwork only", "client_waived_at": rfc(clk.Earlier(time.Minute))}
 
 	wantError(t, do(t, f.router, http.MethodPut, waiverPath(f.siteA, id), f.supervisor, body), http.StatusForbidden, actions.ErrCantWaive.Error())
 	rec := do(t, f.router, http.MethodPut, waiverPath(f.siteA, id), f.owner, body)
@@ -722,8 +728,9 @@ func TestWaivers(t *testing.T) {
 // one awaiting verification.
 func TestCloseoutsQueue(t *testing.T) {
 	f := newActionFixture(t, "cqueue")
-	now := time.Now()
-	a := f.raise(t, f.supervisor, f.raiseBody(f.supervisorID, now.Add(-time.Minute)))
+	clk := newSASTClock(t)
+	now := clk.Now()
+	a := f.raise(t, f.supervisor, f.raiseBody(f.supervisorID, clk.Earlier(time.Minute)))
 
 	first := beginTenant(t, f.ownerMe.OrgID)
 	defer first.Rollback(context.Background())
@@ -744,8 +751,9 @@ func TestCloseoutsQueue(t *testing.T) {
 // supervisor is no longer the owner.
 func TestCloseoutAfterReassignment(t *testing.T) {
 	f := newActionFixture(t, "creassign")
-	now := time.Now()
-	a := f.raise(t, f.owner, f.raiseBody(f.supervisorID, now.Add(-time.Minute)))
+	clk := newSASTClock(t)
+	now := clk.Now()
+	a := f.raise(t, f.owner, f.raiseBody(f.supervisorID, clk.Earlier(time.Minute)))
 
 	reassigning := beginTenant(t, f.ownerMe.OrgID)
 	defer reassigning.Rollback(context.Background())
@@ -771,8 +779,9 @@ func TestCloseoutAfterReassignment(t *testing.T) {
 // action shows the correction.
 func TestCloseoutWhileCorrectionCompletes(t *testing.T) {
 	f := newActionFixture(t, "ccorrect")
-	now := time.Now()
-	a := f.raise(t, f.supervisor, f.raiseBody(f.supervisorID, now.Add(-time.Minute)))
+	clk := newSASTClock(t)
+	now := clk.Now()
+	a := f.raise(t, f.supervisor, f.raiseBody(f.supervisorID, clk.Earlier(time.Minute)))
 	corr := uuid.NewString()
 	wantStatus(t, do(t, f.router, http.MethodPut, inspectionPath(f.siteA, corr), f.supervisor, with(startBody(f.tmpl), "corrects_id", f.inspection)),
 		http.StatusCreated)
@@ -801,7 +810,8 @@ func TestCloseoutWhileCorrectionCompletes(t *testing.T) {
 // other commits it answers as a repeat.
 func TestRaiseLosesTheRace(t *testing.T) {
 	f := newActionFixture(t, "raiserace")
-	raisedAt := time.Now().Add(-time.Minute).Truncate(time.Microsecond)
+	clk := newSASTClock(t)
+	raisedAt := clk.Earlier(time.Minute)
 	id := uuid.NewString()
 	due := localDay(raisedAt, 1)
 
@@ -839,9 +849,9 @@ func TestRaiseLosesTheRace(t *testing.T) {
 // had come after the amendment (409 with latest_version), not 500.
 func TestRaiseRacesAmendment(t *testing.T) {
 	f := newActionFixture(t, "raceamend")
-	now := time.Now()
+	clk := newSASTClock(t)
 	inc := uuid.NewString()
-	wantStatus(t, do(t, f.router, http.MethodPut, versionPath(f.siteA, inc, 1), f.supervisor, versionBody(now.Add(-time.Hour), "near_miss")), http.StatusCreated)
+	wantStatus(t, do(t, f.router, http.MethodPut, versionPath(f.siteA, inc, 1), f.supervisor, versionBody(clk.Earlier(time.Hour), "near_miss")), http.StatusCreated)
 
 	amending := beginTenant(t, f.ownerMe.OrgID)
 	defer amending.Rollback(context.Background())
@@ -856,7 +866,7 @@ func TestRaiseRacesAmendment(t *testing.T) {
 	go func() {
 		raised <- do(t, f.router, http.MethodPut, actionPath(f.siteA, uuid.NewString()), f.supervisor, map[string]any{
 			"incident": map[string]any{"incident_id": inc, "version": 1}, "severity": "medium", "title": "Barricade",
-			"owner_id": f.supervisorID, "client_raised_at": rfc(now.Add(-time.Minute)),
+			"owner_id": f.supervisorID, "client_raised_at": rfc(clk.Earlier(time.Minute)),
 		})
 	}()
 	waitForLock(t, "INSERT INTO corrective_actions")
@@ -877,7 +887,7 @@ func TestRaiseRacesAmendment(t *testing.T) {
 // Likewise a raise on a finding whose correction completes in between.
 func TestRaiseRacesCorrection(t *testing.T) {
 	f := newActionFixture(t, "racecorr")
-	now := time.Now()
+	clk := newSASTClock(t)
 	corr := uuid.NewString()
 	wantStatus(t, do(t, f.router, http.MethodPut, inspectionPath(f.siteA, corr), f.supervisor, with(startBody(f.tmpl), "corrects_id", f.inspection)),
 		http.StatusCreated)
@@ -891,7 +901,7 @@ func TestRaiseRacesCorrection(t *testing.T) {
 	}
 	raised := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		raised <- do(t, f.router, http.MethodPut, actionPath(f.siteA, uuid.NewString()), f.supervisor, f.raiseBody(f.supervisorID, now.Add(-time.Minute)))
+		raised <- do(t, f.router, http.MethodPut, actionPath(f.siteA, uuid.NewString()), f.supervisor, f.raiseBody(f.supervisorID, clk.Earlier(time.Minute)))
 	}()
 	waitForLock(t, "INSERT INTO corrective_actions")
 	if err := completing.Commit(context.Background()); err != nil {
@@ -905,8 +915,9 @@ func TestRaiseRacesCorrection(t *testing.T) {
 // theirs until a lead reassigns it, which works.
 func TestRemovedSupervisor(t *testing.T) {
 	f := newActionFixture(t, "removed")
-	now := time.Now()
-	a := f.raise(t, f.supervisor, f.raiseBody(f.supervisorID, now.Add(-time.Minute)))
+	clk := newSASTClock(t)
+	now := clk.Now()
+	a := f.raise(t, f.supervisor, f.raiseBody(f.supervisorID, clk.Earlier(time.Minute)))
 	if got := actionIDs(listActions(t, f.router, f.supervisor, "/v1/actions")); !slices.Contains(got, a.ID) {
 		t.Fatalf("before removal the supervisor sees %v, want %s", got, a.ID)
 	}

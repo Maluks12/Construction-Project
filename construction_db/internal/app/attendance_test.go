@@ -33,9 +33,11 @@ func decodeSignIn(t *testing.T, rec *httptest.ResponseRecorder) attendance.SignI
 	return v
 }
 
-func decodeDay(t *testing.T, router http.Handler, token, site string) attendance.Day {
+// decodeDay reads one SAST date's register: explicit, so a test that runs
+// across midnight still asks about its own day.
+func decodeDay(t *testing.T, router http.Handler, token, site, date string) attendance.Day {
 	t.Helper()
-	rec := do(t, router, http.MethodGet, "/v1/sites/"+site+"/sign-ins", token, nil)
+	rec := do(t, router, http.MethodGet, "/v1/sites/"+site+"/sign-ins?date="+date, token, nil)
 	wantStatus(t, rec, http.StatusOK)
 	var d attendance.Day
 	if err := json.Unmarshal(rec.Body.Bytes(), &d); err != nil {
@@ -58,7 +60,8 @@ func TestSignInFlow(t *testing.T) {
 	thabo := newWorker(t, f.router, f.owner, map[string]any{"name": "Thabo Mokoena", "firm": "ABC"})
 	absentee := newWorker(t, f.router, f.owner, map[string]any{"name": "Away Today"})
 	wantStatus(t, do(t, f.router, http.MethodPut, "/v1/sites/"+f.siteA+"/roster/"+absentee, f.supervisor, nil), http.StatusCreated)
-	morning := time.Now().Add(-3 * time.Hour)
+	c := newSASTClock(t)
+	morning := c.Earlier(50 * time.Minute)
 
 	// A tap on a register name.
 	s1 := uuid.NewString()
@@ -70,7 +73,7 @@ func TestSignInFlow(t *testing.T) {
 	}
 	wantStatus(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, s1), f.supervisor, signInBody(thabo, morning, nil)), http.StatusOK)
 	// The second phone's tap: 409 naming the sign-in already standing.
-	wantStanding(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.owner, signInBody(thabo, morning.Add(time.Minute), nil)), s1)
+	wantStanding(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.owner, signInBody(thabo, c.Earlier(49*time.Minute), nil)), s1)
 
 	// On the spot: someone new is added to the register...
 	newID := uuid.NewString()
@@ -100,10 +103,10 @@ func TestSignInFlow(t *testing.T) {
 	}
 
 	// Sign-out: once.
-	out := map[string]any{"method": "tap", "client_signed_out_at": rfc(morning.Add(2 * time.Hour))}
+	out := map[string]any{"method": "tap", "client_signed_out_at": rfc(c.Earlier(20 * time.Minute))}
 	wantStatus(t, do(t, f.router, http.MethodPost, signInPath(f.siteA, s1)+"/sign-out", f.supervisor, out), http.StatusCreated)
 	wantStatus(t, do(t, f.router, http.MethodPost, signInPath(f.siteA, s1)+"/sign-out", f.supervisor, out), http.StatusOK)
-	wantError(t, do(t, f.router, http.MethodPost, signInPath(f.siteA, s1)+"/sign-out", f.supervisor, with(out, "client_signed_out_at", rfc(morning.Add(time.Hour)))),
+	wantError(t, do(t, f.router, http.MethodPost, signInPath(f.siteA, s1)+"/sign-out", f.supervisor, with(out, "client_signed_out_at", rfc(c.Earlier(30*time.Minute)))),
 		http.StatusConflict, "already signed out at another time")
 	wantError(t, do(t, f.router, http.MethodPost, signInPath(f.siteA, wrong)+"/sign-out", f.supervisor, out), http.StatusConflict, "sign-in was retracted")
 
@@ -114,13 +117,12 @@ func TestSignInFlow(t *testing.T) {
 		"paper sign-in needs a photo of that day's signed sheet; add it first")
 	photo := declareAndUpload(t, f.router, f.supervisor, f.siteA, testImage(t, "jpeg", 40, 30), "image/jpeg")
 	wantStatus(t, do(t, f.router, http.MethodPost, completePath(f.siteA, photo), f.supervisor, nil), http.StatusCreated)
-	loc, _ := time.LoadLocation("Africa/Johannesburg")
-	today := morning.In(loc).Format(time.DateOnly)
+	today := c.Today()
 	wantStatus(t, do(t, f.router, http.MethodPut, "/v1/sites/"+f.siteA+"/sign-in-sheets/"+today+"/"+photo, f.supervisor, nil), http.StatusCreated)
 	wantStatus(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, paper), http.StatusCreated)
 
 	// The day: who signed in, who on the roster didn't, and the headcount.
-	d := decodeDay(t, f.router, f.supervisor, f.siteA)
+	d := decodeDay(t, f.router, f.supervisor, f.siteA, today)
 	if d.Date != today || len(d.SignIns) != 5 || len(d.Absent) != 1 || d.Absent[0].WorkerID != absentee || d.Headcount != 4 || len(d.Sheets) != 1 {
 		t.Errorf("day: %d sign-ins, absent %+v, headcount %d, %d sheets; want 5, [Away Today], 4 (the retracted one not counted), 1",
 			len(d.SignIns), d.Absent, d.Headcount, len(d.Sheets))
@@ -129,7 +131,7 @@ func TestSignInFlow(t *testing.T) {
 	// Validation and scope.
 	wantError(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(uuid.NewString(), morning, nil)),
 		http.StatusNotFound, "worker not found")
-	wantError(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(thabo, time.Now().Add(time.Hour), nil)),
+	wantError(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(thabo, c.Now().Add(time.Hour), nil)),
 		http.StatusBadRequest, "client_signed_in_at is in the future; check the device clock")
 	wantError(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(thabo, morning, map[string]any{"method": "qr"})),
 		http.StatusBadRequest, "method must be tap or paper")
@@ -145,27 +147,27 @@ func TestSignInsInDiaryAndTalks(t *testing.T) {
 	f := newEvidenceFixture(t, "signin-diary")
 	thabo := newWorker(t, f.router, f.owner, map[string]any{"name": "Thabo Mokoena"})
 	sipho := newWorker(t, f.router, f.owner, map[string]any{"name": "Sipho Dlamini"})
-	start := time.Now().Add(-2 * time.Hour)
+	c := newSASTClock(t)
+	start := c.Earlier(40 * time.Minute)
 	for _, w := range []string{thabo, sipho} {
 		wantStatus(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(w, start, nil)), http.StatusCreated)
 	}
 	talk := uuid.NewString()
-	wantStatus(t, do(t, f.router, http.MethodPut, talkPath(f.siteA, talk), f.supervisor, talkBody(map[string]any{"started_at": rfc(start.Add(time.Hour))})), http.StatusCreated)
+	wantStatus(t, do(t, f.router, http.MethodPut, talkPath(f.siteA, talk), f.supervisor, talkBody(map[string]any{"started_at": rfc(c.Earlier(20 * time.Minute))})), http.StatusCreated)
 	// Thabo signs the talk; a visitor not on the register signs it too.
-	wantStatus(t, do(t, f.router, http.MethodPut, signPath(f.siteA, talk, uuid.NewString()), f.supervisor, signBody("thabo MOKOENA", start.Add(time.Hour), nil)), http.StatusCreated)
-	wantStatus(t, do(t, f.router, http.MethodPut, signPath(f.siteA, talk, uuid.NewString()), f.supervisor, signBody("A Visitor", start.Add(time.Hour), nil)), http.StatusCreated)
+	wantStatus(t, do(t, f.router, http.MethodPut, signPath(f.siteA, talk, uuid.NewString()), f.supervisor, signBody("thabo MOKOENA", c.Earlier(10*time.Minute), nil)), http.StatusCreated)
+	wantStatus(t, do(t, f.router, http.MethodPut, signPath(f.siteA, talk, uuid.NewString()), f.supervisor, signBody("A Visitor", c.Earlier(10*time.Minute), nil)), http.StatusCreated)
 
 	tk := decodeTalk(t, do(t, f.router, http.MethodGet, talkPath(f.siteA, talk), f.owner, nil))
 	if len(tk.NotSigned) != 1 || tk.NotSigned[0].WorkerID != sipho {
 		t.Errorf("not_signed %+v, want only Sipho", tk.NotSigned)
 	}
-	if d := decodeDay(t, f.router, f.owner, f.siteA); d.Headcount != 3 {
+	if d := decodeDay(t, f.router, f.owner, f.siteA, c.Today()); d.Headcount != 3 {
 		t.Errorf("headcount %d, want 3 (Thabo once, Sipho, the visitor)", d.Headcount)
 	}
 
-	loc, _ := time.LoadLocation("Africa/Johannesburg")
-	date := time.Now().In(loc).Format(time.DateOnly)
-	rec := do(t, f.router, http.MethodPut, revisionPath(f.siteA, date, uuid.NewString()), f.supervisor, revisionBody(time.Now(), map[string]any{
+	date := c.Today()
+	rec := do(t, f.router, http.MethodPut, revisionPath(f.siteA, date, uuid.NewString()), f.supervisor, revisionBody(c.Now(), map[string]any{
 		"sections": map[string]any{"labour": []map[string]any{{"id": uuid.NewString(), "firm": "Own", "own_team": true, "headcount": 2,
 			"worker_ids": []string{thabo, sipho}}}}}))
 	wantStatus(t, rec, http.StatusCreated)
@@ -173,10 +175,10 @@ func TestSignInsInDiaryAndTalks(t *testing.T) {
 		t.Errorf("diary suggestion now %d, stored %d; want 3", d.HeadcountSuggestedNow, d.Current.HeadcountSuggested)
 	}
 	// A labour row names register workers only, at most its headcount.
-	wantStatus(t, do(t, f.router, http.MethodPut, revisionPath(f.siteA, date, uuid.NewString()), f.supervisor, revisionBody(time.Now(), map[string]any{
+	wantStatus(t, do(t, f.router, http.MethodPut, revisionPath(f.siteA, date, uuid.NewString()), f.supervisor, revisionBody(c.Now(), map[string]any{
 		"sections": map[string]any{"labour": []map[string]any{{"id": uuid.NewString(), "firm": "Own", "own_team": true, "headcount": 1,
 			"worker_ids": []string{thabo, sipho}}}}})), http.StatusBadRequest)
-	wantStatus(t, do(t, f.router, http.MethodPut, revisionPath(f.siteA, date, uuid.NewString()), f.supervisor, revisionBody(time.Now(), map[string]any{
+	wantStatus(t, do(t, f.router, http.MethodPut, revisionPath(f.siteA, date, uuid.NewString()), f.supervisor, revisionBody(c.Now(), map[string]any{
 		"sections": map[string]any{"labour": []map[string]any{{"id": uuid.NewString(), "firm": "Own", "own_team": true, "headcount": 1,
 			"worker_ids": []string{uuid.NewString()}}}}})), http.StatusBadRequest)
 }
@@ -188,7 +190,8 @@ func TestSignInDoubleTapThroughAPI(t *testing.T) {
 	ctx := context.Background()
 	f := newEvidenceFixture(t, "signin-race")
 	w := newWorker(t, f.router, f.owner, map[string]any{"name": "Race Worker"})
-	at := time.Now().Add(-time.Hour)
+	c := newSASTClock(t)
+	at := c.Earlier(30 * time.Minute)
 	held := uuid.NewString()
 
 	tx := holdOpen(t, f)
@@ -198,7 +201,7 @@ func TestSignInDoubleTapThroughAPI(t *testing.T) {
 	}
 	done := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
-		done <- do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(w, at.Add(time.Second), nil))
+		done <- do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(w, c.Earlier(29*time.Minute), nil))
 	}()
 	waitForLock(t, "INSERT INTO site_sign_ins")
 	if err := tx.Commit(ctx); err != nil {
@@ -215,6 +218,7 @@ func TestSignInDoubleTapThroughAPI(t *testing.T) {
 func TestOnTheSpotRace(t *testing.T) {
 	ctx := context.Background()
 	f := newEvidenceFixture(t, "spot-race")
+	c := newSASTClock(t)
 	first := uuid.NewString()
 	tx := holdOpen(t, f)
 	if _, err := tx.Exec(ctx, `INSERT INTO workers (id, org_id, name, created_by) VALUES ($1, $2, 'New Person', $3)`,
@@ -224,7 +228,7 @@ func TestOnTheSpotRace(t *testing.T) {
 	done := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
 		done <- do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor,
-			signInBody(uuid.NewString(), time.Now().Add(-time.Hour), map[string]any{"new_worker": map[string]any{"name": "new  PERSON"}}))
+			signInBody(uuid.NewString(), c.Earlier(30*time.Minute), map[string]any{"new_worker": map[string]any{"name": "new  PERSON"}}))
 	}()
 	waitForLock(t, "INSERT INTO workers")
 	if err := tx.Commit(ctx); err != nil {
@@ -253,19 +257,20 @@ func TestSignInWindowMatchesDatabase(t *testing.T) {
 // the talk; a late earlier sign-in ends at the next one (ends_at).
 func TestSignInReviewFixes(t *testing.T) {
 	f := newEvidenceFixture(t, "signin-review")
+	c := newSASTClock(t)
 	existing := newWorker(t, f.router, f.owner, map[string]any{"name": "Already Here"})
 	wantError(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor,
-		signInBody(existing, time.Now().Add(-time.Hour), map[string]any{"new_worker": map[string]any{"name": "Someone Else"}})),
+		signInBody(existing, c.Earlier(50*time.Minute), map[string]any{"new_worker": map[string]any{"name": "Someone Else"}})),
 		http.StatusConflict, "id already used with different details")
 	// The same details under that id: a retry, signed in.
 	wantStatus(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor,
-		signInBody(existing, time.Now().Add(-time.Hour), map[string]any{"new_worker": map[string]any{"name": "Already Here"}})), http.StatusCreated)
+		signInBody(existing, c.Earlier(50*time.Minute), map[string]any{"new_worker": map[string]any{"name": "Already Here"}})), http.StatusCreated)
 
-	// Out of order through the API: 08:00 first, then 07:00, which ends at 08:00.
+	// Out of order through the API: "08:00" first, then "07:00", which ends at "08:00".
 	w := newWorker(t, f.router, f.owner, map[string]any{"name": "Order Person"})
-	eight := time.Now().Add(-90 * time.Minute).Truncate(time.Second)
+	eight, seven := c.Earlier(30*time.Minute), c.Earlier(45*time.Minute)
 	wantStatus(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(w, eight, nil)), http.StatusCreated)
-	rec := do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(w, eight.Add(-time.Hour), nil))
+	rec := do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(w, seven, nil))
 	wantStatus(t, rec, http.StatusCreated)
 	if si := decodeSignIn(t, rec); !si.EndsAt.Equal(eight) || !si.Lapsed {
 		t.Errorf("the late sign-in ends at %s (lapsed %v), want %s and lapsed", si.EndsAt, si.Lapsed, eight)
@@ -274,15 +279,46 @@ func TestSignInReviewFixes(t *testing.T) {
 	// Someone who signed in and out before the talk began isn't "not signed".
 	gone := newWorker(t, f.router, f.owner, map[string]any{"name": "Left Early"})
 	early := uuid.NewString()
-	start := time.Now().Add(-4 * time.Hour)
-	wantStatus(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, early), f.supervisor, signInBody(gone, start, nil)), http.StatusCreated)
+	wantStatus(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, early), f.supervisor, signInBody(gone, c.Earlier(time.Hour), nil)), http.StatusCreated)
 	wantStatus(t, do(t, f.router, http.MethodPost, signInPath(f.siteA, early)+"/sign-out", f.supervisor,
-		map[string]any{"method": "tap", "client_signed_out_at": rfc(start.Add(30 * time.Minute))}), http.StatusCreated)
+		map[string]any{"method": "tap", "client_signed_out_at": rfc(c.Earlier(55 * time.Minute))}), http.StatusCreated)
 	talk := uuid.NewString()
-	wantStatus(t, do(t, f.router, http.MethodPut, talkPath(f.siteA, talk), f.supervisor, talkBody(map[string]any{"started_at": rfc(start.Add(time.Hour))})), http.StatusCreated)
+	wantStatus(t, do(t, f.router, http.MethodPut, talkPath(f.siteA, talk), f.supervisor, talkBody(map[string]any{"started_at": rfc(c.Earlier(40 * time.Minute))})), http.StatusCreated)
 	for _, n := range decodeTalk(t, do(t, f.router, http.MethodGet, talkPath(f.siteA, talk), f.owner, nil)).NotSigned {
 		if n.WorkerID == gone {
 			t.Error("a worker who left before the talk is listed as not signed")
 		}
+	}
+}
+
+// Night shift (decided Fri 20 Nov): a talk lists as not signed anyone whose
+// sign-in on the site was still standing when it began, even one made the
+// previous date. The day view and headcount stay by sign-in date.
+func TestNotSignedNightShift(t *testing.T) {
+	f := newEvidenceFixture(t, "signin-night")
+	c := newSASTClock(t)
+	night := newWorker(t, f.router, f.owner, map[string]any{"name": "Night Shift"})
+	left := newWorker(t, f.router, f.owner, map[string]any{"name": "Left Before Midnight"})
+	wantStatus(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(night, c.At(-2, "23:35"), nil)), http.StatusCreated)
+	gone := uuid.NewString()
+	wantStatus(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, gone), f.supervisor, signInBody(left, c.At(-2, "23:20"), nil)), http.StatusCreated)
+	wantStatus(t, do(t, f.router, http.MethodPost, signInPath(f.siteA, gone)+"/sign-out", f.supervisor,
+		map[string]any{"method": "tap", "client_signed_out_at": rfc(c.At(-2, "23:50"))}), http.StatusCreated)
+
+	talk := uuid.NewString()
+	wantStatus(t, do(t, f.router, http.MethodPut, talkPath(f.siteA, talk), f.supervisor, talkBody(map[string]any{"started_at": rfc(c.At(-1, "00:35"))})), http.StatusCreated)
+	// Arriving during the talk, on its date: listed too, as before.
+	late := newWorker(t, f.router, f.owner, map[string]any{"name": "Late Arrival"})
+	wantStatus(t, do(t, f.router, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor, signInBody(late, c.At(-1, "00:40"), nil)), http.StatusCreated)
+	ns := decodeTalk(t, do(t, f.router, http.MethodGet, talkPath(f.siteA, talk), f.owner, nil)).NotSigned
+	if len(ns) != 2 || ns[0].WorkerID != late || ns[1].WorkerID != night {
+		t.Errorf("not_signed %+v, want Late Arrival (00:40, during the talk) and Night Shift (23:35, before it)", ns)
+	}
+
+	if d := decodeDay(t, f.router, f.owner, f.siteA, c.Day(-2)); len(d.SignIns) != 2 || d.Headcount != 2 {
+		t.Errorf("the sign-in date: %d sign-ins, headcount %d; want 2, 2", len(d.SignIns), d.Headcount)
+	}
+	if d := decodeDay(t, f.router, f.owner, f.siteA, c.Day(-1)); len(d.SignIns) != 1 || d.Headcount != 1 {
+		t.Errorf("the talk's date: %d sign-ins, headcount %d; want 1, 1 (Late Arrival only: by sign-in date)", len(d.SignIns), d.Headcount)
 	}
 }

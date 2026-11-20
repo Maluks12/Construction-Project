@@ -3,6 +3,7 @@ package notifications
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"construction_db/internal/regimes"
@@ -22,10 +23,20 @@ func Labels(ds *regimes.DataSet) string {
 	return string(b)
 }
 
-// location is where the emails' dates are told: the first regime's zone.
-func (j *Jobs) location() *time.Location {
-	for _, code := range j.Registry.Codes() {
-		ds, _ := j.Registry.Get(code)
+// zone is where a reminder's dates are told: its regime's time zone
+// (notification_regime, 000036). A regime that isn't loaded is a data error:
+// it falls back to the first loaded regime, with a warning.
+func (j *Jobs) zone(code *string) *time.Location {
+	if code != nil {
+		if ds, ok := j.Registry.Get(*code); ok {
+			if loc, err := time.LoadLocation(ds.Regime.TimeZone); err == nil {
+				return loc
+			}
+		}
+	}
+	slog.Warn("reminder email: regime not loaded; using the first regime's time zone", "regime", code)
+	for _, c := range j.Registry.Codes() {
+		ds, _ := j.Registry.Get(c)
 		if loc, err := time.LoadLocation(ds.Regime.TimeZone); err == nil {
 			return loc
 		}
@@ -47,7 +58,7 @@ func Render(title, kind, threshold string, dueOn *string, dueAt *time.Time, now 
 		}
 	}
 	date := due.Format("2 Jan 2006")
-	left := int(due.Sub(today).Hours() / 24)
+	left := calendarDays(today, due)
 
 	var sentence string
 	switch {
@@ -73,6 +84,14 @@ func Render(title, kind, threshold string, dueOn *string, dueAt *time.Time, now 
 		sentence = title + "."
 	}
 	return subject, sentence + "\n\nOpen SiteProof to see it.\n"
+}
+
+// calendarDays counts dates, not 24-hour spans, so a daylight-saving change
+// in between can't make it one short.
+func calendarDays(from, to time.Time) int {
+	a := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, time.UTC)
+	b := time.Date(to.Year(), to.Month(), to.Day(), 0, 0, 0, 0, time.UTC)
+	return int(b.Sub(a) / (24 * time.Hour))
 }
 
 func dayOf(t time.Time) time.Time {

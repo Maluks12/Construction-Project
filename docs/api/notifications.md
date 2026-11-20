@@ -32,7 +32,9 @@ Lead times come from the regime (`reminders` in `GET
   - the rule or action with its site.
 
   Never a medical outcome. Emails are the title and one plain sentence
-  ("expires on 12 Dec 2026, in 7 days", "overdue by 2 days").
+  ("expires on 12 Dec 2026, in 7 days", "overdue by 2 days"), with dates
+  and days counted in the site's regime's time zone (a record without a
+  site: its own regime's).
 - **Each reminder comes once per subject and threshold.** A restart, or two
   workers at once, never repeats one.
 - When the first look is already past several lead times, only the latest

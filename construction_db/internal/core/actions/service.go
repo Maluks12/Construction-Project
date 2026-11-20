@@ -18,6 +18,7 @@ import (
 	"construction_db/internal/core/checklists"
 	"construction_db/internal/core/evidence"
 	"construction_db/internal/core/sites"
+	"construction_db/internal/platform/clock"
 	"construction_db/internal/platform/database"
 )
 
@@ -28,6 +29,8 @@ const clockSkew = 5 * time.Minute
 type Service struct {
 	pool  *pgxpool.Pool
 	sites *sites.Service
+	// Clock is now for state and future checks; nil is the real time.
+	Clock clock.Clock
 }
 
 func NewService(pool *pgxpool.Pool, sitesSvc *sites.Service) *Service {
@@ -74,7 +77,7 @@ func (s *Service) Raise(ctx context.Context, orgID, userID, role, siteID, action
 	if err != nil {
 		return nil, false, ErrBadActionID
 	}
-	if err := normaliseRaise(&req, time.Now()); err != nil {
+	if err := normaliseRaise(&req, s.Clock.Now()); err != nil {
 		return nil, false, err
 	}
 	var (
@@ -231,7 +234,7 @@ func sameRaise(a *Action, by string, req RaiseRequest) bool {
 
 // view reads an action with its events and close-outs, judged now.
 func (s *Service) view(ctx context.Context, db DBTX, orgID, siteID, id string) (*Action, error) {
-	h, err := getHeader(ctx, db, orgID, siteID, id, time.Now())
+	h, err := getHeader(ctx, db, orgID, siteID, id, s.Clock.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +282,7 @@ func (s *Service) List(ctx context.Context, orgID, userID, role, siteID, state, 
 			}
 			f.SiteID = site.ID
 		}
-		out, err = listHeaders(ctx, tx, orgID, f, time.Now())
+		out, err = listHeaders(ctx, tx, orgID, f, s.Clock.Now())
 		return err
 	})
 	if isSentinel(err) {
@@ -329,7 +332,7 @@ func (s *Service) Event(ctx context.Context, orgID, userID, role, siteID, action
 	if err != nil {
 		return nil, false, ErrBadEventID
 	}
-	if err := normaliseEvent(&req, time.Now()); err != nil {
+	if err := normaliseEvent(&req, s.Clock.Now()); err != nil {
 		return nil, false, err
 	}
 	var (
@@ -505,7 +508,7 @@ func (s *Service) CloseOut(ctx context.Context, orgID, userID, role, siteID, act
 	if err != nil {
 		return nil, false, ErrBadCloseoutID
 	}
-	if err := normaliseCloseout(&req, time.Now()); err != nil {
+	if err := normaliseCloseout(&req, s.Clock.Now()); err != nil {
 		return nil, false, err
 	}
 	var (

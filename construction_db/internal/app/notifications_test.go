@@ -15,6 +15,7 @@ import (
 
 	"construction_db/internal/core/files"
 	"construction_db/internal/core/notifications"
+	"construction_db/internal/regimes"
 )
 
 // recordingMailer remembers what it sent; fail makes every send fail.
@@ -58,15 +59,16 @@ func inbox(t *testing.T, router http.Handler, token string) []notifications.Noti
 	return b.Notifications
 }
 
-// expiringLicence records a rope access licence expiring in 10 days and
-// returns the competency's id.
-func expiringLicence(t *testing.T, f evidenceFixture, worker string, supersedes any) string {
+// expiringLicence records a rope access licence issued today and expiring
+// in 10 days (SAST dates), and returns the competency's id. A renewal
+// (supersedes) expires in a year.
+func expiringLicence(t *testing.T, f evidenceFixture, c sastClock, worker string, supersedes any) string {
 	t.Helper()
 	id := uuid.NewString()
 	file := uploadFile(t, f.router, f.owner, files.PurposeCompetency, nil)
-	body := competencyBody(file, time.Now().Format(time.DateOnly), time.Now().AddDate(0, 0, 10).Format(time.DateOnly))
+	body := competencyBody(c, file, c.Today(), c.Day(10))
 	if supersedes != nil {
-		body = with(with(body, "supersedes_id", supersedes), "expires_on", time.Now().AddDate(1, 0, 0).Format(time.DateOnly))
+		body = with(with(body, "supersedes_id", supersedes), "expires_on", c.Day(365))
 	}
 	wantStatus(t, do(t, f.router, http.MethodPut, workerPath(worker)+"/competencies/"+id, f.owner, body), http.StatusCreated)
 	return id
@@ -76,24 +78,24 @@ func TestRemindersExactlyOnce(t *testing.T) {
 	ctx := context.Background()
 	f := newEvidenceFixture(t, "remind")
 	w := newWorker(t, f.router, f.owner, map[string]any{"name": "Licensed Worker"})
-	c1 := expiringLicence(t, f, w, nil)
+	c := newSASTClock(t)
+	c1 := expiringLicence(t, f, c, w, nil)
 	mailer := &recordingMailer{}
-	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: mailer, OnlyOrgs: []string{f.ownerMe.OrgID}}
+	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: mailer, OnlyOrgs: []string{f.ownerMe.OrgID}, Clock: c.Frozen()}
 
-	n, err := jobs.Reminders(ctx, time.Now())
+	n, err := jobs.Reminders(ctx, c.Now())
 	if err != nil || n != 1 {
 		t.Fatalf("first run: %d new, err %v; want 1 (the owner, before_14d)", n, err)
 	}
 	// A restart, or the next run: nothing new, nothing queued twice.
-	if n, err := jobs.Reminders(ctx, time.Now()); err != nil || n != 0 {
+	if n, err := jobs.Reminders(ctx, c.Now()); err != nil || n != 0 {
 		t.Errorf("second run: %d new, err %v; want 0", n, err)
 	}
 	if sent, err := jobs.Emails(ctx); err != nil || sent != 1 || mailer.count() != 1 {
 		t.Errorf("emails: sent %d (mailer %d), err %v; want 1", sent, mailer.count(), err)
 	}
 	// Who and what, in plain words (M11 review).
-	loc, _ := time.LoadLocation("Africa/Johannesburg")
-	expiry := time.Now().In(loc).AddDate(0, 0, 10).Format("2 Jan 2006")
+	expiry := c.Long(10)
 	if want := "SiteProof: Licensed Worker: Rope access operator licence"; !strings.HasSuffix(mailer.sent[0], want) {
 		t.Errorf("email %q, want the subject %q", mailer.sent[0], want)
 	}
@@ -119,12 +121,12 @@ func TestRemindersExactlyOnce(t *testing.T) {
 	wantError(t, do(t, f.router, http.MethodGet, "/v1/notifications?limit=0", f.owner, nil), http.StatusBadRequest, "limit must be 1-200")
 
 	// Seven days out: the next threshold, once.
-	if n, _ := jobs.Reminders(ctx, time.Now().AddDate(0, 0, 4)); n != 1 {
+	if n, _ := jobs.Reminders(ctx, c.Now().AddDate(0, 0, 4)); n != 1 {
 		t.Errorf("at 6 days left: %d new, want 1 (before_7d)", n)
 	}
 	// A renewal before the email goes: it is cancelled, never sent, and the
 	// inbox shows the old reminder superseded.
-	expiringLicence(t, f, w, c1)
+	expiringLicence(t, f, c, w, c1)
 	if sent, _ := jobs.Emails(ctx); sent != 0 {
 		t.Errorf("sent %d emails about a renewed licence", sent)
 	}
@@ -136,7 +138,7 @@ func TestRemindersExactlyOnce(t *testing.T) {
 			t.Errorf("reminder %s about the renewed licence is %s", x.Threshold, x.SubjectState)
 		}
 	}
-	if n, _ := jobs.Reminders(ctx, time.Now().AddDate(0, 0, 9)); n != 0 {
+	if n, _ := jobs.Reminders(ctx, c.Now().AddDate(0, 0, 9)); n != 0 {
 		t.Errorf("the renewed licence still reminds: %d new", n)
 	}
 }
@@ -148,8 +150,9 @@ func TestRemindersTwoWorkers(t *testing.T) {
 	ctx := context.Background()
 	f := newEvidenceFixture(t, "remind-race")
 	w := newWorker(t, f.router, f.owner, map[string]any{"name": "Race Licence"})
-	expiringLicence(t, f, w, nil)
-	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: &recordingMailer{}, OnlyOrgs: []string{f.ownerMe.OrgID}}
+	c := newSASTClock(t)
+	expiringLicence(t, f, c, w, nil)
+	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: &recordingMailer{}, OnlyOrgs: []string{f.ownerMe.OrgID}, Clock: c.Frozen()}
 
 	tx := holdOpen(t, f)
 	if _, err := tx.Exec(ctx, `
@@ -160,7 +163,7 @@ func TestRemindersTwoWorkers(t *testing.T) {
 	}
 	done := make(chan int, 1)
 	go func() {
-		n, err := jobs.Reminders(ctx, time.Now())
+		n, err := jobs.Reminders(ctx, c.Now())
 		if err != nil {
 			t.Error(err)
 		}
@@ -184,10 +187,11 @@ func TestEmailsAtMostOnce(t *testing.T) {
 	ctx := context.Background()
 	f := newEvidenceFixture(t, "email-once")
 	w := newWorker(t, f.router, f.owner, map[string]any{"name": "Mail Worker"})
-	expiringLicence(t, f, w, nil)
+	c := newSASTClock(t)
+	expiringLicence(t, f, c, w, nil)
 	mailer := &recordingMailer{}
-	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: mailer, OnlyOrgs: []string{f.ownerMe.OrgID}, StaleSending: time.Nanosecond}
-	if n, err := jobs.Reminders(ctx, time.Now()); err != nil || n != 1 {
+	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: mailer, OnlyOrgs: []string{f.ownerMe.OrgID}, StaleSending: time.Nanosecond, Clock: c.Frozen()}
+	if n, err := jobs.Reminders(ctx, c.Now()); err != nil || n != 1 {
 		t.Fatalf("reminders: %d, %v", n, err)
 	}
 	// A worker claimed it and died before the SMTP call returned.
@@ -200,7 +204,7 @@ func TestEmailsAtMostOnce(t *testing.T) {
 	}
 
 	// A failed send is recorded and not retried.
-	if n, _ := jobs.Reminders(ctx, time.Now().AddDate(0, 0, 4)); n != 1 {
+	if n, _ := jobs.Reminders(ctx, c.Now().AddDate(0, 0, 4)); n != 1 {
 		t.Fatalf("next threshold: %d", n)
 	}
 	mailer.fail = true
@@ -222,9 +226,10 @@ func TestEmailsAtMostOnce(t *testing.T) {
 func TestJobRunsAndHealth(t *testing.T) {
 	ctx := context.Background()
 	f := newEvidenceFixture(t, "jobs")
-	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: &recordingMailer{}, OnlyOrgs: []string{f.ownerMe.OrgID}}
+	c := newSASTClock(t)
+	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: &recordingMailer{}, OnlyOrgs: []string{f.ownerMe.OrgID}, Clock: c.Frozen()}
 	for name, fn := range map[string]func(context.Context) (int, error){
-		notifications.JobReminders: func(ctx context.Context) (int, error) { return jobs.Reminders(ctx, time.Now()) },
+		notifications.JobReminders: func(ctx context.Context) (int, error) { return jobs.Reminders(ctx, c.Now()) },
 		notifications.JobEmails:    jobs.Emails,
 		notifications.JobHolidays:  jobs.Holidays,
 	} {
@@ -246,11 +251,11 @@ func TestJobRunsAndHealth(t *testing.T) {
 	if _, err := testAdmin.Exec(ctx, `INSERT INTO job_runs (job, instance) VALUES ('reminders', 'killed')`); err != nil {
 		t.Fatal(err)
 	}
-	stale, err := notifications.Stale(ctx, testPool, time.Now().Add(3*time.Hour))
+	stale, err := notifications.Stale(ctx, testPool, testClock.Now().Add(3*time.Hour))
 	if err != nil || !slices.Contains(stale, notifications.JobReminders) || !slices.Contains(stale, notifications.JobEmails) {
 		t.Errorf("3 hours on with no new runs: stale %v, err %v; want reminders and emails", stale, err)
 	}
-	if stale, _ := notifications.Stale(ctx, testPool, time.Now()); len(stale) != 0 {
+	if stale, _ := notifications.Stale(ctx, testPool, testClock.Now()); len(stale) != 0 {
 		t.Errorf("just after runs: stale %v", stale)
 	}
 }
@@ -261,10 +266,11 @@ func TestEmailClaimSkipsLockedRows(t *testing.T) {
 	ctx := context.Background()
 	f := newEvidenceFixture(t, "email-claim")
 	w := newWorker(t, f.router, f.owner, map[string]any{"name": "Claim Worker"})
-	expiringLicence(t, f, w, nil)
+	c := newSASTClock(t)
+	expiringLicence(t, f, c, w, nil)
 	mailer := &recordingMailer{}
-	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: mailer, OnlyOrgs: []string{f.ownerMe.OrgID}}
-	if n, err := jobs.Reminders(ctx, time.Now()); err != nil || n != 1 {
+	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: mailer, OnlyOrgs: []string{f.ownerMe.OrgID}, Clock: c.Frozen()}
+	if n, err := jobs.Reminders(ctx, c.Now()); err != nil || n != 1 {
 		t.Fatalf("reminders: %d, %v", n, err)
 	}
 
@@ -301,9 +307,10 @@ func TestEmailsLoggedNotSent(t *testing.T) {
 	ctx := context.Background()
 	f := newEvidenceFixture(t, "email-log")
 	w := newWorker(t, f.router, f.owner, map[string]any{"name": "Logged Worker"})
-	expiringLicence(t, f, w, nil)
-	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: &recordingMailer{logOnly: true}, OnlyOrgs: []string{f.ownerMe.OrgID}}
-	if n, err := jobs.Reminders(ctx, time.Now()); err != nil || n != 1 {
+	c := newSASTClock(t)
+	expiringLicence(t, f, c, w, nil)
+	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: &recordingMailer{logOnly: true}, OnlyOrgs: []string{f.ownerMe.OrgID}, Clock: c.Frozen()}
+	if n, err := jobs.Reminders(ctx, c.Now()); err != nil || n != 1 {
 		t.Fatalf("reminders: %d, %v", n, err)
 	}
 	if _, err := jobs.Emails(ctx); err != nil {
@@ -314,5 +321,39 @@ func TestEmailsLoggedNotSent(t *testing.T) {
 	}
 	if n := countRows(t, `SELECT count(*) FROM notification_emails WHERE org_id = $1 AND status = 'sent'`, f.ownerMe.OrgID); n != 0 {
 		t.Errorf("%d emails recorded as sent by a log-only mailer", n)
+	}
+}
+
+// An email's dates are told in the record's regime's zone, not the first
+// loaded regime's (000036). The first regime here is a zone whose date
+// differs from Johannesburg's right now, so the old way says 9 or 11 days.
+func TestEmailUsesTheRecordsZone(t *testing.T) {
+	ctx := context.Background()
+	f := newEvidenceFixture(t, "email-zone")
+	c := newSASTClock(t)
+	w := newWorker(t, f.router, f.owner, map[string]any{"name": "Zone Worker"})
+	expiringLicence(t, f, c, w, nil)
+	queue := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: &recordingMailer{}, OnlyOrgs: []string{f.ownerMe.OrgID}, Clock: c.Frozen()}
+	if n, err := queue.Reminders(ctx, c.Now()); err != nil || n != 1 {
+		t.Fatalf("reminders: %d, %v", n, err)
+	}
+
+	other := "Pacific/Pago_Pago" // 13 hours behind: the previous date before 13:00 SAST
+	if c.Now().In(joburgLoc).Hour() >= 12 {
+		other = "Pacific/Kiritimati" // 12 hours ahead: the next date from 12:00 SAST
+	}
+	fsys := regimeFS("aa_first", "za_construction_2014")
+	fsys["aa_first/regime.json"].Data = []byte(strings.Replace(string(fsys["aa_first/regime.json"].Data), "Africa/Johannesburg", other, 1))
+	reg, err := regimes.LoadFS(fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mailer := &recordingMailer{}
+	sender := &notifications.Jobs{Pool: testPool, Registry: reg, Mailer: mailer, OnlyOrgs: []string{f.ownerMe.OrgID}, Clock: c.Frozen()}
+	if sent, err := sender.Emails(ctx); err != nil || sent != 1 {
+		t.Fatalf("emails: %d, %v", sent, err)
+	}
+	if want := "expires on " + c.Long(10) + ", in 10 days."; !strings.Contains(mailer.bodies[0], want) {
+		t.Errorf("body %q, want %q (told in SAST, not %s)", mailer.bodies[0], want, other)
 	}
 }

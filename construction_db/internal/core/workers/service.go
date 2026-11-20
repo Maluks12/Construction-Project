@@ -15,6 +15,7 @@ import (
 	"construction_db/internal/core/evidence"
 	"construction_db/internal/core/files"
 	"construction_db/internal/core/sites"
+	"construction_db/internal/platform/clock"
 	"construction_db/internal/platform/database"
 	"construction_db/internal/regimes"
 )
@@ -24,6 +25,8 @@ type Service struct {
 	sites *sites.Service
 	files *files.Service
 	reg   *regimes.Registry
+	// Clock is now for state and future checks; nil is the real time.
+	Clock clock.Clock
 }
 
 func NewService(pool *pgxpool.Pool, sitesSvc *sites.Service, filesSvc *files.Service, reg *regimes.Registry) *Service {
@@ -225,7 +228,7 @@ func (s *Service) Get(ctx context.Context, orgID, userID, workerID string) (*Wor
 		if d.Medicals, err = listMedicals(ctx, tx, orgID, `r.worker_id = $2`, w.ID); err != nil {
 			return err
 		}
-		now := time.Now()
+		now := s.Clock.Now()
 		for i := range d.Competencies {
 			s.setState(&d.Competencies[i].RecordHeader, d.Competencies[i].ExpiresOn, now)
 		}
@@ -326,7 +329,7 @@ func (s *Service) PutCompetency(ctx context.Context, orgID, userID, workerID, re
 		return nil, false, ErrBadRecordID
 	}
 	req.ClientRecordedAt = micro(req.ClientRecordedAt)
-	if ps := ValidateCompetency(s.reg, req, time.Now()); len(ps) > 0 {
+	if ps := ValidateCompetency(s.reg, req, s.Clock.Now()); len(ps) > 0 {
 		return nil, false, &Problem{ps[0]}
 	}
 	var (
@@ -376,7 +379,7 @@ func (s *Service) PutCompetency(ctx context.Context, orgID, userID, workerID, re
 	if err = finish(err, "put competency"); err != nil {
 		return nil, false, err
 	}
-	s.setState(&c.RecordHeader, c.ExpiresOn, time.Now())
+	s.setState(&c.RecordHeader, c.ExpiresOn, s.Clock.Now())
 	return c, created, nil
 }
 
@@ -387,7 +390,7 @@ func (s *Service) PutMedical(ctx context.Context, orgID, userID, workerID, recor
 		return nil, false, ErrBadRecordID
 	}
 	req.ClientRecordedAt = micro(req.ClientRecordedAt)
-	if ps := ValidateMedical(s.reg, req, time.Now()); len(ps) > 0 {
+	if ps := ValidateMedical(s.reg, req, s.Clock.Now()); len(ps) > 0 {
 		return nil, false, &Problem{ps[0]}
 	}
 	var (
@@ -434,7 +437,7 @@ func (s *Service) PutMedical(ctx context.Context, orgID, userID, workerID, recor
 	if err = finish(err, "put medical"); err != nil {
 		return nil, false, err
 	}
-	s.setState(&m.RecordHeader, &m.ExpiresOn, time.Now())
+	s.setState(&m.RecordHeader, &m.ExpiresOn, s.Clock.Now())
 	return m, created, nil
 }
 
@@ -527,7 +530,7 @@ func (s *Service) Retract(ctx context.Context, orgID, userID, role, kind, worker
 			if kind == kindMedical {
 				m, err := getMedical(ctx, tx, orgID, recordID)
 				if err == nil {
-					s.setState(&m.RecordHeader, &m.ExpiresOn, time.Now())
+					s.setState(&m.RecordHeader, &m.ExpiresOn, s.Clock.Now())
 					out = m
 					return &m.RecordHeader, nil
 				}
@@ -535,7 +538,7 @@ func (s *Service) Retract(ctx context.Context, orgID, userID, role, kind, worker
 			}
 			c, err := getCompetency(ctx, tx, orgID, recordID)
 			if err == nil {
-				s.setState(&c.RecordHeader, c.ExpiresOn, time.Now())
+				s.setState(&c.RecordHeader, c.ExpiresOn, s.Clock.Now())
 				out = c
 				return &c.RecordHeader, nil
 			}

@@ -39,9 +39,16 @@ supervisor only on sites they've been added to (any other site is 404
 
   The signature itself never changes; a wrong link is unlinked.
 - **Not signed (M11).** A talk's `not_signed` lists the register workers
-  signed in on the site that day (attendance.md) before the talk ended (or
-  now, while it has no end) who didn't sign it: absent from the talk or
-  refused. Nothing is inferred about them; it is a list to act on.
+  on the site who didn't sign it: absent from the talk or refused. Nothing
+  is inferred about them; it is a list to act on. A worker is listed when a
+  sign-in of theirs on the site (attendance.md), not retracted, hadn't ended
+  when the talk began and either:
+  - was standing at the talk's start, whatever its date: a night shift that
+    signed in at 23:35 is listed for a 00:35 talk (decided Fri 20 Nov); or
+  - was made on the talk's date before the talk ended (or now, while it has
+    no end).
+
+  The day register, absent list and headcount stay by sign-in date.
 - **Paper registers.** Where people signed a paper sheet, photograph it, add
   the photo with `kind: "paper_register"`, then record each name with
   `method: "paper"`. Paper attendance is refused until the talk has a

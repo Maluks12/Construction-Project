@@ -218,7 +218,7 @@ gofmt -l .                              # must print nothing (CI fails otherwise
 go vet ./...
 go test ./...                           # needs Docker Desktop running (testcontainers)
 go test -p 4 ./...                      # locally on Windows: at most 4 packages at once
-SITEPROOF_TEST_SAST=00:30 go test -run '<tests>' ./internal/app/   # as if at 00:30 SAST (below)
+SITEPROOF_TEST_SAST=00:30 go test -run "$DATE_TESTS" ./internal/app/   # as if at 00:30 SAST (below)
 ```
 
 On Windows, run the tests locally with `-p 4`. Several packages each start
@@ -500,7 +500,14 @@ Johannesburg, starts Postgres with its clock moved by the same offset
 the router and the tests the same clock (`HTTPOptions.Clock`,
 `notifications.Jobs.Clock`). Only tests that take every time from the clock
 are meaningful in that mode: the attendance, toolbox not_signed, reminders,
-workers, documents, appointments and actions tests.
+workers, documents, appointments and actions tests. Their names are
+`DATE_TESTS` in `.github/workflows/ci.yml`, whose "Test dates as if at 00:30
+SAST" step runs them after the normal tests (about a minute; the faketime
+image builds in about 6 s, so it isn't cached). A new date-sensitive test
+goes in that list. Production can't reach any of this:
+`TestProductionUsesTheRealClock` (archtest) fails if non-test code names
+SITEPROOF_TEST_SAST, moves the clock, imports a test helper or sets a Clock
+under cmd/.
 
 ## Conventions (learned the hard way)
 

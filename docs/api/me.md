@@ -47,6 +47,7 @@ approval; when it is approved, this list and the guards change together.
 | `waive_findings` | Waive a low or medium finding | ✓ | ✓ | – | – |
 | `verify_actions` | Verify or reject a corrective action's close-out; move a due date later | ✓ | ✓ | – | – |
 | `manage_workers` | Edit workers, and retract competencies and medicals | ✓ | ✓ | – | – |
+| `view_compliance` | The compliance summary of a site, and the rollup over the sites you can open | ✓ | ✓ | ✓ | – |
 
 Some writes depend on the record as well as the role (a supervisor may
 reassign an action they raised, or close out one they own). Those aren't
@@ -56,7 +57,7 @@ capabilities: show the button and let the endpoint answer.
 
 <!-- types -->
 ```ts
-export type Capability = "capture_records" | "read_safety_file" | "write_safety_file" | "manage_sites" | "invite_members" | "view_vault" | "open_medical_certificates" | "verify_chain" | "waive_findings" | "verify_actions" | "manage_workers";
+export type Capability = "capture_records" | "read_safety_file" | "write_safety_file" | "manage_sites" | "invite_members" | "view_vault" | "open_medical_certificates" | "verify_chain" | "waive_findings" | "verify_actions" | "manage_workers" | "view_compliance";
 
 export type Role = "owner" | "she_officer" | "supervisor" | "claims_handler" | "contracts_manager" | "bookkeeper";
 

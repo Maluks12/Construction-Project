@@ -2,14 +2,9 @@ package auth
 
 import "slices"
 
-// Capabilities are display hints for the apps (M12 D16): what the caller's
-// role lets them do, so a screen can hide a button instead of probing for a
-// 403. No handler reads them; every route keeps its own guard, and
-// TestCapabilitiesMatchRoutes holds this table to those guards. For a
-// supervisor a capability means "on your own sites".
-//
-// The table encodes today's guards, not the role matrix awaiting approval.
-// When the matrix is approved, this table and the guards change together.
+// Capabilities are display hints (M12 D16): no handler reads them, and
+// TestCapabilitiesMatchRoutes holds them to today's guards. Change both
+// together when the role matrix is approved.
 const (
 	CapCaptureRecords          = "capture_records"
 	CapReadSafetyFile          = "read_safety_file"
@@ -22,6 +17,7 @@ const (
 	CapWaiveFindings           = "waive_findings"
 	CapVerifyActions           = "verify_actions"
 	CapManageWorkers           = "manage_workers"
+	CapViewCompliance          = "view_compliance"
 )
 
 var (
@@ -42,6 +38,7 @@ var capabilityRoles = map[string][]string{
 	CapWaiveFindings:           leadRoles,
 	CapVerifyActions:           leadRoles,
 	CapManageWorkers:           leadRoles,
+	CapViewCompliance:          fieldRoles,
 }
 
 // AllCapabilities lists every capability, sorted.

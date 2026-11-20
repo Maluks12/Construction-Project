@@ -19,6 +19,7 @@ import (
 	"construction_db/internal/core/incidents"
 	"construction_db/internal/core/invites"
 	"construction_db/internal/core/notifications"
+	"construction_db/internal/core/reports"
 	"construction_db/internal/core/sites"
 	"construction_db/internal/core/toolbox"
 	"construction_db/internal/core/vault"
@@ -95,9 +96,24 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	vault.Register(router, documentsSvc, authSvc)
 	notifications.Register(router, notifications.NewService(pool), authSvc)
 
+	deps := edition.Deps{Pool: pool, Sites: sitesSvc, Files: filesSvc, Documents: documentsSvc, Regimes: reg, Clock: opts.Clock}
+	var contrib reports.Contributor
+	if re, ok := ed.(reportingEdition); ok {
+		contrib = re.ReportsContributor(deps)
+	}
+	reportsSvc := reports.NewService(pool, sitesSvc, documentsSvc, reg, contrib)
+	reportsSvc.Clock = opts.Clock
+	reports.Register(router, reportsSvc, authSvc)
+
 	editionRoutes := router.Group("/v1/" + ed.Name())
 	editionRoutes.Use(auth.RequireAuth(authSvc))
-	ed.RegisterRoutes(editionRoutes, edition.Deps{Pool: pool, Sites: sitesSvc, Files: filesSvc, Documents: documentsSvc, Regimes: reg, Clock: opts.Clock})
+	ed.RegisterRoutes(editionRoutes, deps)
 
 	return router, nil
+}
+
+// reportingEdition is an edition that adds categories to the compliance
+// summary (M12); the edition.Edition interface stays as it was.
+type reportingEdition interface {
+	ReportsContributor(edition.Deps) reports.Contributor
 }

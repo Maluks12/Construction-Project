@@ -75,7 +75,7 @@ func (h *Handler) List(c *gin.Context) {
 }
 
 func (h *Handler) Download(c *gin.Context) {
-	client := evidence.Client{IP: c.ClientIP(), UserAgent: c.Request.UserAgent()}
+	client := evidence.ClientOf(c)
 	out, err := h.svc.Download(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c), c.Param("id"), c.Param("exportId"), client)
 	if err != nil {
 		writeError(c, err)

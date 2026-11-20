@@ -176,7 +176,7 @@ func (h *Handler) retract(kind string) gin.HandlerFunc {
 func (h *Handler) view(kind string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		u, err := h.svc.ViewFile(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c), kind,
-			c.Param("workerId"), c.Param("recordId"), evidence.Client{IP: c.ClientIP(), UserAgent: c.Request.UserAgent()})
+			c.Param("workerId"), c.Param("recordId"), evidence.ClientOf(c))
 		if err != nil {
 			writeError(c, err)
 			return

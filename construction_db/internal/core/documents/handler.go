@@ -107,7 +107,7 @@ func (h *Handler) Get(c *gin.Context) {
 
 func (h *Handler) View(c *gin.Context) {
 	u, err := h.svc.View(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c), h.where(c), c.Param("documentId"), c.Param("version"),
-		evidence.Client{IP: c.ClientIP(), UserAgent: c.Request.UserAgent()})
+		evidence.ClientOf(c))
 	if err != nil {
 		writeError(c, err)
 		return

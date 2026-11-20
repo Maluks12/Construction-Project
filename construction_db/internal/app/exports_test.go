@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -249,6 +250,19 @@ func TestExportPack(t *testing.T) {
 	}
 	if n := countRows(t, `SELECT count(*) FROM audit_export_downloads WHERE export_id = $1`, id); n != 1 {
 		t.Errorf("%d download rows", n)
+	}
+	// The log's IP is the peer's: a forwarded header from an untrusted peer is ignored.
+	req := httptest.NewRequest(http.MethodPost, exportPath(f.siteA, id)+"/download", nil)
+	req.Header.Set("Authorization", "Bearer "+f.owner)
+	req.Header.Set("X-Forwarded-For", "203.0.113.9")
+	spoofed := httptest.NewRecorder()
+	r.ServeHTTP(spoofed, req)
+	wantStatus(t, spoofed, http.StatusOK)
+	if n := countRows(t, `SELECT count(*) FROM evidence_access_log WHERE export_id = $1 AND ip IS DISTINCT FROM '192.0.2.1'`, id); n != 0 {
+		t.Errorf("%d evidence export rows not logged with the peer's IP", n)
+	}
+	if n := countRows(t, `SELECT count(*) FROM file_access_log WHERE export_id = $1 AND ip IS DISTINCT FROM '192.0.2.1'`, id); n != 0 {
+		t.Errorf("%d file export rows not logged with the peer's IP", n)
 	}
 
 	// Inside: the entries in order, every file's sealed hash, every section.

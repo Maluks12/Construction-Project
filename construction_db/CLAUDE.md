@@ -637,7 +637,8 @@ under cmd/.
   logged `view`. Any new code that returns more of an evidence record than
   those three fields counts as a view and must log it.
 
-  Take the client from `clientOf(c)`. `c.ClientIP()` believes
+  Take the client from `evidence.ClientOf(c)`, in every package
+  (`TestAccessLogClientFromClientOf`). `c.ClientIP()` believes
   `X-Forwarded-For` only from `TRUSTED_PROXIES` (default none; Gin's own
   default trusts every proxy).
 - Emails compare with `lower()`.

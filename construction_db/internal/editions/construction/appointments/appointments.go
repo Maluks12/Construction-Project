@@ -405,7 +405,7 @@ func Register(r *gin.RouterGroup, svc *Service, onSite gin.HandlerFunc) {
 	})
 	g.POST("/:appointmentId/view", func(c *gin.Context) {
 		u, err := svc.View(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c), c.Param("id"), c.Param("appointmentId"),
-			evidence.Client{IP: c.ClientIP(), UserAgent: c.Request.UserAgent()})
+			evidence.ClientOf(c))
 		if err != nil {
 			writeError(c, err)
 			return

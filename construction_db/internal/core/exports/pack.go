@@ -82,13 +82,50 @@ func filePath(kind, id, contentType string) string {
 	return dir + id + "." + ext
 }
 
+// packDocs are the generated entries, rendered before anything is written so
+// the pack's size is known up front.
+type packDocs struct {
+	chain, readme, index, manifest []byte
+	modified                       time.Time
+}
+
+func renderDocs(m *Manifest) (*packDocs, error) {
+	manifest, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("render pack: manifest: %w", err)
+	}
+	index, err := renderIndex(m)
+	if err != nil {
+		return nil, fmt.Errorf("render pack: index: %w", err)
+	}
+	return &packDocs{chain: []byte(evidence.ChainSpec()), readme: []byte(readme(m)), index: index,
+		manifest: append(manifest, '\n'), modified: m.Export.AsOf.UTC().Truncate(time.Second)}, nil
+}
+
+// estimateSize is an upper bound on the ZIP's size: every entry's bytes,
+// plus a generous allowance for its headers (local, ZIP64 descriptor,
+// central record, extras) and the end records.
+func estimateSize(d *packDocs, files []packFile) int64 {
+	const perEntry, ends = 256, 1024
+	n := int64(ends)
+	for _, doc := range []struct {
+		name string
+		body []byte
+	}{{"CHAIN.md", d.chain}, {"README.txt", d.readme}, {"index.html", d.index}, {"manifest.json", d.manifest}} {
+		n += perEntry + 2*int64(len(doc.name)) + int64(len(doc.body))
+	}
+	for _, f := range files {
+		n += perEntry + 2*int64(len(f.Path)) + f.SizeBytes
+	}
+	return n
+}
+
 // writePack stores entries uncompressed (deflate output may change between Go
 // versions), in name order, each dated as_of.
-func writePack(ctx context.Context, w io.Writer, m *Manifest, files []packFile, open Opener) error {
+func writePack(ctx context.Context, w io.Writer, d *packDocs, files []packFile, open Opener) error {
 	zw := zip.NewWriter(w)
-	modified := m.Export.AsOf.UTC().Truncate(time.Second)
 	entry := func(name string) (io.Writer, error) {
-		return zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store, Modified: modified})
+		return zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store, Modified: d.modified})
 	}
 	put := func(name string, body []byte) error {
 		fw, err := entry(name)
@@ -98,20 +135,11 @@ func writePack(ctx context.Context, w io.Writer, m *Manifest, files []packFile, 
 		_, err = fw.Write(body)
 		return err
 	}
-
-	manifest, err := json.MarshalIndent(m, "", "  ")
-	if err != nil {
-		return fmt.Errorf("write pack: manifest: %w", err)
-	}
-	index, err := renderIndex(m)
-	if err != nil {
-		return fmt.Errorf("write pack: index: %w", err)
-	}
 	// "CHAIN.md" < "README.txt" < "files/" < "index.html" < "manifest.json".
-	if err := put("CHAIN.md", []byte(evidence.ChainSpec())); err != nil {
+	if err := put("CHAIN.md", d.chain); err != nil {
 		return fmt.Errorf("write pack: %w", err)
 	}
-	if err := put("README.txt", []byte(readme(m))); err != nil {
+	if err := put("README.txt", d.readme); err != nil {
 		return fmt.Errorf("write pack: %w", err)
 	}
 	slices.SortFunc(files, func(a, b packFile) int { return strings.Compare(a.Path, b.Path) })
@@ -120,10 +148,10 @@ func writePack(ctx context.Context, w io.Writer, m *Manifest, files []packFile, 
 			return fmt.Errorf("write pack: %w", err)
 		}
 	}
-	if err := put("index.html", index); err != nil {
+	if err := put("index.html", d.index); err != nil {
 		return fmt.Errorf("write pack: %w", err)
 	}
-	if err := put("manifest.json", append(manifest, '\n')); err != nil {
+	if err := put("manifest.json", d.manifest); err != nil {
 		return fmt.Errorf("write pack: %w", err)
 	}
 	if err := zw.Close(); err != nil {

@@ -38,8 +38,8 @@ type Store interface {
 	// stored with.
 	PresignGet(ctx context.Context, key, versionID, contentType string, ttl time.Duration) (*PresignedGet, error)
 	// PutStream writes an object the server built (an audit pack, M12) from a
-	// stream, and returns its version.
-	PutStream(ctx context.Context, key string, r io.Reader, contentType string) (string, error)
+	// stream of at most size bytes, and returns its version.
+	PutStream(ctx context.Context, key string, r io.Reader, contentType string, size int64) (string, error)
 }
 
 // PresignedGet is a URL anyone holding it can fetch until ExpiresAt; no

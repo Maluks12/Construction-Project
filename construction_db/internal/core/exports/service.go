@@ -202,6 +202,7 @@ const exportSQL = `
 	          AND (a.outcome IN ('failed', 'lapsed') OR (a.finished_at IS NULL AND a.lease_until <= $4))),
 	       EXISTS (SELECT 1 FROM audit_export_attempts a WHERE a.export_id = e.id AND a.finished_at IS NULL AND a.lease_until > $4),
 	       EXISTS (SELECT 1 FROM audit_export_attempts a WHERE a.export_id = e.id AND a.outcome = 'integrity'),
+	       EXISTS (SELECT 1 FROM audit_export_attempts a WHERE a.export_id = e.id AND a.outcome = 'refused'),
 	       (SELECT a.error FROM audit_export_attempts a WHERE a.export_id = e.id AND a.error IS NOT NULL ORDER BY a.attempt DESC LIMIT 1),
 	       encode(r.sha256, 'hex'), r.size_bytes, r.evidence_count, r.file_count, r.chain_length, encode(r.chain_head, 'hex'),
 	       r.chain_intact, r.finished_at, r.expires_at, r.object_key, r.object_version_id
@@ -218,15 +219,15 @@ func listExports(ctx context.Context, db pgx.Tx, orgID, siteID, id string, now t
 	out := []Export{}
 	for rows.Next() {
 		var e Export
-		var live bool
+		var live, refused bool
 		if err := rows.Scan(&e.ID, &e.SiteID, &e.From, &e.To, &e.TimeZone, &e.AsOf, &e.RequestedBy, &e.RequesterRole,
 			&e.IncludesHealth, &e.PackFormat, &e.RegimeCode, &e.RegimeVersion, &e.RegimeDataSHA256, &e.ClientRequestedAt,
-			&e.DeviceID, &e.Attempts, &e.FailedAttempts, &live, &e.IntegrityAlarm, &e.LastError, &e.SHA256, &e.SizeBytes, &e.EvidenceCount,
+			&e.DeviceID, &e.Attempts, &e.FailedAttempts, &live, &e.IntegrityAlarm, &refused, &e.LastError, &e.SHA256, &e.SizeBytes, &e.EvidenceCount,
 			&e.FileCount, &e.ChainLength, &e.ChainHead, &e.ChainIntact, &e.FinishedAt, &e.ExpiresAt,
 			&e.objectKey, &e.objectVersion); err != nil {
 			return nil, err
 		}
-		e.Status = statusOf(e, live, now)
+		e.Status = statusOf(e, live, refused, now)
 		out = append(out, e)
 	}
 	return out, rows.Err()
@@ -246,13 +247,13 @@ func getExport(ctx context.Context, db pgx.Tx, orgID, siteID, id string, now tim
 	return &list[0], nil
 }
 
-func statusOf(e Export, live bool, now time.Time) string {
+func statusOf(e Export, live, refused bool, now time.Time) string {
 	switch {
 	case e.ExpiresAt != nil && !now.Before(*e.ExpiresAt):
 		return StatusExpired
 	case e.SHA256 != nil:
 		return StatusReady
-	case e.IntegrityAlarm:
+	case e.IntegrityAlarm, refused:
 		return StatusFailed
 	case e.FailedAttempts >= MaxAttempts:
 		return StatusFailed

@@ -108,7 +108,9 @@ The `Export` with its `status`. 404 `"export not found"`.
 - `building`: a worker holds it.
 - `ready`: `sha256`, `size_bytes`, the counts and the chain's
   `chain_length`, `chain_head` and `chain_intact` are set.
-- `failed`: three attempts failed (`last_error` says why). Queue a new
+- `failed`: three attempts failed (`last_error` says why), or the pack was
+  refused for good: an integrity alarm, or larger than one object can hold
+  (5 TiB; `last_error` says to export a shorter period). Queue a new
   export. Attempts back off: the second starts at least 1 minute after the
   first ended, the third 5 minutes after the second, so a failing export
   takes about 6 minutes to fail for good.

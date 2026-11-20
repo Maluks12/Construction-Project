@@ -370,7 +370,7 @@ func (s corruptStore) ReadVersion(ctx context.Context, key, version string) (io.
 // failingUploads stops partway through every pack, as a crash would.
 type failingUploads struct{ storage.Store }
 
-func (failingUploads) PutStream(_ context.Context, _ string, r io.Reader, _ string) (string, error) {
+func (failingUploads) PutStream(_ context.Context, _ string, r io.Reader, _ string, _ int64) (string, error) {
 	_, _ = io.CopyN(io.Discard, r, 1024)
 	return "", errors.New("connection reset by peer")
 }
@@ -799,5 +799,32 @@ func TestExportIntegrityAlarm(t *testing.T) {
 	if n := countRows(t, `SELECT count(*) FROM notification_emails m JOIN notifications n ON n.id = m.notification_id
 		WHERE n.kind = 'integrity_alarm' AND n.subject_id = $1`, e.ID); n != 1 {
 		t.Errorf("%d alarm emails, want 1 (the owner)", n)
+	}
+}
+
+// A pack too large for one object is refused for good, with a clear
+// reason, and never retried (M12 review). The limit is lowered for the test.
+func TestExportTooLarge(t *testing.T) {
+	f := newEvidenceFixture(t, "exporttoolarge")
+	clk, ctx, org := newSASTClock(t), context.Background(), f.ownerMe.OrgID
+	e := queueExport(t, f, f.siteA, exportBody(clk.Today(), clk.Today()))
+	prev := exports.MaxPackSize
+	exports.MaxPackSize = 1000
+	defer func() { exports.MaxPackSize = prev }()
+
+	b := newBuilder(10 * time.Second)
+	if err := b.Run(ctx, claim(t, b, org, e.ID)); !errors.Is(err, exports.ErrPackTooLarge) {
+		t.Fatalf("run: %v", err)
+	}
+	got := getExportStatus(t, f.router, f.owner, f.siteA, e.ID)
+	if got.Status != exports.StatusFailed || got.Attempts != 1 || got.LastError == nil || !strings.Contains(*got.LastError, "export a shorter period") {
+		t.Errorf("refused %+v", got)
+	}
+	time.Sleep(10 * time.Millisecond)
+	if a, err := b.Claim(ctx, org); err != nil || a != nil {
+		t.Errorf("claimed a refused export: %+v, %v", a, err)
+	}
+	if n := countRows(t, `SELECT count(*) FROM audit_export_results WHERE export_id = $1`, e.ID); n != 0 {
+		t.Error("a refused export has a result")
 	}
 }

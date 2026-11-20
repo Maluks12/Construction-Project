@@ -123,7 +123,7 @@ func (b *Builder) Claim(ctx context.Context, orgID string) (*Attempt, error) {
 			WHERE NOT EXISTS (SELECT 1 FROM audit_export_results r WHERE r.export_id = e.id)
 			  AND e.as_of <= clock_timestamp() - audit_export_settle()
 			  AND audit_export_retry_at(e.id) <= clock_timestamp()
-			  AND NOT EXISTS (SELECT 1 FROM audit_export_attempts x WHERE x.export_id = e.id AND x.outcome = 'integrity')
+			  AND NOT EXISTS (SELECT 1 FROM audit_export_attempts x WHERE x.export_id = e.id AND x.outcome IN ('integrity', 'refused'))
 			  AND NOT EXISTS (SELECT 1 FROM audit_export_attempts x
 			                  WHERE x.export_id = e.id AND x.finished_at IS NULL AND x.lease_until > clock_timestamp())
 			  AND (SELECT count(*) FROM audit_export_attempts x WHERE x.export_id = e.id
@@ -196,6 +196,38 @@ func (b *Builder) Run(ctx context.Context, a *Attempt) error {
 	defer cancel(nil)
 	go b.keepLease(bctx, cancel, a)
 
+	p, err := b.prepare(bctx, a.OrgID, a.ExportID)
+	if err == nil && p.size > MaxPackSize {
+		err = fmt.Errorf("the pack would be about %d bytes, more than one object can hold (%d): %w; export a shorter period",
+			p.size, MaxPackSize, ErrPackTooLarge)
+	}
+	if err == nil {
+		err = b.upload(bctx, a, p)
+	}
+	if err != nil {
+		var seal *SealError
+		switch {
+		case errors.As(err, &seal):
+			if aerr := b.alarm(context.WithoutCancel(ctx), a, seal); aerr != nil {
+				slog.Error("audit pack: could not record the integrity alarm", "export", a.ExportID, "err", aerr)
+			}
+		case errors.Is(err, ErrPackTooLarge):
+			if rerr := b.finish(context.WithoutCancel(ctx), a, "refused", err); rerr != nil {
+				slog.Warn("audit pack: could not record the refusal", "export", a.ExportID, "err", rerr)
+			}
+		default:
+			if ferr := b.Fail(context.WithoutCancel(ctx), a, err); ferr != nil {
+				slog.Warn("audit pack: could not record the failure", "export", a.ExportID, "err", ferr)
+			}
+		}
+		return fmt.Errorf("exports: build %s: %w", a.ExportID, err)
+	}
+	return nil
+}
+
+// upload streams the pack to the exports bucket, parts sized by its estimate,
+// then records the result.
+func (b *Builder) upload(ctx context.Context, a *Attempt, p *prepared) error {
 	key := fmt.Sprintf("exports/%s/%s/%d.zip", a.OrgID, a.ExportID, a.Number)
 	pr, pw := io.Pipe()
 	type built struct {
@@ -204,32 +236,20 @@ func (b *Builder) Run(ctx context.Context, a *Attempt) error {
 	}
 	done := make(chan built, 1)
 	go func() {
-		res, err := b.BuildTo(bctx, a.OrgID, a.ExportID, pw)
+		res, err := b.write(ctx, p, pw)
 		pw.CloseWithError(err)
 		done <- built{res, err}
 	}()
-	version, upErr := b.Exports.PutStream(bctx, key, pr, ContentType)
+	version, upErr := b.Exports.PutStream(ctx, key, pr, ContentType, p.size)
 	pr.CloseWithError(upErr) // unblocks the writer if the upload stopped first
 	out := <-done
-	err := errors.Join(out.err, upErr)
-	if err == nil {
-		err = context.Cause(bctx) // the lease was lost while uploading
+	if err := errors.Join(out.err, upErr); err != nil {
+		return err
 	}
-	if err == nil {
-		err = b.record(ctx, a, out.res, key, version)
+	if err := context.Cause(ctx); err != nil {
+		return err // the lease was lost while uploading
 	}
-	if err != nil {
-		var seal *SealError
-		if errors.As(err, &seal) {
-			if aerr := b.alarm(context.WithoutCancel(ctx), a, seal); aerr != nil {
-				slog.Error("audit pack: could not record the integrity alarm", "export", a.ExportID, "err", aerr)
-			}
-		} else if ferr := b.Fail(context.WithoutCancel(ctx), a, err); ferr != nil {
-			slog.Warn("audit pack: could not record the failure", "export", a.ExportID, "err", ferr)
-		}
-		return fmt.Errorf("exports: build %s: %w", a.ExportID, err)
-	}
-	return nil
+	return b.record(context.WithoutCancel(ctx), a, out.res, key, version)
 }
 
 // alarm: a stored original no longer matches its seal (M12 review). The
@@ -324,19 +344,40 @@ func (b *Builder) record(ctx context.Context, a *Attempt, res *Result, key, vers
 	})
 }
 
-// BuildTo depends on nothing but the data as of the export's as_of (D10).
-func (b *Builder) BuildTo(ctx context.Context, orgID, exportID string, w io.Writer) (*Result, error) {
+// MaxPackSize is the largest pack built: one S3 object. A var, so a test
+// can lower it.
+var MaxPackSize int64 = storage.MaxObjectSize
+
+// ErrPackTooLarge: refused for good (outcome 'refused'), never retried.
+var ErrPackTooLarge = errors.New("audit pack too large")
+
+type prepared struct {
+	m     *Manifest
+	files []packFile
+	docs  *packDocs
+	size  int64 // an upper bound
+}
+
+func (b *Builder) prepare(ctx context.Context, orgID, exportID string) (*prepared, error) {
 	m, files, err := b.assemble(ctx, orgID, exportID)
 	if err != nil {
 		return nil, err
 	}
-	h := sha256.New()
-	cw := &countingWriter{}
-	if err := writePack(ctx, io.MultiWriter(w, h, cw), m, files, b.Evidence.ReadVersion); err != nil {
+	docs, err := renderDocs(m)
+	if err != nil {
 		return nil, err
 	}
-	res := &Result{SHA256: h.Sum(nil), SizeBytes: cw.n, Chain: m.Chain.Verification, EvidenceIDs: []string{}, FileIDs: []string{}}
-	for _, f := range m.Files {
+	return &prepared{m: m, files: files, docs: docs, size: estimateSize(docs, files)}, nil
+}
+
+func (b *Builder) write(ctx context.Context, p *prepared, w io.Writer) (*Result, error) {
+	h := sha256.New()
+	cw := &countingWriter{}
+	if err := writePack(ctx, io.MultiWriter(w, h, cw), p.docs, p.files, b.Evidence.ReadVersion); err != nil {
+		return nil, err
+	}
+	res := &Result{SHA256: h.Sum(nil), SizeBytes: cw.n, Chain: p.m.Chain.Verification, EvidenceIDs: []string{}, FileIDs: []string{}}
+	for _, f := range p.m.Files {
 		if f.Kind == "evidence" {
 			res.EvidenceIDs = append(res.EvidenceIDs, f.ID)
 		} else {
@@ -344,6 +385,15 @@ func (b *Builder) BuildTo(ctx context.Context, orgID, exportID string, w io.Writ
 		}
 	}
 	return res, nil
+}
+
+// BuildTo depends on nothing but the data as of the export's as_of (D10).
+func (b *Builder) BuildTo(ctx context.Context, orgID, exportID string, w io.Writer) (*Result, error) {
+	p, err := b.prepare(ctx, orgID, exportID)
+	if err != nil {
+		return nil, err
+	}
+	return b.write(ctx, p, w)
 }
 
 type countingWriter struct{ n int64 }
@@ -525,4 +575,14 @@ func roleInWords(role string) string {
 		return "a SHE officer"
 	}
 	return "a " + strings.ReplaceAll(role, "_", " ")
+}
+
+// finish records a terminal outcome ('refused'), whatever the lease.
+func (b *Builder) finish(ctx context.Context, a *Attempt, outcome string, cause error) error {
+	return database.WithTenant(ctx, b.Pool, database.Tenant{OrgID: a.OrgID}, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `
+			UPDATE audit_export_attempts SET outcome = $2, error = $3, finished_at = clock_timestamp()
+			WHERE id = $1 AND finished_at IS NULL`, a.ID, outcome, truncate(cause.Error(), 2000))
+		return err
+	})
 }

@@ -65,7 +65,9 @@ nothing). 404 `"notification not found"` (also for someone else's).
 
 200 `{"status": "ok", "stale": []}`, or 503 `{"status": "stale", "stale":
 ["emails"]}` when a worker job has gone twice its interval without
-completing (Rev 4 §2.3).
+completing (Rev 4 §2.3). The jobs are `reminders` (15 minutes), `emails`
+(1 minute), `holidays` (6 hours) and, since M12, `exports` (the audit pack
+builder; stale after 30 minutes without a finished pass).
 
 ## Types for `web/src/lib/types.ts`
 

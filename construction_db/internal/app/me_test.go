@@ -123,6 +123,9 @@ func TestCapabilitiesMatchRoutes(t *testing.T) {
 			return do(t, r, http.MethodPut, eventPath(site, action, uuid.NewString()), token,
 				eventBody("verify", testClock.Now(), map[string]any{"closeout_id": uuid.NewString()}))
 		}},
+		auth.CapExportAuditPack: {true, func(token, site string) *httptest.ResponseRecorder {
+			return do(t, r, http.MethodGet, "/v1/sites/"+site+"/exports", token, nil)
+		}},
 		auth.CapViewCompliance: {true, func(token, site string) *httptest.ResponseRecorder {
 			return do(t, r, http.MethodGet, "/v1/sites/"+site+"/compliance", token, nil)
 		}},

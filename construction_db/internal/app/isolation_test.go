@@ -43,6 +43,7 @@ var (
 	testAdmin    *pgxpool.Pool // superuser, only for regulatory_regimes fixtures
 	testRegistry *regimes.Registry
 	testStore    *storage.S3      // MinIO with a locked bucket, like the API's
+	testExports  *storage.S3      // MinIO, the versioned export bucket
 	testS3       *storagetest.Env // its admin client writes objects directly, as a tamperer would
 )
 
@@ -89,6 +90,8 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	testStore = s3env.Store
+	testExports = s3env.Exports
+	testHTTP.Exports = s3env.Exports
 	testS3 = s3env
 
 	code := m.Run()

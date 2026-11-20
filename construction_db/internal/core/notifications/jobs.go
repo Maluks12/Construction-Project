@@ -21,12 +21,16 @@ const (
 	JobReminders = "reminders"
 	JobEmails    = "emails"
 	JobHolidays  = "holidays"
+	// JobExports builds audit packs (M12) in a loop of its own; each pass is
+	// recorded here so a stopped builder shows as stale.
+	JobExports = "exports"
 )
 
 var Schedule = map[string]time.Duration{
 	JobReminders: 15 * time.Minute,
 	JobEmails:    time.Minute,
 	JobHolidays:  6 * time.Hour,
+	JobExports:   15 * time.Minute, // a pass lasts as long as its builds
 }
 
 // SendingTimeout: an email claimed this long ago and still 'sending' was
@@ -294,7 +298,7 @@ func RecordRun(ctx context.Context, pool *pgxpool.Pool, job, instance string, fn
 // before now. A job that never ran counts as stale too.
 func Stale(ctx context.Context, pool *pgxpool.Pool, now time.Time) ([]string, error) {
 	var out []string
-	for _, job := range []string{JobReminders, JobEmails, JobHolidays} {
+	for _, job := range []string{JobReminders, JobEmails, JobHolidays, JobExports} {
 		var ok bool
 		err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM job_runs WHERE job = $1 AND ok AND finished_at >= $2)`,
 			job, now.Add(-2*Schedule[job])).Scan(&ok)

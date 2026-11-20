@@ -15,6 +15,7 @@ import (
 	"construction_db/internal/core/documents"
 	"construction_db/internal/core/edition"
 	"construction_db/internal/core/evidence"
+	"construction_db/internal/core/exports"
 	"construction_db/internal/core/files"
 	"construction_db/internal/core/incidents"
 	"construction_db/internal/core/invites"
@@ -39,6 +40,9 @@ type HTTPOptions struct {
 	// Clock is "now" for the services that date things; nil is the real
 	// time. Tests set it to run as if at another hour.
 	Clock clock.Clock
+	// Exports is the bucket audit packs are downloaded from (M12); nil
+	// leaves the exports routes out.
+	Exports storage.Store
 }
 
 // ed supplies the edition and regime for new organisations and sites, and its own routes.
@@ -104,6 +108,11 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	reportsSvc := reports.NewService(pool, sitesSvc, documentsSvc, reg, contrib)
 	reportsSvc.Clock = opts.Clock
 	reports.Register(router, reportsSvc, authSvc)
+	if opts.Exports != nil {
+		exportsSvc := exports.NewService(pool, sitesSvc, opts.Exports)
+		exportsSvc.Clock = opts.Clock
+		exports.Register(router, exportsSvc, authSvc)
+	}
 
 	editionRoutes := router.Group("/v1/" + ed.Name())
 	editionRoutes.Use(auth.RequireAuth(authSvc))

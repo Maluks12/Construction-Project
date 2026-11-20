@@ -232,6 +232,7 @@ func TestJobRunsAndHealth(t *testing.T) {
 		notifications.JobReminders: func(ctx context.Context) (int, error) { return jobs.Reminders(ctx, c.Now()) },
 		notifications.JobEmails:    jobs.Emails,
 		notifications.JobHolidays:  jobs.Holidays,
+		notifications.JobExports:   func(context.Context) (int, error) { return 0, nil },
 	} {
 		if err := notifications.RecordRun(ctx, testPool, name, "test", fn); err != nil {
 			t.Fatalf("%s: %v", name, err)

@@ -325,3 +325,19 @@ func (s *Service) RevokeSession(ctx context.Context, userID, sessionID string) (
 
 	return revoked, nil
 }
+
+// Me reads the caller's name and organisation name. organisations has RLS,
+// so this runs as the tenant.
+func (s *Service) Me(ctx context.Context, orgID, userID string) (*MeResponse, error) {
+	resp := MeResponse{UserID: userID, OrgID: orgID}
+	err := database.WithTenant(ctx, s.pool, database.Tenant{OrgID: orgID, UserID: userID}, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `
+			SELECT u.full_name, o.trading_name
+			FROM users u, organisations o
+			WHERE u.id = $1 AND o.id = $2`, userID, orgID).Scan(&resp.FullName, &resp.OrgName)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("me: %w", err)
+	}
+	return &resp, nil
+}

@@ -126,11 +126,15 @@ func (h *Handler) RevokeSession(c *gin.Context) {
 }
 
 func (h *Handler) Me(c *gin.Context) {
-	resp := MeResponse{
-		UserID:    UserID(c),
-		OrgID:     OrgID(c),
-		SessionID: SessionID(c),
+	resp, err := h.svc.Me(c.Request.Context(), OrgID(c), UserID(c))
+	if err != nil {
+		httpapi.WriteUnexpected(c, "request failed", err)
+		return
 	}
-
+	resp.SessionID = SessionID(c)
+	// The role RequireAuth loaded for this request: the same one every role
+	// check on the other routes sees.
+	resp.Role = Role(c)
+	resp.Capabilities = Capabilities(resp.Role)
 	c.JSON(http.StatusOK, resp)
 }

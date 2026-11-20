@@ -93,6 +93,10 @@ type rlsTable struct {
 
 // In foreign-key-safe delete order.
 var rlsTables = []rlsTable{
+	{"toolbox_talk_history", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"member_history", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"site_history", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"organisation_history", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"worker_history", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"holiday_recomputations", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"notification_emails", "org_id", rlsOrgA, rlsOrgB, "status", deleteDenied},
@@ -468,6 +472,11 @@ func TestRLSWrites(t *testing.T) {
 			"worker_medicals":     {medSQL, []any{"43000000-0000-0000-0000-0000000000bb", rlsOrgB, "41000000-0000-0000-0000-00000000000b", "fit", "44000000-0000-0000-0000-00000000000b", nil, rlsUserB}},
 			"toolbox_attendance_workers": {`INSERT INTO toolbox_attendance_workers (org_id, site_id, attendance_id, worker_id, method, linked_by) VALUES ($1, $2, $3, $4, 'manual', $5)`,
 				[]any{rlsOrgB, rlsSiteB, rlsAttB, "41000000-0000-0000-0000-00000000000b", rlsUserB}},
+			// History is written only by triggers: the app has no INSERT at all.
+			"organisation_history": {`INSERT INTO organisation_history (org_id, trading_name, changed_at) VALUES ($1, 'Smuggled', now())`, []any{rlsOrgB}},
+			"site_history":         {`INSERT INTO site_history (org_id, site_id, regime_id, name, status, changed_at) SELECT $1, $2, id, 'Smuggled', 'active', now() FROM regulatory_regimes LIMIT 1`, []any{rlsOrgB, rlsSiteB}},
+			"member_history":       {`INSERT INTO member_history (org_id, user_id, role, status, full_name, changed_at) VALUES ($1, $2, 'owner', 'active', 'Smuggled', now())`, []any{rlsOrgB, rlsUserB}},
+			"toolbox_talk_history": {`INSERT INTO toolbox_talk_history (org_id, site_id, talk_id, topic, presenter_name, started_at, changed_at) VALUES ($1, $2, $3, 'Smuggled', 'P', now(), now())`, []any{rlsOrgB, rlsSiteB, rlsTalkB}},
 			"corrective_action_events": {`INSERT INTO corrective_action_events (id, org_id, site_id, action_id, seq, kind, actor_id, client_at, reason, status, owner_id, due_on)
 			  VALUES ('34000000-0000-0000-0000-0000000000bb', $1, $2, $3, 2, 'cancelled', $4, now(), 'Smuggled', 'cancelled', $4, action_local_date(now(), 'Africa/Johannesburg') + 1)`,
 				[]any{rlsOrgB, rlsSiteB, rlsActionB, rlsUserB}},

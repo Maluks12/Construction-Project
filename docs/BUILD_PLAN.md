@@ -6,13 +6,15 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 
 **Checkpoint, Sun 22 Nov:** if the safety core isn't done, cut from the end in this order: JBCC delay claims, then the principal-contractor tier, then IOD form assembly. Keep the IOD lifecycle.
 
-**Decided Sun 15 Nov: no cuts.** The full scope stays. The forecast below (fifth revision, Tue 17 Nov) puts v1.0.0 on **Sun 6 Dec**, one day after Sat 5 Dec. The due date stays Sat 5 Dec. The Sun 22 Nov checkpoint stays as a review point, not a cut.
+**Decided Sun 15 Nov: no cuts.** The full scope stays. The forecast below (sixth revision, Fri 20 Nov) puts v1.0.0 on **Sun 6 Dec**, one day after Sat 5 Dec. The due date stays Sat 5 Dec. The Sun 22 Nov checkpoint stays as a review point, not a cut.
 
 **Decided Tue 17 Nov (the pricing, Enterprise and onboarding documents):**
 - **Pricing is per active site, never per user.** Users are unlimited on every plan; plans limit active sites.
 - **CHSO partners get a once-off referral payout**, not a recurring share. It's paid after the referred client has paid its first 3 months, or on its first annual prepay.
 
-## Forecast (Tue 17 Nov, fifth revision)
+## Forecast (Fri 20 Nov, sixth revision)
+
+**Sixth revision (Fri 20 Nov, after M11's review and the CI date fix).** M11 was reviewed and merged on Thu 19 Nov. FIX is added before M12: CI run #84 failed on the M11 tests' date assumptions, and the fix, the email time zone bug it found and the not_signed night-shift decision were done on Fri 20 Nov; its one open task, branch protection, is a settings change. M12 grows from 4 tasks to 5 (the caller's role on GET /v1/me) and ONBOARD from 4 to 5 (team management, full rigour). By the existing rule (open tasks ÷ 3, rounded up) both stay at 2 days, so no date moves: v1 stays **Sun 6 Dec**. FIX took Fri 20 Nov, the first of M12's two forecast days; like review time, that isn't modelled.
 
 **Fifth revision (Tue 17 Nov, after the product and billing decisions).** The estimates are now set from the pace M8–M10 actually had, not from the original plan. M8 (4 tasks), M9 (3) and M10 (4, with the fixture fix) were each built in one day at full rigour: 11 plan tasks in 3 days, about 3.5 a day, against forecasts of 6, 3 and 2 days. The rule below assumes 3 a day, to leave some room. ONBOARD (4 tasks) is added and BILL grew from 2 tasks to 9, 4 of them full rigour. SYNC is set to 3 days by hand: its pull and push, with conflict rules, must cover every record type built so far, which the task count undercounts. Every date is recomputed from M11 starting Tue 17 Nov: v1 moves from Thu 10 Dec to **Sun 6 Dec**, one day after Sat 5 Dec. Review time is still not modelled, and M7–M10 have not been reviewed yet; M6 and M7 ran slower than planned (8 days against 5, 7 against 2), so the faster pace is three milestones' worth of evidence.
 
@@ -24,7 +26,7 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 
 **First revision.** The first forecast this morning had M7 on Wed 18 Nov, and abandoning (added to M7 the same day) would have pushed it to Thu 19. In fact M7's code was finished on Sun 15 Nov, including abandoning and an end-to-end walk on the real API. So every date below is recomputed from a Mon 16 Nov start for M8, with the same per-milestone estimates. That brings v1 forward from Wed 23 Dec to Sun 20 Dec. The estimates themselves are unchanged: one fast day doesn't justify shrinking them.
 
-How the forecast is built (fifth revision):
+How the forecast is built (fifth revision; unchanged in the sixth):
 - **Pace:** M8–M10 delivered about 3.5 plan tasks a day at full rigour; the forecast assumes 3. Effort days = the milestone's open tasks ÷ 3, rounded up. The rate was measured on full-rigour work, so light milestones get no discount and full ones no extra.
 - **Plus one day** for new infrastructure (M11: `cmd/worker` and Redis) or an outside sandbox to integrate (BILL: Stitch).
 - **DEPLOY** keeps its 2 days: its tasks are configuration and accounts, not code, so the task rate doesn't apply.
@@ -39,10 +41,11 @@ How the forecast is built (fifth revision):
 | M8 Incidents | full | – | **done Sun 15 Nov** | Fri 13 Nov | Built in one day against a 6-day estimate; the dates below are recomputed from it |
 | M9 Corrective actions | full | – | **done Sun 15 Nov** | Sun 15 Nov | Built in one day against a 3-day estimate; the dates below are recomputed from it |
 | M10 Toolbox talks & site diary | light; full for attendance and closing | – | **done Mon 16 Nov** | Tue 17 Nov | Grew in planning (full rigour on signed attendance, closing, conflicts, addenda); built in one day |
-| M11 People & documents | light; full for sign-in, reminders, the file seal and the holiday recompute | – | **done Thu 19 Nov** | Fri 20 Nov | On the forecast date; grew in planning (sign-in, email, the holiday recompute at full rigour); built Wed 18–Thu 19 Nov, not yet reviewed. No later date moves |
-| M12 Reports & audit pack | full | 2 | Sat 21 Nov | Sun 22 Nov | 4 tasks; the audit pack may need to run in the worker |
+| M11 People & documents | light; full for sign-in, reminders, the file seal and the holiday recompute | – | **done Thu 19 Nov** | Fri 20 Nov | On the forecast date; grew in planning (sign-in, email, the holiday recompute at full rigour); built Wed 18–Thu 19 Nov, reviewed and merged Thu 19 Nov. No later date moves |
+| FIX CI dates & night shifts | full for the date fix | – | **done Fri 20 Nov** | Fri 20 Nov | Unplanned: CI run #84. Branch protection is still open (a settings change, not counted) |
+| M12 Reports & audit pack | full | 2 | Sat 21 Nov | Sun 22 Nov | 5 tasks (the role on GET /v1/me added Fri 20 Nov); the audit pack may need to run in the worker |
 | SYNC Offline sync API | full | 3 | Tue 24 Nov | Wed 25 Nov | Set by hand (the task count gives 1): pull and push with conflict rules across every record type built so far |
-| ONBOARD Onboarding | light; the CSV import's all-or-nothing tested | 2 | Thu 26 Nov | Thu 26 Nov | 4 tasks, added Tue 17 Nov |
+| ONBOARD Onboarding | light; full for team management; the CSV import's all-or-nothing tested | 2 | Thu 26 Nov | Thu 26 Nov | 5 tasks (team management added Fri 20 Nov); added Tue 17 Nov |
 | BILL Billing | light; full for invoicing, price versions, metering and webhooks | 4 | Mon 30 Nov | Mon 30 Nov | 9 tasks (3 days, was 2 tasks), plus 1 for the Stitch sandbox (external) |
 | DEPLOY | – | 2 | Wed 2 Dec | Mon 30 Nov | Configuration, not code; needs an AWS account and a practitioner's call on the Object Lock mode (external) |
 | IOD Injury on duty | full | 1 | Thu 3 Dec | Tue 1 Dec | 3 tasks |
@@ -57,7 +60,12 @@ How the forecast is built (fifth revision):
 
 Any one of them arriving late moves the release later still, day for day.
 
-**Lead times, Tue 17 Nov:** Stitch sandbox access and the AWS account are being requested now, to take their lead time off the critical path, and the Object Lock call is being booked this week.
+**Lead times and decisions (Fri 20 Nov):**
+- **AWS account with af-south-1:** request Fri 20 Nov.
+- **SES production access:** Mon 23 Nov.
+- **Role matrix approval:** Tue 24 Nov, before ONBOARD.
+- **Stitch sandbox:** Wed 25 Nov; needed Fri 27 Nov.
+- **Object Lock mode, with a practitioner:** by Mon 30 Nov, before the bucket.
 
 **Risks to the forecast:**
 - **External waits:** the three above, plus a practitioner reviewing the severity wording and the corrective-action default due days that follow it (low 14, medium 7, high 1, critical 0 days after the day raised; M9, product defaults, not law), which doesn't block a milestone.
@@ -146,7 +154,7 @@ Rev 3 §2.3.4: "Ships with a content library -- foremen will not write safety co
 
 - [ ] Talk content per topic (what the presenter reads out), versioned append-only in the regime data like checklists, chosen by activity and season
 
-### M11: People & documents (due Fri 20 Nov; forecast Thu 19 Nov; built Thu 19 Nov, not yet reviewed)
+### M11: People & documents (due Fri 20 Nov; forecast Thu 19 Nov; done Thu 19 Nov; reviewed and merged Thu 19 Nov)
 
 - [x] Worker register; competencies and appointments with expiry (due Wed 18 Nov; done Thu 19 Nov)
 - [x] H&S file document register with versions in S3 (due Thu 19 Nov; done Thu 19 Nov)
@@ -199,9 +207,16 @@ Proposed Wed 18 Nov (not scheduled):
 - [ ] Per-organisation reminder lead times (settings) overriding the regime defaults
 - [ ] Appointment letters and appointment gap detection (Rev 3 §2.3.8, P1; Rev 4 6.D allows deferring gap detection to early P2); induction records and site clearance (Rev 4 A.5, §5.3 `worker_site_clearance`)
 
+### FIX: CI dates and night shifts (due Fri 20 Nov)
+
+- [x] Fix the SAST date assumptions in the tests behind CI run #84 (branch fix/ci-sast-dates); audit product code for dates not derived through Africa/Johannesburg. Found and fixed: reminder emails told dates in the first loaded regime's zone (now `notification_regime`, 000036), and days counted as hours ÷ 24 (done Fri 20 Nov, #14). CI runs the date-sensitive tests as if at 00:30 SAST, with a guard that production always uses the real clock (done Fri 20 Nov, chore/ci-midnight-and-plan)
+- [x] A toolbox talk's `not_signed` lists workers whose sign-in on that site was still standing at the talk's start (night shifts across midnight), and workers who signed in on the talk's date after it started; the day view, absent list and headcount stay by sign-in date (done Fri 20 Nov, #14)
+- [ ] Branch protection on main: changes by PR only, "Lint, test, build" required (due Fri 20 Nov)
+
 ### M12: Reports & audit pack (due Sun 22 Nov; forecast Sat 21 Nov)
 
-- [ ] Site compliance summary endpoint: open findings, overdue actions, expiring competencies (due Sat 21 Nov)
+- [ ] Add the caller's role to GET /v1/me (due Sat 21 Nov)
+- [ ] Site compliance summary endpoint (scope decided Thu 19 Nov). **Expiring** means each record's own state. **Counts against a site:** missing or expired required H&S file and vault documents, unactioned findings, overdue actions with their escalation step, stalled verifications, and today's sign-ins with warnings. **Shown but not counted:** absent workers. **Not shown:** reminders (due Sat 21 Nov)
 - [ ] In the compliance summary, list each site's evidence, and the organisation's document files (M11 `files`), still pending more than 24 hours after they were declared. A declared upload that's never completed stays pending forever, and any object it uploaded stays under Object Lock; this makes abandoned uploads visible rather than silent (due Sat 21 Nov)
 - [ ] Audit pack export with evidence manifest and chain verification result. Include each site's chain head hash and length: the chain alone can't detect its newest entries being deleted (with site_chain_heads rewound), but a pack someone already holds records how long it was (see internal/core/evidence/CHAIN.md). Until the daily signed anchor (P2) exists, this is the only external record. Verifying a long chain (it walks every entry) can take longer than REQUEST_TIMEOUT (default 10s), and a pack covers many sites, so the export may need to run in cmd/worker rather than inside a request. Include abandoned inspections, marked abandoned, with their answers and who abandoned them, when and why (decided 15 Nov) (due Sun 22 Nov)
 - [ ] Checkpoint: review the safety core against Rev 4 section 6.D; decide cuts here if behind (due Sun 22 Nov)
@@ -217,12 +232,13 @@ Proposed Wed 18 Nov (not scheduled):
 
 ### ONBOARD: Onboarding (due Thu 26 Nov; forecast Thu 26 Nov; added Tue 17 Nov)
 
-**Rigour:** light, except that the CSV import needs a test proving that one bad row writes nothing.
+**Rigour:** light, except that team management is full rigour and the CSV import needs a test proving that one bad row writes nothing.
 
 - [ ] Site zones and floors: check whether `site_locations` already covers them; extend it only if not (due Wed 25 Nov)
 - [ ] CSV import for the worker register: validate every row, report errors per row, all or nothing. Test: one bad row writes nothing (due Wed 25 Nov)
 - [ ] Bulk document upload with expiry dates: worker certificates, medicals and company documents (due Thu 26 Nov)
 - [ ] First-run setup progress endpoint for the wizard: sites added, team invited, company documents loaded, workers added (due Thu 26 Nov)
+- [ ] Team management (due Thu 26 Nov). **Full rigour.** GET /v1/members (members with role and status) and PATCH /v1/members/:userId (role or status). An organisation always has at least one active owner, enforced in the database, with a forced-race test (two owners demoting each other). Suspending or removing a member revokes their sessions and refresh tokens immediately. A role change into or out of supervisor handles site scoping explicitly. Every change is recorded append-only: who, when, from, to, why. Owners and SHE officers may change roles, but only an owner may grant or change the owner role, matching invites. Follows the role matrix in the platform guide once approved
 
 ### BILL: Billing (due Mon 30 Nov; forecast Mon 30 Nov)
 

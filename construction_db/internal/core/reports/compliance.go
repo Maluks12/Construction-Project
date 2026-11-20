@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -25,16 +26,19 @@ import (
 const PendingAfter = 24 * time.Hour
 
 type Service struct {
-	pool    *pgxpool.Pool
-	sites   *sites.Service
-	docs    *documents.Service
-	reg     *regimes.Registry
-	contrib Contributor // nil: the edition adds nothing
-	Clock   clock.Clock // nil is the real time
+	pool          *pgxpool.Pool
+	sites         *sites.Service
+	docs          *documents.Service
+	reg           *regimes.Registry
+	contrib       Contributor // nil: the edition adds nothing
+	defaultRegime string
+	Clock         clock.Clock // nil is the real time
 }
 
-func NewService(pool *pgxpool.Pool, sitesSvc *sites.Service, docs *documents.Service, reg *regimes.Registry, contrib Contributor) *Service {
-	return &Service{pool: pool, sites: sitesSvc, docs: docs, reg: reg, contrib: contrib}
+// defaultRegime reads the vault of an organisation with no active site.
+func NewService(pool *pgxpool.Pool, sitesSvc *sites.Service, docs *documents.Service, reg *regimes.Registry, contrib Contributor,
+	defaultRegime string) *Service {
+	return &Service{pool: pool, sites: sitesSvc, docs: docs, reg: reg, contrib: contrib, defaultRegime: defaultRegime}
 }
 
 func isLead(role string) bool { return role == auth.RoleOwner || role == auth.RoleSHEOfficer }
@@ -44,6 +48,12 @@ func str(s string) *string    { return &s }
 
 // Site is one site's summary now, "today" in the site regime's zone (D2).
 func (s *Service) Site(ctx context.Context, orgID, userID, role, siteID string) (*SiteSummary, error) {
+	return s.site(ctx, orgID, userID, role, siteID, map[string]Category{})
+}
+
+// site takes the organisation's vault from vaults when it has the site's
+// regime, and adds it when not: the rollup reads it once, not per site.
+func (s *Service) site(ctx context.Context, orgID, userID, role, siteID string, vaults map[string]Category) (*SiteSummary, error) {
 	now := s.Clock.Now().UTC().Truncate(time.Microsecond)
 	var (
 		sc   SiteContext
@@ -70,10 +80,14 @@ func (s *Service) Site(ctx context.Context, orgID, userID, role, siteID string) 
 		return nil, fmt.Errorf("site compliance: %w", err)
 	}
 
-	vault, err := s.vault(ctx, sc, sc.Regime.Regime.Code)
-	if err != nil {
-		return nil, fmt.Errorf("site compliance: %w", err)
+	vault, ok := vaults[sc.Regime.Regime.Code]
+	if !ok {
+		if vault, err = s.vault(ctx, sc, sc.Regime.Regime.Code); err != nil {
+			return nil, fmt.Errorf("site compliance: %w", err)
+		}
+		vaults[sc.Regime.Regime.Code] = vault
 	}
+	vault.Items = slices.Clone(vault.Items)
 	cats = append(cats, vault)
 	if s.contrib != nil {
 		more, err := s.contrib.ComplianceCategories(ctx, sc)
@@ -452,19 +466,18 @@ func (s *Service) Org(ctx context.Context, orgID, userID, role string) (*Rollup,
 		return nil, fmt.Errorf("compliance rollup: %w", err)
 	}
 	out := &Rollup{ComputedAt: s.Clock.Now().UTC().Truncate(time.Microsecond), OrgItems: []Category{}, Sites: []SiteRank{}}
-	var regimeCode string
+	vaults := map[string]Category{}
 	for _, site := range list {
 		if site.Status == sites.StatusArchived {
 			continue
 		}
-		sum, err := s.Site(ctx, orgID, userID, role, site.ID)
+		sum, err := s.site(ctx, orgID, userID, role, site.ID, vaults)
 		if errors.Is(err, ErrSiteNotFound) {
 			continue // archived or unassigned in between
 		}
 		if err != nil {
 			return nil, err
 		}
-		regimeCode = sum.RegimeCode
 		r := SiteRank{SiteID: sum.SiteID, SiteName: sum.SiteName, SiteStatus: sum.SiteStatus, Status: sum.Status,
 			RedItems: sum.RedItems, AmberItems: sum.AmberItems, Counts: map[string]int{}, Statuses: map[string]string{}}
 		for _, c := range sum.Categories {
@@ -480,12 +493,19 @@ func (s *Service) Org(ctx context.Context, orgID, userID, role string) (*Rollup,
 			cmp.Compare(b.AmberItems, a.AmberItems), cmp.Compare(a.SiteName, b.SiteName), cmp.Compare(a.SiteID, b.SiteID))
 	})
 
-	// The organisation's own items, once.
-	sc := SiteContext{OrgID: orgID, UserID: userID, Role: role}
-	vault, err := s.vault(ctx, sc, regimeCode)
-	if err != nil {
-		return nil, fmt.Errorf("compliance rollup: %w", err)
+	// The organisation's own items, once: its vault as the sites read it, or
+	// by the default regime when it has no active site.
+	vault, ok := vaults[s.defaultRegime]
+	if codes := slices.Sorted(maps.Keys(vaults)); !ok && len(codes) > 0 {
+		vault, ok = vaults[codes[0]], true
 	}
+	if !ok {
+		sc := SiteContext{OrgID: orgID, UserID: userID, Role: role}
+		if vault, err = s.vault(ctx, sc, s.defaultRegime); err != nil {
+			return nil, fmt.Errorf("compliance rollup: %w", err)
+		}
+	}
+	vault.Items = slices.Clone(vault.Items)
 	vault.Count = len(vault.Items)
 	st := Green
 	for _, it := range vault.Items {

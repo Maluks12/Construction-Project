@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -353,5 +354,35 @@ func TestComplianceRosterLapse(t *testing.T) {
 	}
 	if leads != 2 {
 		t.Errorf("the owner was told %d licences, want both", leads)
+	}
+}
+
+// The rollup over 25 sites reads the vault once and answers well inside the
+// request deadline; an organisation with no active site still gets its
+// vault, by the edition's default regime (M12 review).
+func TestComplianceRollupScale(t *testing.T) {
+	f := newEvidenceFixture(t, "rollupscale")
+	for i := len(listSites(t, f.router, f.owner)); i < 25; i++ {
+		createSite(t, f.router, f.owner, fmt.Sprintf("Scale site %02d", i))
+	}
+	start := time.Now()
+	ro := rollup(t, f.router, f.owner)
+	took := time.Since(start)
+	t.Logf("rollup of %d sites: %s", len(ro.Sites), took)
+	if len(ro.Sites) != 25 || ro.OrgItems[0].Key != reports.CatVault {
+		t.Fatalf("rollup: %d sites, org items %+v", len(ro.Sites), ro.OrgItems)
+	}
+	if took > testRequestTimeout/2 {
+		t.Errorf("rollup of 25 sites took %s", took)
+	}
+
+	// No active site: archive them all.
+	other := newEvidenceFixture(t, "rollupempty")
+	for _, s := range listSites(t, other.router, other.owner) {
+		wantStatus(t, do(t, other.router, http.MethodDelete, "/v1/sites/"+s.ID, other.owner, nil), http.StatusNoContent)
+	}
+	empty := rollup(t, other.router, other.owner)
+	if len(empty.Sites) != 0 || len(empty.OrgItems) == 0 || empty.OrgItems[0].Key != reports.CatVault || empty.OrgItems[0].Status == nil {
+		t.Errorf("rollup with no active site %+v", empty)
 	}
 }

@@ -105,7 +105,7 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	if re, ok := ed.(reportingEdition); ok {
 		contrib = re.ReportsContributor(deps)
 	}
-	reportsSvc := reports.NewService(pool, sitesSvc, documentsSvc, reg, contrib)
+	reportsSvc := reports.NewService(pool, sitesSvc, documentsSvc, reg, contrib, ed.DefaultRegime())
 	reportsSvc.Clock = opts.Clock
 	reports.Register(router, reportsSvc, authSvc)
 	if opts.Exports != nil {

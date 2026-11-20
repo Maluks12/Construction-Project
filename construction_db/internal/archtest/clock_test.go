@@ -27,6 +27,16 @@ var (
 
 // clockViolations checks non-test Go sources, keyed by slash path relative to
 // the module root.
+// testOnlyFields: fields the binaries never set; tests do, to move time or
+// shorten waits (M12 review: the export builder's timings).
+var testOnlyFields = map[string]string{
+	"Clock":    "the API and worker run on the real clock",
+	"Settle":   "the export settle window is the database default in production",
+	"Lease":    "the export lease is the default in production",
+	"Backoff":  "the export backoff is the database default in production",
+	"OnlyOrgs": "the worker serves every organisation",
+}
+
 func clockViolations(files map[string]string) []string {
 	var out []string
 	fset := token.NewFileSet()
@@ -64,13 +74,17 @@ func clockViolations(files map[string]string) []string {
 					out = append(out, fmt.Sprintf("%s uses clock.Offset; only tests move the clock", at(n)))
 				}
 			case *ast.KeyValueExpr:
-				if k, ok := n.Key.(*ast.Ident); ok && k.Name == "Clock" && strings.HasPrefix(path, "cmd/") {
-					out = append(out, fmt.Sprintf("%s sets a Clock; the API and worker run on the real clock", at(n)))
+				if k, ok := n.Key.(*ast.Ident); ok && strings.HasPrefix(path, "cmd/") {
+					if why, test := testOnlyFields[k.Name]; test {
+						out = append(out, fmt.Sprintf("%s sets %s; %s", at(n), k.Name, why))
+					}
 				}
 			case *ast.AssignStmt:
 				for _, l := range n.Lhs {
-					if s, ok := l.(*ast.SelectorExpr); ok && s.Sel.Name == "Clock" && strings.HasPrefix(path, "cmd/") {
-						out = append(out, fmt.Sprintf("%s sets a Clock; the API and worker run on the real clock", at(n)))
+					if s, ok := l.(*ast.SelectorExpr); ok && strings.HasPrefix(path, "cmd/") {
+						if why, test := testOnlyFields[s.Sel.Name]; test {
+							out = append(out, fmt.Sprintf("%s sets %s; %s", at(n), s.Sel.Name, why))
+						}
 					}
 				}
 			}
@@ -109,6 +123,11 @@ func TestClockViolations(t *testing.T) {
 		"cmd sets Clock":     {"cmd/worker/main.go": "package main\nvar _ = notifications.Jobs{Clock: c}"},
 		"cmd assigns Clock":  {"cmd/api/main.go": "package main\nfunc main() { opts.Clock = c }"},
 		"cmd imports dbtest": {"cmd/api/main.go": "package main\nimport _ \"construction_db/internal/platform/dbtest\""},
+		"cmd sets Settle":    {"cmd/worker/main.go": "package main\nvar _ = exports.Builder{Settle: time.Second}"},
+		"cmd sets Lease":     {"cmd/worker/main.go": "package main\nvar _ = exports.Builder{Lease: time.Second}"},
+		"cmd assigns Lease":  {"cmd/worker/main.go": "package main\nfunc main() { b.Lease = time.Second }"},
+		"cmd sets Backoff":   {"cmd/worker/main.go": "package main\nvar _ = exports.Builder{Backoff: time.Second}"},
+		"cmd sets OnlyOrgs":  {"cmd/worker/main.go": "package main\nvar _ = exports.Builder{OnlyOrgs: nil}"},
 		"testcontainers":     {"internal/core/sites/x.go": "package sites\nimport _ \"github.com/testcontainers/testcontainers-go/modules/postgres\""},
 	} {
 		if v := clockViolations(bad); len(v) == 0 {

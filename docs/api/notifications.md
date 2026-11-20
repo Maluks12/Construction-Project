@@ -20,7 +20,7 @@ Lead times come from the regime (`reminders` in `GET
 | `incident_deadline` | a reporting or investigation duty (`deadline_duty`) | the incident version's submitter, owners, SHE officers, the site's supervisors | `forthwith` at once; day-based: `before_2d`, `on_day`, then `overdue`; hour-based: `open`, then `overdue` |
 | `action_overdue` | a corrective action (`action`) | `escalation_1` the action's owner and raiser; `escalation_2` (1 day later) SHE officers; `escalation_3` (3 days) owners | days overdue |
 | `verification_stalled` | a close-out awaiting verification (`closeout`) | owners and SHE officers | `stalled`, after 2 days |
-| `competency_expiry`, `medical_expiry` | `competency`, `medical` | owners, SHE officers, supervisors of sites where the worker is on the roster | `before_30d`, `before_14d`, `before_7d`, `on_day` |
+| `competency_expiry`, `medical_expiry` | `competency`, `medical` | owners, SHE officers, supervisors of sites where the worker is on the roster (today's roster: a sign-in-added entry counts for `roster_lapse_days` after the worker's last sign-in) | `before_30d`, `before_14d`, `before_7d`, `on_day` |
 | `appointment_expiry` | `appointment` | owners, SHE officers, the site's supervisors | as above |
 | `document_expiry` | `document` (H&S file or vault) | H&S file: owners, SHE officers, the site's supervisors; vault: owners and SHE officers | the vault `v2_before_60d`, `v2_before_30d`, `v2_before_7d`, `v2_on_day` (the version's number first); the H&S file as competencies |
 | `integrity_alarm` | an audit export (`export`): a stored photo or file in it no longer matched its seal | owners and SHE officers | `seal_mismatch`, once, the moment the build found it (M12 review) |

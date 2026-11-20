@@ -299,11 +299,11 @@ func dueSoon(d deadlines.Deadline, sc SiteContext, soon int) bool {
 	return !d.DueAt.After(sc.Now.Add(time.Duration(soon) * 24 * time.Hour))
 }
 
-// workerRecords: roster workers' expiring records (amber); expired ones count via sign-in warnings.
+// workerRecords: today's roster (site_roster_on, 000042), expiring records (amber); expired ones count via sign-in warnings.
 func (s *Service) workerRecords(ctx context.Context, tx pgx.Tx, sc SiteContext) (Category, error) {
 	c := Category{Key: CatWorkerRecords, Counted: true, Items: []Item{}}
 	rows, err := tx.Query(ctx, `
-		WITH roster AS (SELECT DISTINCT worker_id FROM site_roster WHERE org_id = $1 AND site_id = $2 AND removed_at IS NULL)
+		WITH roster AS (SELECT DISTINCT worker_id FROM site_roster_on($2, $3::date, $4, $5))
 		SELECT 'competency', r.id::text, r.worker_id::text, w.name, r.regime_code, r.type_key, r.expires_on::text
 		FROM worker_competencies r JOIN workers w ON w.id = r.worker_id
 		WHERE r.org_id = $1 AND r.worker_id IN (SELECT worker_id FROM roster) AND r.retracted_at IS NULL AND r.expires_on IS NOT NULL
@@ -313,7 +313,7 @@ func (s *Service) workerRecords(ctx context.Context, tx pgx.Tx, sc SiteContext) 
 		FROM worker_medicals r JOIN workers w ON w.id = r.worker_id
 		WHERE r.org_id = $1 AND r.worker_id IN (SELECT worker_id FROM roster) AND r.retracted_at IS NULL
 		  AND NOT EXISTS (SELECT 1 FROM worker_medicals x WHERE x.supersedes_id = r.id AND x.retracted_at IS NULL)
-		ORDER BY 7, 4, 2`, sc.OrgID, sc.Site.ID)
+		ORDER BY 7, 4, 2`, sc.OrgID, sc.Site.ID, sc.Today, sc.Regime.Regime.TimeZone, sc.Regime.Reminders.RosterLapseDays)
 	if err != nil {
 		return c, fmt.Errorf("worker records: %w", err)
 	}

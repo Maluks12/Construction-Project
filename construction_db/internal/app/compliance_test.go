@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"construction_db/internal/core/files"
+	"construction_db/internal/core/notifications"
 	"construction_db/internal/core/reports"
 	"construction_db/internal/platform/clock"
 )
@@ -222,7 +224,10 @@ func TestComplianceSummary(t *testing.T) {
 	if it := dl.Items[0]; it.IncidentID == nil || *it.IncidentID != incident {
 		t.Errorf("deadline item %+v", it)
 	}
-	wantCategory(t, s, reports.CatWorkerRecords, reports.Amber, "expiring/amber/Sipho Dlamini: Rope access operator licence")
+	// Taken off the roster today: on today's roster still (site_roster_on, the
+	// day's roster as it began), so their licence counts today too.
+	wantCategory(t, s, reports.CatWorkerRecords, reports.Amber, "expiring/amber/Gone Worker: Rope access operator licence",
+		"expiring/amber/Sipho Dlamini: Rope access operator licence")
 	// Taken off today: still absent today (site_absent: the roster as the day began).
 	wantCategory(t, s, reports.CatAbsentWorkers, "-", "absent/-/Gone Worker", "absent/-/Thabo Absent")
 	pu := wantCategory(t, s, reports.CatPendingUploads, "-", "pending/-/Photo (image/jpeg)")
@@ -299,5 +304,54 @@ func TestComplianceRollupOrder(t *testing.T) {
 	}
 	if want := []string{f.siteB, c, f.siteA}; !slices.Equal(order, want) {
 		t.Errorf("order %v, want %v (B has an extra red; then by name)", order, want)
+	}
+}
+
+// One roster (site_roster_on, 000042): a worker who signed in once 30
+// days ago no longer counts against the site (roster_lapse_days is 14):
+// not in the summary's worker records, not absent, and the site's
+// supervisor isn't told about their expiring licence. One who signed in 2
+// days ago counts in all three.
+func TestComplianceRosterLapse(t *testing.T) {
+	f := newEvidenceFixture(t, "rosterlapse")
+	clk, ctx, r := newSASTClock(t), context.Background(), f.router
+	signedIn := func(name string, daysAgo int) string {
+		t.Helper()
+		w := uuid.NewString()
+		wantStatus(t, do(t, r, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.supervisor,
+			signInBody(w, clk.At(-daysAgo, "08:00"), map[string]any{"new_worker": map[string]any{"name": name}})), http.StatusCreated)
+		licence := uploadFile(t, r, f.owner, files.PurposeCompetency, nil)
+		wantStatus(t, do(t, r, http.MethodPut, workerPath(w)+"/competencies/"+uuid.NewString(), f.owner,
+			competencyBody(clk, licence, clk.Today(), clk.Day(10))), http.StatusCreated)
+		return w
+	}
+	signedIn("Old Visitor", 30)
+	signedIn("Recent Hand", 2)
+
+	s := siteSummary(t, r, f.owner, f.siteA)
+	wantCategory(t, s, reports.CatWorkerRecords, reports.Amber, "expiring/amber/Recent Hand: Rope access operator licence")
+	wantCategory(t, s, reports.CatAbsentWorkers, "-", "absent/-/Recent Hand")
+
+	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: &recordingMailer{}, OnlyOrgs: []string{f.ownerMe.OrgID}, Clock: clk.Frozen()}
+	if _, err := jobs.Reminders(ctx, clk.Now()); err != nil {
+		t.Fatal(err)
+	}
+	var told []string
+	for _, n := range inbox(t, r, f.supervisor) {
+		if n.Kind == "competency_expiry" {
+			told = append(told, n.Title)
+		}
+	}
+	if len(told) != 1 || !strings.Contains(told[0], "Recent Hand") {
+		t.Errorf("the supervisor was told %q, want only Recent Hand's licence", told)
+	}
+	leads := 0
+	for _, n := range inbox(t, r, f.owner) {
+		if n.Kind == "competency_expiry" {
+			leads++
+		}
+	}
+	if leads != 2 {
+		t.Errorf("the owner was told %d licences, want both", leads)
 	}
 }

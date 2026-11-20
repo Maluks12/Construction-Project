@@ -55,6 +55,11 @@ else green. **The site's `status` is its worst category.** `red_items` and
   red. Show the note beside it.
 - **Absent:** the roster as it stood when the day began, so a worker taken
   off the roster today is still listed today.
+- **The roster** is one definition everywhere (absent workers, worker
+  records, and who is told about a worker's expiries): entries added by hand,
+  and entries a sign-in added while the worker has signed in on the site in
+  the regime's `roster_lapse_days` (14). A worker who signed in once a month
+  ago no longer counts against the site.
 - **Pending uploads** are uploads a phone declared and never completed, so
   their bytes may be missing or stuck under Object Lock. Ask the person who
   uploaded it to retry, or let it be.

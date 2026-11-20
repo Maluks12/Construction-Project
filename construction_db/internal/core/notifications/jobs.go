@@ -86,7 +86,7 @@ func (j *Jobs) inOrg(ctx context.Context, orgID string, fn func(pgx.Tx) error) e
 // email either.
 const remindersSQL = `
 	WITH due AS (
-	    SELECT * FROM notifications_due($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	    SELECT * FROM notifications_due($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	), added AS (
 	    INSERT INTO notifications (org_id, user_id, kind, subject_type, subject_id, threshold, site_id, title, due_on, due_at)
 	    SELECT app_org_id(), user_id, kind, subject_type, subject_id, threshold, site_id, title, due_on, due_at FROM due
@@ -114,7 +114,7 @@ func (j *Jobs) Reminders(ctx context.Context, now time.Time) (int, error) {
 				r := ds.Reminders
 				var added, mailed int
 				if err := tx.QueryRow(ctx, remindersSQL, now, code, ds.Regime.TimeZone, r.WorkerExpiryDays, r.CompanyDocumentDays,
-					r.DeadlineDaysBefore, r.ActionEscalationDays, r.VerificationStalledDays, Labels(ds)).Scan(&added, &mailed); err != nil {
+					r.DeadlineDaysBefore, r.ActionEscalationDays, r.VerificationStalledDays, Labels(ds), r.RosterLapseDays).Scan(&added, &mailed); err != nil {
 					return err
 				}
 				total += added

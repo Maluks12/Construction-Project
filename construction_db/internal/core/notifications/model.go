@@ -10,11 +10,11 @@ import (
 	"time"
 )
 
-// Kinds, subject types and states as 000029 has them.
+// Kinds, subject types and states as 000029 and 000041 have them.
 var (
 	Kinds = []string{"incident_deadline", "action_overdue", "verification_stalled", "competency_expiry", "medical_expiry",
-		"appointment_expiry", "document_expiry"}
-	SubjectTypes = []string{"deadline_duty", "action", "closeout", "competency", "medical", "appointment", "document"}
+		"appointment_expiry", "document_expiry", "integrity_alarm"}
+	SubjectTypes = []string{"deadline_duty", "action", "closeout", "competency", "medical", "appointment", "document", "export"}
 )
 
 const (

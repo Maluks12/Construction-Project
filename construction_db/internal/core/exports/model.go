@@ -71,9 +71,12 @@ type Export struct {
 	ClientRequestedAt time.Time `json:"client_requested_at"`
 	DeviceID          *string   `json:"device_id"`
 
-	Status         string  `json:"status"`
-	Attempts       int     `json:"attempts"`
-	FailedAttempts int     `json:"failed_attempts"`
+	Status         string `json:"status"`
+	Attempts       int    `json:"attempts"`
+	FailedAttempts int    `json:"failed_attempts"`
+	// A stored original no longer matched its seal: failed for good, and
+	// owners and SHE officers were alerted.
+	IntegrityAlarm bool    `json:"integrity_alarm"`
 	LastError      *string `json:"last_error"`
 	// Set once the pack is built.
 	SHA256        *string    `json:"sha256"`

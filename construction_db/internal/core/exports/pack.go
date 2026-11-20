@@ -131,6 +131,17 @@ func writePack(ctx context.Context, w io.Writer, m *Manifest, files []packFile, 
 
 var ErrSealMismatch = errors.New("stored bytes don't match their seal")
 
+// SealError names the stored object whose bytes no longer match its seal.
+type SealError struct {
+	Kind, ID, Key, Version string
+}
+
+func (e *SealError) Error() string {
+	return fmt.Sprintf("%s %s (object %s, version %s): %v", e.Kind, e.ID, e.Key, e.Version, ErrSealMismatch)
+}
+
+func (e *SealError) Unwrap() error { return ErrSealMismatch }
+
 func copyFile(ctx context.Context, entry func(string) (io.Writer, error), f packFile, open Opener) error {
 	rc, err := open(ctx, f.key, f.version)
 	if err != nil {
@@ -147,7 +158,7 @@ func copyFile(ctx context.Context, entry func(string) (io.Writer, error), f pack
 		return fmt.Errorf("%s %s: %w", f.Kind, f.ID, err)
 	}
 	if n != f.SizeBytes || hex.EncodeToString(h.Sum(nil)) != f.SHA256 {
-		return fmt.Errorf("%s %s: %w", f.Kind, f.ID, ErrSealMismatch)
+		return &SealError{Kind: f.Kind, ID: f.ID, Key: f.key, Version: f.version}
 	}
 	return nil
 }

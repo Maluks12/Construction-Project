@@ -23,6 +23,7 @@ Lead times come from the regime (`reminders` in `GET
 | `competency_expiry`, `medical_expiry` | `competency`, `medical` | owners, SHE officers, supervisors of sites where the worker is on the roster | `before_30d`, `before_14d`, `before_7d`, `on_day` |
 | `appointment_expiry` | `appointment` | owners, SHE officers, the site's supervisors | as above |
 | `document_expiry` | `document` (H&S file or vault) | H&S file: owners, SHE officers, the site's supervisors; vault: owners and SHE officers | the vault `v2_before_60d`, `v2_before_30d`, `v2_before_7d`, `v2_on_day` (the version's number first); the H&S file as competencies |
+| `integrity_alarm` | an audit export (`export`): a stored photo or file in it no longer matched its seal | owners and SHE officers | `seal_mismatch`, once, the moment the build found it (M12 review) |
 
 - **Titles say who and what:**
   - `<worker>: <type>` for competencies;
@@ -40,6 +41,10 @@ Lead times come from the regime (`reminders` in `GET
 - When the first look is already past several lead times, only the latest
   is sent: a licence recorded 5 days before it expires gets `before_7d`, not
   three at once.
+- **An integrity alarm** is not a reminder: it says an audit pack found a
+  stored original whose bytes no longer match the SHA-256 sealed when it was
+  received. The export is stopped for good (exports.md). Show it
+  prominently; it stays `current`.
 - **A renewal, retraction, satisfaction or close** stops further reminders
   about the old subject, and cancels its queued emails. Earlier reminders
   stay in the inbox with `subject_state: "superseded"`.
@@ -73,9 +78,9 @@ builder; stale after 30 minutes without a finished pass).
 
 <!-- types -->
 ```ts
-export type NotificationKind = "incident_deadline" | "action_overdue" | "verification_stalled" | "competency_expiry" | "medical_expiry" | "appointment_expiry" | "document_expiry";
+export type NotificationKind = "incident_deadline" | "action_overdue" | "verification_stalled" | "competency_expiry" | "medical_expiry" | "appointment_expiry" | "document_expiry" | "integrity_alarm";
 
-export type NotificationSubject = "deadline_duty" | "action" | "closeout" | "competency" | "medical" | "appointment" | "document";
+export type NotificationSubject = "deadline_duty" | "action" | "closeout" | "competency" | "medical" | "appointment" | "document" | "export";
 
 export type SubjectState = "current" | "superseded";
 

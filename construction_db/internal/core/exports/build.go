@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -120,6 +121,7 @@ func (b *Builder) Claim(ctx context.Context, orgID string) (*Attempt, error) {
 			WHERE NOT EXISTS (SELECT 1 FROM audit_export_results r WHERE r.export_id = e.id)
 			  AND e.as_of <= clock_timestamp() - audit_export_settle()
 			  AND audit_export_retry_at(e.id) <= clock_timestamp()
+			  AND NOT EXISTS (SELECT 1 FROM audit_export_attempts x WHERE x.export_id = e.id AND x.outcome = 'integrity')
 			  AND NOT EXISTS (SELECT 1 FROM audit_export_attempts x
 			                  WHERE x.export_id = e.id AND x.finished_at IS NULL AND x.lease_until > clock_timestamp())
 			  AND (SELECT count(*) FROM audit_export_attempts x WHERE x.export_id = e.id
@@ -215,12 +217,62 @@ func (b *Builder) Run(ctx context.Context, a *Attempt) error {
 		err = b.record(ctx, a, out.res, key, version)
 	}
 	if err != nil {
-		if ferr := b.Fail(context.WithoutCancel(ctx), a, err); ferr != nil {
+		var seal *SealError
+		if errors.As(err, &seal) {
+			if aerr := b.alarm(context.WithoutCancel(ctx), a, seal); aerr != nil {
+				slog.Error("audit pack: could not record the integrity alarm", "export", a.ExportID, "err", aerr)
+			}
+		} else if ferr := b.Fail(context.WithoutCancel(ctx), a, err); ferr != nil {
 			slog.Warn("audit pack: could not record the failure", "export", a.ExportID, "err", ferr)
 		}
 		return fmt.Errorf("exports: build %s: %w", a.ExportID, err)
 	}
 	return nil
+}
+
+// alarm: a stored original no longer matches its seal (M12 review). The
+// export stops for good and its owners and SHE officers are told, in-app
+// and by email.
+func (b *Builder) alarm(ctx context.Context, a *Attempt, seal *SealError) error {
+	var siteID, siteName string
+	err := database.WithTenant(ctx, b.Pool, database.Tenant{OrgID: a.OrgID}, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `SELECT e.site_id::text, s.name FROM audit_exports e JOIN sites s ON s.id = e.site_id WHERE e.id = $1`,
+			a.ExportID).Scan(&siteID, &siteName); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE audit_export_attempts SET outcome = 'integrity', error = $2, finished_at = clock_timestamp()
+			WHERE id = $1 AND finished_at IS NULL`, a.ID, truncate(seal.Error(), 2000)); err != nil {
+			return err
+		}
+		title := truncate("Integrity alarm: a photo or file no longer matches its seal ("+siteName+")", 300)
+		_, err := tx.Exec(ctx, `
+			WITH added AS (
+			    INSERT INTO notifications (org_id, user_id, kind, subject_type, subject_id, threshold, site_id, title)
+			    SELECT m.org_id, m.user_id, 'integrity_alarm', 'export', $1, 'seal_mismatch', $2, $3
+			    FROM org_members m
+			    WHERE m.org_id = app_org_id() AND m.status = 'active' AND m.role IN ('owner', 'she_officer')
+			    ON CONFLICT ON CONSTRAINT notifications_once DO NOTHING
+			    RETURNING id, org_id, user_id
+			)
+			INSERT INTO notification_emails (notification_id, org_id, to_address)
+			SELECT a.id, a.org_id, u.email FROM added a JOIN users u ON u.id = a.user_id WHERE u.email IS NOT NULL`,
+			a.ExportID, siteID, title)
+		return err
+	})
+	slog.Error("audit pack: a stored original no longer matches its seal", "export", a.ExportID, "site", siteID,
+		"object", seal.Key, "version", seal.Version, "kind", seal.Kind, "id", seal.ID)
+	return err
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 func (b *Builder) keepLease(ctx context.Context, cancel context.CancelCauseFunc, a *Attempt) {

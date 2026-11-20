@@ -61,8 +61,11 @@ A ZIP (entries stored, not compressed):
   certificates of fitness.
 
 Each original is re-hashed against the SHA-256 sealed when it was received
-as it is written into the pack; if one no longer matches, the build fails
-(`last_error`) and nothing is recorded.
+as it is written into the pack. If one no longer matches, it is an
+**integrity alarm**: the export fails at once and for good
+(`integrity_alarm: true`, `last_error` names the photo or file), nothing is
+recorded, and owners and SHE officers get an `integrity_alarm` notification
+(notifications.md). It is never retried: the stored bytes won't change.
 
 - **Inspections** in progress at `as_of` appear as their header only
   (`status: "in_progress_at_cut_off"`): their answers could still change.
@@ -154,6 +157,7 @@ export interface Export {
   status: ExportStatus;
   attempts: number;
   failed_attempts: number;
+  integrity_alarm: boolean;
   last_error: string | null;
   sha256: string | null;
   size_bytes: number | null;

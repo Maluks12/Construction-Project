@@ -9,12 +9,16 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
@@ -372,15 +376,21 @@ func TestExportFailures(t *testing.T) {
 	clk, ctx, org := newSASTClock(t), context.Background(), f.ownerMe.OrgID
 	e := queueExport(t, f.evidenceFixture, f.siteA, exportBody(clk.Today(), clk.Today()))
 
-	// A stored photo that no longer matches its seal fails the build.
+	// A stored photo that no longer matches its seal (same size, one bit
+	// off) fails its own export for good: an integrity alarm, never retried.
 	bad := newBuilder(10 * time.Second)
 	bad.Evidence = corruptStore{testStore}
 	if _, err := bad.BuildTo(ctx, org, e.ID, io.Discard); !errors.Is(err, exports.ErrSealMismatch) {
 		t.Errorf("corrupt bytes: %v", err)
 	}
+	sealed := queueExport(t, f.evidenceFixture, f.siteA, exportBody(clk.Today(), clk.Today()))
 	if err := bad.Run(ctx, claim(t, bad, org, e.ID)); !errors.Is(err, exports.ErrSealMismatch) {
 		t.Errorf("run with corrupt bytes: %v", err)
 	}
+	if got := getExportStatus(t, f.router, f.owner, f.siteA, e.ID); got.Status != exports.StatusFailed || !got.IntegrityAlarm {
+		t.Errorf("after a seal mismatch %+v", got)
+	}
+	e = sealed
 	// An upload that dies halfway.
 	crash := newBuilder(10 * time.Second)
 	crash.Exports = failingUploads{testExports}
@@ -388,23 +398,23 @@ func TestExportFailures(t *testing.T) {
 		t.Error("a failed upload succeeded")
 	}
 	got := getExportStatus(t, f.router, f.owner, f.siteA, e.ID)
-	if got.Status != exports.StatusQueued || got.Attempts != 2 || got.FailedAttempts != 2 || got.LastError == nil ||
+	if got.Status != exports.StatusQueued || got.Attempts != 1 || got.FailedAttempts != 1 || got.LastError == nil ||
 		!strings.Contains(*got.LastError, "connection reset") || got.SHA256 != nil {
-		t.Errorf("after two failures %+v", got)
+		t.Errorf("after a failed upload %+v", got)
 	}
 	for _, table := range []string{"audit_export_results", "audit_export_evidence", "audit_export_files"} {
 		if n := countRows(t, `SELECT count(*) FROM `+table+` WHERE export_id = $1`, e.ID); n != 0 {
 			t.Errorf("%s has %d rows after failed builds", table, n)
 		}
 	}
-	// The third attempt succeeds, with the bytes any rebuild gives.
+	// The second attempt succeeds, with the bytes any rebuild gives.
 	good := newBuilder(10 * time.Second)
 	if err := good.Run(ctx, claim(t, good, org, e.ID)); err != nil {
 		t.Fatal(err)
 	}
 	got = getExportStatus(t, f.router, f.owner, f.siteA, e.ID)
-	if got.Status != exports.StatusReady || got.Attempts != 3 || *got.SHA256 != sha(build(t, good, org, e.ID)) {
-		t.Errorf("third attempt %+v", got)
+	if got.Status != exports.StatusReady || got.Attempts != 2 || *got.SHA256 != sha(build(t, good, org, e.ID)) {
+		t.Errorf("second attempt %+v", got)
 	}
 
 	// Three failures: failed for good, never claimed again.
@@ -700,4 +710,88 @@ func TestExportBackoff(t *testing.T) {
 	runNext(false) // the third waits 500 ms
 	time.Sleep(450 * time.Millisecond)
 	runNext(true)
+}
+
+// A stored original that no longer matches its seal is an integrity alarm
+// (M12 review): the export fails at once and for good, it is logged at
+// error with the object, export and site, and owners and SHE officers are
+// told. Tampered in MinIO: a new version of the photo's object with one
+// bit flipped, which the sealed record is pointed at.
+func TestExportIntegrityAlarm(t *testing.T) {
+	f := newEvidenceFixture(t, "exportalarm")
+	clk, ctx, org := newSASTClock(t), context.Background(), f.ownerMe.OrgID
+	photo := photoTakenAt(t, f, f.owner, f.siteA, testClock.Now())
+	var key, version string
+	if err := testAdmin.QueryRow(ctx, `SELECT object_key, object_version_id FROM evidence WHERE id = $1`, photo).Scan(&key, &version); err != nil {
+		t.Fatal(err)
+	}
+	obj, err := testS3.Admin.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(testS3.Config.Bucket), Key: aws.String(key), VersionId: aws.String(version)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(obj.Body)
+	obj.Body.Close()
+	body[len(body)/2] ^= 1
+	put, err := testS3.Admin.PutObject(ctx, &s3.PutObjectInput{Bucket: aws.String(testS3.Config.Bucket), Key: aws.String(key),
+		Body: bytes.NewReader(body), ChecksumAlgorithm: s3types.ChecksumAlgorithmSha256})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tamper(t, `UPDATE evidence SET object_version_id = '`+*put.VersionId+`' WHERE id = '`+photo+`'`)
+
+	e := queueExport(t, f, f.siteA, exportBody(clk.Today(), clk.Today()))
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	b := newBuilder(10 * time.Second)
+	err = b.Run(ctx, claim(t, b, org, e.ID))
+	slog.SetDefault(prev)
+	if !errors.Is(err, exports.ErrSealMismatch) {
+		t.Fatalf("run: %v", err)
+	}
+	got := getExportStatus(t, f.router, f.owner, f.siteA, e.ID)
+	if got.Status != exports.StatusFailed || !got.IntegrityAlarm || got.Attempts != 1 || got.LastError == nil ||
+		!strings.Contains(*got.LastError, photo) || !strings.Contains(*got.LastError, key) {
+		t.Errorf("after the alarm %+v", got)
+	}
+	for _, want := range []string{"level=ERROR", "no longer matches its seal", "export=" + e.ID, "site=" + f.siteA, "object=" + key} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("the log lacks %q:\n%s", want, logs.String())
+		}
+	}
+	// Never again: not by the claim, not by the database.
+	time.Sleep(10 * time.Millisecond)
+	if a, err := b.Claim(ctx, org); err != nil || a != nil {
+		t.Errorf("claimed after an integrity alarm: %+v, %v", a, err)
+	}
+	again := database.WithTenant(ctx, testPool, database.Tenant{OrgID: org}, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT set_config('siteproof.export_settle', '0 seconds', true), set_config('siteproof.export_backoff', '0 seconds', true)`); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `INSERT INTO audit_export_attempts (id, org_id, export_id, attempt, instance, claimed_at, lease_until)
+			VALUES (gen_random_uuid(), $1, $2, 2, 'x', now(), clock_timestamp() + interval '1 minute')`, org, e.ID)
+		return err
+	})
+	if again == nil || !strings.Contains(again.Error(), "stopped for good") {
+		t.Errorf("a second attempt after the alarm: %v", again)
+	}
+	// The owner is told, in-app and by email; the supervisor isn't.
+	alarms := 0
+	for _, n := range inbox(t, f.router, f.owner) {
+		if n.Kind == "integrity_alarm" && n.SubjectType == "export" && n.SubjectID == e.ID && n.SubjectState == "current" {
+			alarms++
+		}
+	}
+	if alarms != 1 {
+		t.Errorf("owner's inbox has %d integrity alarms, want 1", alarms)
+	}
+	for _, n := range inbox(t, f.router, f.supervisor) {
+		if n.Kind == "integrity_alarm" {
+			t.Error("a supervisor was alerted")
+		}
+	}
+	if n := countRows(t, `SELECT count(*) FROM notification_emails m JOIN notifications n ON n.id = m.notification_id
+		WHERE n.kind = 'integrity_alarm' AND n.subject_id = $1`, e.ID); n != 1 {
+		t.Errorf("%d alarm emails, want 1 (the owner)", n)
+	}
 }

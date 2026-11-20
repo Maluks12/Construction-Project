@@ -41,6 +41,9 @@ All endpoints need `Authorization: Bearer <access token>`. Errors are
   checks who may see the record, logs the view, and returns a URL valid for
   60 seconds. A medical certificate opens only for an owner or SHE officer,
   whatever record it is reached through.
+- **Audit packs** (M12, `exports.md`) hold the files of the records they
+  include. Each download of a pack logs an `export` row per file it holds,
+  naming the export.
 
 ## Endpoints
 

@@ -62,6 +62,9 @@ func Render(title, kind, threshold string, dueOn *string, dueAt *time.Time, now 
 
 	var sentence string
 	switch {
+	case kind == "integrity_alarm":
+		sentence = title + ". An audit pack found a stored photo or file whose bytes no longer match the SHA-256 sealed " +
+			"when it was received. The export was stopped. Tell SiteProof support straight away."
 	case kind == "verification_stalled":
 		sentence = title + ": a close-out has been waiting for verification for 2 days or more."
 	case threshold == "forthwith":

@@ -21,12 +21,16 @@ const (
 	JobReminders = "reminders"
 	JobEmails    = "emails"
 	JobHolidays  = "holidays"
+	// JobExports builds audit packs (M12) in a loop of its own; each pass is
+	// recorded here so a stopped builder shows as stale.
+	JobExports = "exports"
 )
 
 var Schedule = map[string]time.Duration{
 	JobReminders: 15 * time.Minute,
 	JobEmails:    time.Minute,
 	JobHolidays:  6 * time.Hour,
+	JobExports:   time.Minute, // each build is a run, and a long one heartbeats
 }
 
 // SendingTimeout: an email claimed this long ago and still 'sending' was
@@ -82,7 +86,7 @@ func (j *Jobs) inOrg(ctx context.Context, orgID string, fn func(pgx.Tx) error) e
 // email either.
 const remindersSQL = `
 	WITH due AS (
-	    SELECT * FROM notifications_due($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	    SELECT * FROM notifications_due($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	), added AS (
 	    INSERT INTO notifications (org_id, user_id, kind, subject_type, subject_id, threshold, site_id, title, due_on, due_at)
 	    SELECT app_org_id(), user_id, kind, subject_type, subject_id, threshold, site_id, title, due_on, due_at FROM due
@@ -110,7 +114,7 @@ func (j *Jobs) Reminders(ctx context.Context, now time.Time) (int, error) {
 				r := ds.Reminders
 				var added, mailed int
 				if err := tx.QueryRow(ctx, remindersSQL, now, code, ds.Regime.TimeZone, r.WorkerExpiryDays, r.CompanyDocumentDays,
-					r.DeadlineDaysBefore, r.ActionEscalationDays, r.VerificationStalledDays, Labels(ds)).Scan(&added, &mailed); err != nil {
+					r.DeadlineDaysBefore, r.ActionEscalationDays, r.VerificationStalledDays, Labels(ds), r.RosterLapseDays).Scan(&added, &mailed); err != nil {
 					return err
 				}
 				total += added
@@ -294,7 +298,7 @@ func RecordRun(ctx context.Context, pool *pgxpool.Pool, job, instance string, fn
 // before now. A job that never ran counts as stale too.
 func Stale(ctx context.Context, pool *pgxpool.Pool, now time.Time) ([]string, error) {
 	var out []string
-	for _, job := range []string{JobReminders, JobEmails, JobHolidays} {
+	for _, job := range []string{JobReminders, JobEmails, JobHolidays, JobExports} {
 		var ok bool
 		err := pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM job_runs WHERE job = $1 AND ok AND finished_at >= $2)`,
 			job, now.Add(-2*Schedule[job])).Scan(&ok)

@@ -24,8 +24,14 @@ var (
 	// Each method that reaches bytes, and the files allowed to use it: the
 	// evidence engine and the document files primitive (M11 D4).
 	byteMethods = map[string][]string{
-		"PresignGet":  {"internal/core/evidence/access.go", "internal/core/files/access.go"},     // after logging the view
-		"ReadVersion": {"internal/core/evidence/complete.go", "internal/core/files/complete.go"}, // server-side hashing; serves nothing
+		// After logging the view; an audit pack after logging the download (M12).
+		"PresignGet": {"internal/core/evidence/access.go", "internal/core/files/access.go", "internal/core/exports/service.go"},
+		// Server-side hashing, which serves nothing; and copying sealed
+		// originals into an audit pack, which is served only by the logged
+		// download.
+		"ReadVersion": {"internal/core/evidence/complete.go", "internal/core/files/complete.go", "internal/core/exports/build.go"},
+		// Writing an audit pack, which holds evidence bytes.
+		"PutStream": {"internal/core/exports/build.go"},
 	}
 	// Only these directories may talk to S3 directly.
 	s3Importers = []string{"internal/platform/storage/", "internal/platform/storagetest/"}
@@ -33,7 +39,7 @@ var (
 	// storage.Store's methods. A new one fails the guard until someone
 	// decides whether it reaches bytes and adds it here.
 	storeFile    = "internal/platform/storage/storage.go"
-	storeMethods = []string{"PresignGet", "PresignPut", "ReadVersion", "Stat"}
+	storeMethods = []string{"PresignGet", "PresignPut", "PutStream", "ReadVersion", "Stat"}
 )
 
 // byteViolations checks non-test Go sources, keyed by slash path relative to
@@ -199,6 +205,7 @@ type Store interface {
 	Stat()
 	ReadVersion()
 	PresignGet()
+	PutStream()
 }`
 	base := func(extra map[string]string) map[string]string {
 		files := map[string]string{
@@ -218,15 +225,16 @@ type Store interface {
 		extra map[string]string
 		want  string // a substring of the single violation; "" means none
 	}{
-		"allowed uses":               {nil, ""},
-		"presign in another handler": {map[string]string{"internal/core/sites/handler.go": "package sites\nfunc h() { store.PresignGet() }"}, "internal/core/sites/handler.go:2 uses .PresignGet"},
-		"read in evidence's handler": {map[string]string{"internal/core/evidence/handler.go": "package evidence\nfunc h() { s.store.ReadVersion() }"}, "internal/core/evidence/handler.go:2 uses .ReadVersion"},
-		"method value, not a call":   {map[string]string{"internal/core/x/x.go": "package x\nvar f = store.PresignGet"}, "internal/core/x/x.go:2 uses .PresignGet"},
-		"s3 client outside storage":  {map[string]string{"internal/core/x/x.go": "package x\nimport \"github.com/aws/aws-sdk-go-v2/service/s3\"\nvar _ = s3.New"}, "imports github.com/aws/aws-sdk-go-v2/service/s3;"},
-		"s3 manager outside storage": {map[string]string{"cmd/api/x.go": "package main\nimport \"github.com/aws/aws-sdk-go-v2/feature/s3/manager\"\nvar _ = manager.New"}, "imports github.com/aws/aws-sdk-go-v2/feature/s3/manager"},
-		"new Store method":           {map[string]string{storeFile: strings.Replace(store, "Stat()", "Stat()\n\tCopy()", 1)}, "storage.Store has methods [Copy PresignGet PresignPut ReadVersion Stat]"},
-		"Store method removed":       {map[string]string{storeFile: strings.Replace(store, "\tStat()\n", "", 1)}, "storage.Store has methods [PresignGet PresignPut ReadVersion]"},
-		"Store interface gone":       {map[string]string{storeFile: "package storage"}, "no storage.Store interface found"},
+		"allowed uses":                       {nil, ""},
+		"a pack written outside the builder": {map[string]string{"internal/core/sites/x.go": "package sites\nfunc h() { store.PutStream() }"}, "internal/core/sites/x.go:2 uses .PutStream"},
+		"presign in another handler":         {map[string]string{"internal/core/sites/handler.go": "package sites\nfunc h() { store.PresignGet() }"}, "internal/core/sites/handler.go:2 uses .PresignGet"},
+		"read in evidence's handler":         {map[string]string{"internal/core/evidence/handler.go": "package evidence\nfunc h() { s.store.ReadVersion() }"}, "internal/core/evidence/handler.go:2 uses .ReadVersion"},
+		"method value, not a call":           {map[string]string{"internal/core/x/x.go": "package x\nvar f = store.PresignGet"}, "internal/core/x/x.go:2 uses .PresignGet"},
+		"s3 client outside storage":          {map[string]string{"internal/core/x/x.go": "package x\nimport \"github.com/aws/aws-sdk-go-v2/service/s3\"\nvar _ = s3.New"}, "imports github.com/aws/aws-sdk-go-v2/service/s3;"},
+		"s3 manager outside storage":         {map[string]string{"cmd/api/x.go": "package main\nimport \"github.com/aws/aws-sdk-go-v2/feature/s3/manager\"\nvar _ = manager.New"}, "imports github.com/aws/aws-sdk-go-v2/feature/s3/manager"},
+		"new Store method":                   {map[string]string{storeFile: strings.Replace(store, "Stat()", "Stat()\n\tCopy()", 1)}, "storage.Store has methods [Copy PresignGet PresignPut PutStream ReadVersion Stat]"},
+		"Store method removed":               {map[string]string{storeFile: strings.Replace(store, "\tStat()\n", "", 1)}, "storage.Store has methods [PresignGet PresignPut PutStream ReadVersion]"},
+		"Store interface gone":               {map[string]string{storeFile: "package storage"}, "no storage.Store interface found"},
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {

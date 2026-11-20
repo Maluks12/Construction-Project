@@ -22,6 +22,8 @@ func TestLoadWorkerEmailMode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("DATABASE_URL", "postgres://x")
 			t.Setenv("REDIS_URL", "redis://localhost:6379/0")
+			t.Setenv("S3_BUCKET", "evidence")
+			t.Setenv("S3_EXPORT_BUCKET", "exports")
 			t.Setenv("SMTP_URL", tc.smtp)
 			t.Setenv("EMAIL_MODE", tc.mode)
 			w, err := LoadWorker()
@@ -34,6 +36,24 @@ func TestLoadWorkerEmailMode(t *testing.T) {
 				t.Errorf("err %v", err)
 			case w.EmailMode != tc.wantMode:
 				t.Errorf("mode %q, want %q", w.EmailMode, tc.wantMode)
+			}
+		})
+	}
+}
+
+// The audit pack builder needs both buckets (M12).
+func TestLoadWorkerBuckets(t *testing.T) {
+	for _, missing := range []string{"S3_BUCKET", "S3_EXPORT_BUCKET"} {
+		t.Run(missing, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://x")
+			t.Setenv("REDIS_URL", "redis://localhost:6379/0")
+			t.Setenv("EMAIL_MODE", "log")
+			t.Setenv("SMTP_URL", "")
+			t.Setenv("S3_BUCKET", "evidence")
+			t.Setenv("S3_EXPORT_BUCKET", "exports")
+			t.Setenv(missing, "")
+			if _, err := LoadWorker(); err == nil || !strings.Contains(err.Error(), missing) {
+				t.Errorf("err %v, want it to name %s", err, missing)
 			}
 		})
 	}

@@ -61,9 +61,16 @@ func main() {
 		slog.Error("check evidence bucket", "error", err)
 		os.Exit(1)
 	}
+	exportCfg := cfg.S3
+	exportCfg.Bucket = cfg.ExportBucket
+	exportStore, err := storage.NewS3(ctx, exportCfg)
+	if err != nil {
+		slog.Error("connect export storage", "error", err)
+		os.Exit(1)
+	}
 
 	router, err := app.NewRouter(ctx, pool, cfg.JWTSecret, reg, construction.New(), store,
-		app.HTTPOptions{RequestTimeout: cfg.RequestTimeout, TrustedProxies: cfg.TrustedProxies})
+		app.HTTPOptions{RequestTimeout: cfg.RequestTimeout, TrustedProxies: cfg.TrustedProxies, Exports: exportStore})
 	if err != nil {
 		slog.Error("build router", "error", err)
 		os.Exit(1)

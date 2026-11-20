@@ -20,9 +20,10 @@ var (
 
 // Store holds evidence objects. Keys are always chosen by the server.
 //
-// Only internal/core/evidence may reach the bytes: ReadVersion in complete.go
-// (hashing; serves nothing) and PresignGet in access.go (after logging the
-// view). internal/archtest enforces it; a new method here fails that test
+// Only the files internal/archtest lists may reach the bytes: ReadVersion
+// (hashing, and copying sealed files into an audit pack), PresignGet (after
+// logging the view or download) and PutStream (writing a pack).
+// internal/archtest enforces it; a new method here fails that test
 // until it is added there deliberately.
 type Store interface {
 	// PresignPut returns a URL that accepts exactly size bytes whose SHA-256 is
@@ -36,6 +37,9 @@ type Store interface {
 	// with contentType as the response's Content-Type whatever the object was
 	// stored with.
 	PresignGet(ctx context.Context, key, versionID, contentType string, ttl time.Duration) (*PresignedGet, error)
+	// PutStream writes an object the server built (an audit pack, M12) from a
+	// stream of at most size bytes, and returns its version.
+	PutStream(ctx context.Context, key string, r io.Reader, contentType string, size int64) (string, error)
 }
 
 // PresignedGet is a URL anyone holding it can fetch until ExpiresAt; no

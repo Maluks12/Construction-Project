@@ -165,10 +165,14 @@ type CompetencyType struct {
 
 // AppointmentType is a written appointment the regime requires, per site (D21).
 type AppointmentType struct {
-	Key       string `json:"key"`
-	Label     string `json:"label"`
-	Expiry    string `json:"expiry"`
-	SourceRef string `json:"source_ref"`
+	Key    string `json:"key"`
+	Label  string `json:"label"`
+	Expiry string `json:"expiry"`
+	// Required types are expected on every site (M12 D4); RequiredNote says
+	// when they may not apply.
+	Required     bool   `json:"required"`
+	RequiredNote string `json:"required_note"`
+	SourceRef    string `json:"source_ref"`
 }
 
 // MedicalRule: DefaultValidityMonths is what the app proposes for

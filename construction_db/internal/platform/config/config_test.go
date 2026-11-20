@@ -15,6 +15,7 @@ func valid() Config {
 		JWTSecret:        strings.Repeat("s", 32),
 		S3:               storage.S3Config{Bucket: "evidence", Region: "af-south-1"},
 		EvidenceLockMode: storage.LockCompliance,
+		ExportBucket:     "exports",
 		RequestTimeout:   10 * time.Second,
 		DBMaxConns:       20,
 	}
@@ -26,6 +27,7 @@ func TestLoad(t *testing.T) {
 		t.Setenv("DATABASE_URL", "postgres://x")
 		t.Setenv("JWT_SECRET", strings.Repeat("s", 32))
 		t.Setenv("S3_BUCKET", "evidence")
+		t.Setenv("S3_EXPORT_BUCKET", "exports")
 		t.Setenv("EVIDENCE_LOCK_MODE", storage.LockGovernance)
 		t.Setenv("S3_ACCESS_KEY_ID", "")
 		t.Setenv("S3_SECRET_ACCESS_KEY", "")
@@ -103,6 +105,7 @@ func TestValidate(t *testing.T) {
 		{"valid, default credential chain", func(*Config) {}, ""},
 		{"valid, static credentials", func(c *Config) { c.S3.AccessKeyID, c.S3.SecretAccessKey = "id", "secret" }, ""},
 		{"no bucket", func(c *Config) { c.S3.Bucket = "" }, "S3_BUCKET"},
+		{"no export bucket", func(c *Config) { c.ExportBucket = "" }, "S3_EXPORT_BUCKET"},
 		{"no lock mode", func(c *Config) { c.EvidenceLockMode = "" }, "EVIDENCE_LOCK_MODE"},
 		{"unknown lock mode", func(c *Config) { c.EvidenceLockMode = "governance" }, "EVIDENCE_LOCK_MODE must be"},
 		{"key without secret", func(c *Config) { c.S3.AccessKeyID = "id" }, "S3_SECRET_ACCESS_KEY"},

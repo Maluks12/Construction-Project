@@ -20,9 +20,10 @@ Lead times come from the regime (`reminders` in `GET
 | `incident_deadline` | a reporting or investigation duty (`deadline_duty`) | the incident version's submitter, owners, SHE officers, the site's supervisors | `forthwith` at once; day-based: `before_2d`, `on_day`, then `overdue`; hour-based: `open`, then `overdue` |
 | `action_overdue` | a corrective action (`action`) | `escalation_1` the action's owner and raiser; `escalation_2` (1 day later) SHE officers; `escalation_3` (3 days) owners | days overdue |
 | `verification_stalled` | a close-out awaiting verification (`closeout`) | owners and SHE officers | `stalled`, after 2 days |
-| `competency_expiry`, `medical_expiry` | `competency`, `medical` | owners, SHE officers, supervisors of sites where the worker is on the roster | `before_30d`, `before_14d`, `before_7d`, `on_day` |
+| `competency_expiry`, `medical_expiry` | `competency`, `medical` | owners, SHE officers, supervisors of sites where the worker is on the roster (today's roster: a sign-in-added entry counts for `roster_lapse_days` after the worker's last sign-in) | `before_30d`, `before_14d`, `before_7d`, `on_day` |
 | `appointment_expiry` | `appointment` | owners, SHE officers, the site's supervisors | as above |
 | `document_expiry` | `document` (H&S file or vault) | H&S file: owners, SHE officers, the site's supervisors; vault: owners and SHE officers | the vault `v2_before_60d`, `v2_before_30d`, `v2_before_7d`, `v2_on_day` (the version's number first); the H&S file as competencies |
+| `integrity_alarm` | an audit export (`export`): a stored photo or file in it no longer matched its seal | owners and SHE officers | `seal_mismatch`, once, the moment the build found it (M12 review) |
 
 - **Titles say who and what:**
   - `<worker>: <type>` for competencies;
@@ -40,6 +41,10 @@ Lead times come from the regime (`reminders` in `GET
 - When the first look is already past several lead times, only the latest
   is sent: a licence recorded 5 days before it expires gets `before_7d`, not
   three at once.
+- **An integrity alarm** is not a reminder: it says an audit pack found a
+  stored original whose bytes no longer match the SHA-256 sealed when it was
+  received. The export is stopped for good (exports.md). Show it
+  prominently; it stays `current`.
 - **A renewal, retraction, satisfaction or close** stops further reminders
   about the old subject, and cancels its queued emails. Earlier reminders
   stay in the inbox with `subject_state: "superseded"`.
@@ -65,15 +70,18 @@ nothing). 404 `"notification not found"` (also for someone else's).
 
 200 `{"status": "ok", "stale": []}`, or 503 `{"status": "stale", "stale":
 ["emails"]}` when a worker job has gone twice its interval without
-completing (Rev 4 §2.3).
+completing (Rev 4 §2.3). The jobs are `reminders` (15 minutes), `emails`
+(1 minute), `holidays` (6 hours) and, since M12, `exports` (the audit pack
+builder; 1 minute: each build is a run, an idle pass is one, and a long
+build records a heartbeat each time it renews its lease).
 
 ## Types for `web/src/lib/types.ts`
 
 <!-- types -->
 ```ts
-export type NotificationKind = "incident_deadline" | "action_overdue" | "verification_stalled" | "competency_expiry" | "medical_expiry" | "appointment_expiry" | "document_expiry";
+export type NotificationKind = "incident_deadline" | "action_overdue" | "verification_stalled" | "competency_expiry" | "medical_expiry" | "appointment_expiry" | "document_expiry" | "integrity_alarm";
 
-export type NotificationSubject = "deadline_duty" | "action" | "closeout" | "competency" | "medical" | "appointment" | "document";
+export type NotificationSubject = "deadline_duty" | "action" | "closeout" | "competency" | "medical" | "appointment" | "document" | "export";
 
 export type SubjectState = "current" | "superseded";
 

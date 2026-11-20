@@ -2,6 +2,10 @@
 // claim each due job in Redis; the instance that claims it runs it, recorded
 // in job_runs. Correctness never depends on Redis: Postgres refuses a second
 // copy of any reminder and any second send.
+//
+// It also builds audit packs (M12) in a loop of its own, so a long build
+// never holds up the reminders. Postgres decides which instance builds
+// which export (a claim with a lease; see internal/core/exports).
 package main
 
 import (
@@ -13,15 +17,21 @@ import (
 	"syscall"
 	"time"
 
+	"construction_db/internal/core/exports"
 	"construction_db/internal/core/notifications"
+	"construction_db/internal/editions/construction"
 	"construction_db/internal/platform/cache"
 	"construction_db/internal/platform/config"
 	"construction_db/internal/platform/database"
 	"construction_db/internal/platform/mail"
+	"construction_db/internal/platform/storage"
 	"construction_db/internal/regimes"
 )
 
 const tick = 10 * time.Second
+
+// exportTick: how often the builder looks for queued exports.
+const exportTick = 15 * time.Second
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -79,6 +89,48 @@ func main() {
 		{notifications.JobReminders, func(ctx context.Context) (int, error) { return jobs.Reminders(ctx, time.Now()) }},
 		{notifications.JobEmails, jobs.Emails},
 	}
+	evidenceStore, err := storage.NewS3(ctx, cfg.S3)
+	if err != nil {
+		slog.Error("connect evidence storage", "error", err)
+		os.Exit(1)
+	}
+	exportCfg := cfg.S3
+	exportCfg.Bucket = cfg.ExportBucket
+	exportStore, err := storage.NewS3(ctx, exportCfg)
+	if err != nil {
+		slog.Error("connect export storage", "error", err)
+		os.Exit(1)
+	}
+	builder := &exports.Builder{Pool: pool, Evidence: evidenceStore, Exports: exportStore,
+		Contributor: construction.New().ExportsContributor(), Instance: instance}
+	// A long build heartbeats into job_runs, so /healthz/jobs doesn't call it stale.
+	builder.Heartbeat = func(ctx context.Context) {
+		_ = notifications.RecordRun(ctx, pool, notifications.JobExports, instance, func(context.Context) (int, error) { return 0, nil })
+	}
+	go func() {
+		t := time.NewTicker(exportTick)
+		defer t.Stop()
+		for {
+			// Each build is its own run; an idle pass is one too.
+			built := 0
+			err := notifications.RecordRun(ctx, pool, notifications.JobExports, instance, func(ctx context.Context) (int, error) {
+				n, err := builder.RunOne(ctx)
+				built = n
+				return n, err
+			})
+			if err != nil && !errors.Is(err, context.Canceled) {
+				slog.Error("job failed", "job", notifications.JobExports, "error", err)
+			}
+			if built > 0 && ctx.Err() == nil {
+				continue // straight on to the next queued export
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+			}
+		}
+	}()
 	slog.Info("worker starting", "instance", instance)
 
 	t := time.NewTicker(tick)

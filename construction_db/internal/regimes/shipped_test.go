@@ -25,6 +25,7 @@ type shippedKeys struct {
 	ToolboxTopics     []string                     `json:"toolbox_topics"`
 	CompetencyTypes   []string                     `json:"competency_types"`
 	AppointmentTypes  []string                     `json:"appointment_types"`
+	RequiredAppts     []string                     `json:"required_appointment_types"`
 	DocumentTypes     []string                     `json:"document_types"`
 	ChecklistVersions map[string]map[string]string `json:"checklist_versions"`
 }
@@ -134,5 +135,38 @@ func TestMissingKeysDetected(t *testing.T) {
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("missingKeys =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// TestRequiredAppointmentsLocked: which appointment types are required is a
+// compliance rule (M12 D4), so changing it is a decision recorded in the
+// lock, never a side effect of a data edit.
+func TestRequiredAppointmentsLocked(t *testing.T) {
+	reg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	var lock map[string]shippedKeys
+	if err := decodeFile(os.DirFS("testdata"), "shipped.json", &lock); err != nil {
+		t.Fatalf("read lock: %v", err)
+	}
+	for code, keys := range lock {
+		ds, ok := reg.Get(code)
+		if !ok {
+			continue
+		}
+		got := []string{}
+		for _, a := range ds.Workforce.AppointmentTypes {
+			if a.Required {
+				got = append(got, a.Key)
+			}
+		}
+		want := slices.Clone(keys.RequiredAppts)
+		slices.Sort(got)
+		slices.Sort(want)
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: required appointment types are %v, the lock says %v. Changing them is a decision: "+
+				"record it (SOURCES, BUILD_PLAN) and update required_appointment_types in testdata/shipped.json", code, got, want)
+		}
 	}
 }

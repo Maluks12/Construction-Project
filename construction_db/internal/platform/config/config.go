@@ -21,6 +21,9 @@ type Config struct {
 
 	S3               storage.S3Config
 	EvidenceLockMode string
+	// The bucket audit packs go to (M12 D7): versioning on, no Object Lock, a
+	// 7-day lifecycle rule. Same endpoint and credentials as S3.
+	ExportBucket string
 
 	RequestTimeout time.Duration // one deadline per request (httpapi.Deadline)
 	DBMaxConns     int32         // pgxpool MaxConns
@@ -68,6 +71,7 @@ func Load() (*Config, error) {
 			SecretAccessKey: os.Getenv("S3_SECRET_ACCESS_KEY"),
 		},
 		EvidenceLockMode: os.Getenv("EVIDENCE_LOCK_MODE"),
+		ExportBucket:     os.Getenv("S3_EXPORT_BUCKET"),
 		RequestTimeout:   timeout,
 		DBMaxConns:       int32(maxConns),
 		TrustedProxies:   splitList(os.Getenv("TRUSTED_PROXIES")),
@@ -103,6 +107,10 @@ func (c *Config) validate() error {
 
 	if c.EvidenceLockMode == "" {
 		missing = append(missing, "EVIDENCE_LOCK_MODE")
+	}
+
+	if c.ExportBucket == "" {
+		missing = append(missing, "S3_EXPORT_BUCKET")
 	}
 
 	if len(missing) > 0 {
@@ -157,6 +165,10 @@ type Worker struct {
 	// "smtp" (the default: send through SMTP_URL) or "log" (only log each
 	// email, recorded 'logged', never 'sent'). Never chosen by a missing URL.
 	EmailMode string
+	// The audit pack builder reads photos and files from S3.Bucket and writes
+	// packs to ExportBucket (M12).
+	S3           storage.S3Config
+	ExportBucket string
 }
 
 const defaultWorkerMaxConns = 5
@@ -171,6 +183,17 @@ func LoadWorker() (*Worker, error) {
 		RedisURL:    os.Getenv("REDIS_URL"),
 		SMTPURL:     os.Getenv("SMTP_URL"),
 		EmailMode:   os.Getenv("EMAIL_MODE"),
+		S3: storage.S3Config{
+			Bucket:          os.Getenv("S3_BUCKET"),
+			Region:          os.Getenv("S3_REGION"),
+			Endpoint:        os.Getenv("S3_ENDPOINT"),
+			AccessKeyID:     os.Getenv("S3_ACCESS_KEY_ID"),
+			SecretAccessKey: os.Getenv("S3_SECRET_ACCESS_KEY"),
+		},
+		ExportBucket: os.Getenv("S3_EXPORT_BUCKET"),
+	}
+	if w.S3.Region == "" {
+		w.S3.Region = "af-south-1"
 	}
 	if s := os.Getenv("WORKER_DB_MAX_CONNS"); s != "" {
 		n, err := strconv.ParseInt(s, 10, 32)
@@ -185,6 +208,12 @@ func LoadWorker() (*Worker, error) {
 	}
 	if w.RedisURL == "" {
 		missing = append(missing, "REDIS_URL")
+	}
+	if w.S3.Bucket == "" {
+		missing = append(missing, "S3_BUCKET")
+	}
+	if w.ExportBucket == "" {
+		missing = append(missing, "S3_EXPORT_BUCKET")
 	}
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("missing required environment variable: %s", strings.Join(missing, ", "))

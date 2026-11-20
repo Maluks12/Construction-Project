@@ -235,6 +235,14 @@ func TestLoadFSRejects(t *testing.T) {
 			with(validFS(), "test_regime/workforce.json", strings.Replace(workforceJSON, `"certificate"`, `"diploma"`, 1)),
 			`competency_types[0]: kind "diploma" is not one of`,
 		},
+		"required appointment without a note": {
+			with(validFS(), "test_regime/workforce.json", strings.Replace(workforceJSON, `"expiry": "optional"`, `"expiry": "optional", "required": true`, 1)),
+			"appointment_types[0]: required_note is needed exactly when required is true",
+		},
+		"note on an appointment that isn't required": {
+			with(validFS(), "test_regime/workforce.json", strings.Replace(workforceJSON, `"expiry": "optional"`, `"expiry": "optional", "required_note": "n"`, 1)),
+			"appointment_types[0]: required_note is needed exactly when required is true",
+		},
 		"unknown expiry rule": {
 			with(validFS(), "test_regime/workforce.json", strings.Replace(workforceJSON, `"expiry": "optional"`, `"expiry": "sometimes"`, 1)),
 			`appointment_types[0]: expiry "sometimes" is not one of`,

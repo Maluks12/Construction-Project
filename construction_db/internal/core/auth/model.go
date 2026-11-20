@@ -68,6 +68,11 @@ type MeResponse struct {
 	UserID    string `json:"user_id"`
 	OrgID     string `json:"org_id"`
 	SessionID string `json:"session_id"`
+	Role      string `json:"role"`
+	FullName  string `json:"full_name"`
+	OrgName   string `json:"org_name"`
+	// Display hints only; see capabilities.go.
+	Capabilities []string `json:"capabilities"`
 }
 
 type SessionResponse struct {

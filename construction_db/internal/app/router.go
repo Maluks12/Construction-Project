@@ -15,10 +15,12 @@ import (
 	"construction_db/internal/core/documents"
 	"construction_db/internal/core/edition"
 	"construction_db/internal/core/evidence"
+	"construction_db/internal/core/exports"
 	"construction_db/internal/core/files"
 	"construction_db/internal/core/incidents"
 	"construction_db/internal/core/invites"
 	"construction_db/internal/core/notifications"
+	"construction_db/internal/core/reports"
 	"construction_db/internal/core/sites"
 	"construction_db/internal/core/toolbox"
 	"construction_db/internal/core/vault"
@@ -38,6 +40,9 @@ type HTTPOptions struct {
 	// Clock is "now" for the services that date things; nil is the real
 	// time. Tests set it to run as if at another hour.
 	Clock clock.Clock
+	// Exports is the bucket audit packs are downloaded from (M12); nil
+	// leaves the exports routes out.
+	Exports storage.Store
 }
 
 // ed supplies the edition and regime for new organisations and sites, and its own routes.
@@ -95,9 +100,29 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	vault.Register(router, documentsSvc, authSvc)
 	notifications.Register(router, notifications.NewService(pool), authSvc)
 
+	deps := edition.Deps{Pool: pool, Sites: sitesSvc, Files: filesSvc, Documents: documentsSvc, Regimes: reg, Clock: opts.Clock}
+	var contrib reports.Contributor
+	if re, ok := ed.(reportingEdition); ok {
+		contrib = re.ReportsContributor(deps)
+	}
+	reportsSvc := reports.NewService(pool, sitesSvc, documentsSvc, reg, contrib, ed.DefaultRegime())
+	reportsSvc.Clock = opts.Clock
+	reports.Register(router, reportsSvc, authSvc)
+	if opts.Exports != nil {
+		exportsSvc := exports.NewService(pool, sitesSvc, opts.Exports)
+		exportsSvc.Clock = opts.Clock
+		exports.Register(router, exportsSvc, authSvc)
+	}
+
 	editionRoutes := router.Group("/v1/" + ed.Name())
 	editionRoutes.Use(auth.RequireAuth(authSvc))
-	ed.RegisterRoutes(editionRoutes, edition.Deps{Pool: pool, Sites: sitesSvc, Files: filesSvc, Documents: documentsSvc, Regimes: reg, Clock: opts.Clock})
+	ed.RegisterRoutes(editionRoutes, deps)
 
 	return router, nil
+}
+
+// reportingEdition is an edition that adds categories to the compliance
+// summary (M12); the edition.Edition interface stays as it was.
+type reportingEdition interface {
+	ReportsContributor(edition.Deps) reports.Contributor
 }

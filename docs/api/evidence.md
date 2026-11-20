@@ -118,6 +118,8 @@ src>` (no headers needed) or download it.
   the link is made (who, when, IP, user agent, and the exact stored version
   the link serves). If it can't be recorded, the call fails with 500 and no
   link is issued.
+- **Audit packs** hold photos too: each download of a pack (`exports.md`,
+  M12) records an `export` row per photo it holds, naming the export.
 - The link always serves the **sealed version** (the bytes the chain
   seals), with `Content-Type` set to the verified `content_type`.
 - **Don't keep the link.** Anyone holding it can fetch the photo until

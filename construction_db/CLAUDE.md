@@ -206,6 +206,27 @@ Known spec issues:
     A.3, A.5 and A.8; the Domain Reference §3.6 and §4.1. Read in order,
     e.g. `regime_document_types (regime_id, doc_type, default_issuer,
     validity_days)`. Rev 4 §5.3 is aligned correctly.
+- Found in M12 (Nov 2026):
+  - **§6.D is a totals table**, not a list: P1 shared core 85, construction
+    20. Counting A.1–A.10 and 6.B's rows in order gives exactly those
+    totals; the checkpoint table in BUILD_PLAN (M12) has one row per line.
+  - **The evidence export pack is P2** in Rev 4 A.2 ("Hash manifest and
+    chain verification"), but A.10's report engine and asynchronous
+    large-pack generation are P1, and the chain needs an external record
+    (CHAIN.md). M12 builds it.
+  - **JBCC and PC are P2 in 6.B** (contract form, delay claims register, PC
+    compliance rollup), yet BUILD_PLAN schedules them before v1. Not a cut:
+    a point for the next forecast decision.
+  - **Health documents:** Rev 4 §2.12 gives them to the claims-handler
+    capability alone; M11 (18 Nov) and M12 D8 give medical certificates and
+    injury details to owners and SHE officers. Awaits the role matrix.
+  - **Inspector order** (Rev 3 §2.3.10) names method statements, s37(2)
+    agreements, inductions, the PPE register and emergency procedures,
+    which aren't built (gap tasks G3, G5, G15); the pack has every section
+    that exists, in that order.
+  - **Required appointments:** reg 8(1) binds the principal contractor and
+    reg 8(7) the construction manager; neither binds every organisation on a
+    site (SOURCES, M12 D4).
 
 ## Commands
 
@@ -219,6 +240,7 @@ go vet ./...
 go test ./...                           # needs Docker Desktop running (testcontainers)
 go test -p 4 ./...                      # locally on Windows: at most 4 packages at once
 SITEPROOF_TEST_SAST=00:30 go test -run "$DATE_TESTS" ./internal/app/   # as if at 00:30 SAST (below)
+SITEPROOF_TEST_SAST=23:30 go test -run "$DATE_TESTS" ./internal/app/   # and at 23:30 (M12)
 ```
 
 On Windows, run the tests locally with `-p 4`. Several packages each start
@@ -239,9 +261,40 @@ both errors.
     instance that claims it runs it and records `job_runs`.
   - **Jobs:** `reminders` (15 min), `emails` (1 min), `holidays` (6 h); see
     `notifications.Schedule`.
-  - **Config:** `REDIS_URL` (required), `SMTP_URL` (optional: without it,
-    emails are logged), `WORKER_DB_MAX_CONNS` (default 5).
+  - **Audit packs (M12):** a loop of its own every 15 s runs
+    `exports.Builder.RunOnce` (recorded as job `exports`, stale after 30
+    min), so a long build never holds up the reminders. Postgres decides who
+    builds what (a claim with a lease; see `internal/core/exports`).
+  - **Config:** `REDIS_URL` (required), `SMTP_URL` (required unless
+    `EMAIL_MODE=log`), `WORKER_DB_MAX_CONNS` (default 5), and the S3
+    settings with `S3_EXPORT_BUCKET` (M12: photos and files are read from
+    `S3_BUCKET`, packs written to the export bucket).
   - **Deployment:** the same Docker image with entrypoint `/worker`.
+- M12 packages:
+  - **`internal/core/reports`:** the compliance summary and rollup. Core
+    categories by SQL in one tenant transaction; the vault through
+    `documents.Service.Register`; the edition adds the H&S file and
+    appointments through `reports.Contributor`
+    (`construction.Edition.ReportsContributor`, found by a type assertion in
+    `app.NewRouter`, so `edition.Edition` is unchanged). "Now" comes from
+    `Service.Clock`.
+  - **`internal/core/exports`:** the audit pack. `Service` (API: queue, list,
+    get, logged download) and `Builder` (`cmd/worker`: claim, lease,
+    `BuildTo`, upload with `Store.PutStream`, record). Sections are SQL
+    returning jsonb, read in one REPEATABLE READ snapshot with the session
+    in UTC, every value as of the export's `as_of` (D10); the edition adds
+    the H&S file, appointments and the diary (`exports.Contributor`,
+    `construction.Edition.ExportsContributor`). `pack.go` writes the ZIP
+    (stored entries, name order, `as_of` as every entry's time) and re-hashes
+    each original against its seal. `CanSeeHealthDetails` is the one D8 rule.
+  - **History tables (000037):** `organisation_history`, `site_history`,
+    `member_history` (one row per membership, with the user's name),
+    `toolbox_talk_history`. Written only by SECURITY DEFINER triggers;
+    append-only for every role; the app may only read them.
+  - **`evidence.VerifyChainAsOf`:** the chain walk in a caller's
+    transaction, as of a time, handing each entry's hash inputs to the pack.
+  - **`auth.Capabilities`:** the display hints on `/v1/me`;
+    `TestCapabilitiesMatchRoutes` holds them to the real guards.
 - M11 packages:
   - **`internal/core/files`:** sealed document files. As evidence (declare,
     presigned PUT, complete re-hashes the stored version) with no chain, and
@@ -502,7 +555,7 @@ the router and the tests the same clock (`HTTPOptions.Clock`,
 are meaningful in that mode: the attendance, toolbox not_signed, reminders,
 workers, documents, appointments and actions tests. Their names are
 `DATE_TESTS` in `.github/workflows/ci.yml`, whose "Test dates as if at 00:30
-SAST" step runs them after the normal tests (about a minute; the faketime
+and 23:30 SAST" step runs them after the normal tests, once at each time (about a minute; the faketime
 image builds in about 6 s, so it isn't cached). A new date-sensitive test
 goes in that list. Production can't reach any of this:
 `TestProductionUsesTheRealClock` (archtest) fails if non-test code names
@@ -1847,8 +1900,9 @@ under cmd/.
   - **Shown, not counted:** absent roster workers.
   - **Not shown:** reminders.
 
-- **Milestone 12, Reports and audit pack** (due Sun 22 Nov; estimate 4 days,
-  forecast Tue 24 Nov). Plan approved Fri 20 Nov. Rigour: full.
+- **Milestone 12, Reports and audit pack** (due Sun 22 Nov; estimated at 4
+  days, **done Fri 20 Nov**, not yet reviewed). Plan approved Fri 20 Nov.
+  Rigour: full.
   - **Decisions (Fri 20 Nov):**
     - **D1 Status:** counts per category, each with its items (record ids)
       and red/amber/green; the site's status is its worst colour; no score.
@@ -1894,6 +1948,120 @@ under cmd/.
     expired vault items on supervisors' sites; D8 and D9 (Rev 4 §2.12 gives
     health documents to the claims handler); org-level pending files for
     leads only; the capability table; the other three roles get nothing.
+  - **Steps (Fri 20 Nov), each with its tests:**
+    - 12.0 plan and decisions; 12.1 `/v1/me` with capabilities
+      (`docs/api/me.md`); 12.2 required appointment types (workforce.json,
+      SOURCES, `shipped.json`'s `required_appointment_types`).
+    - 12.3 migration 000037, the history tables (see Layout).
+    - 12.4 migration 000038: `action_escalation_step` (tested against
+      `notifications_due`) and `site_diary_replay_as_of`
+      (`site_diary_replay` is now the as-of replay at 'infinity').
+    - 12.5–12.6 `internal/core/reports` and `docs/api/compliance.md`.
+    - 12.7 migration 000039, the exports (below).
+    - 12.8 `Store.PutStream` (multipart, one 8 MiB part in memory), the
+      export bucket (`S3_EXPORT_BUCKET`, versioned, no lock, 7-day
+      lifecycle), config for the API and the worker, compose, archtest.
+    - 12.9 `evidence.VerifyChainAsOf`.
+    - 12.10–12.12 `internal/core/exports`, the edition's sections, the
+      worker loop and `docs/api/exports.md`.
+    - 12.13 CI's date step at 00:30 and 23:30; 12.14
+      `docs/api/m12-handover.md`; 12.15 BUILD_PLAN's checkpoint and forecast.
+  - **Migration 000039:**
+    - `audit_exports` (append-only; `as_of` set by the database; the
+      requester's role checked against the live membership AFTER the insert,
+      as M9 learned);
+    - `audit_export_attempts` (only the lease moves, forward and while live;
+      the finish is set once; a lapsed outcome only after the lease ended;
+      ready only with a result);
+    - `audit_export_results` (only from the newest attempt while its lease
+      is live, which it then finishes);
+    - `audit_export_evidence` and `audit_export_files` (exactly the result's
+      counts at commit, by deferred constraint triggers);
+    - `audit_export_downloads`;
+    - `export_id` on both access logs, with `(action = 'export') =
+      (export_id IS NOT NULL)`.
+
+    Every check runs under the export row's lock, which needs an UPDATE
+    privilege: the app may update `audit_exports.id` only, and the
+    append-only trigger refuses that too. The settle window is
+    `audit_export_settle()`: 2 minutes unless the claiming transaction sets
+    `siteproof.export_settle` (tests do).
+  - **Mutation checks: 60 of 61 caught** (the scratch runner: exact-string
+    mutation, the named tests, restore).
+    - **Capabilities 5 of 5, the me.md table 2 of 2:** any row of the table,
+      the per-request role, the doc's ticks.
+    - **Required appointments 3 of 3:** the lock, and the note rule
+      (survived first: no test; the two `TestLoadFSRejects` cases added).
+    - **000037 6 of 6:** the definer on the name trigger, every membership
+      reached, a role change recorded, no-op edits, TRUNCATE, the app's
+      INSERT.
+    - **000038 2 of 2.**
+    - **Summary 15 of 15:**
+      - colours and filters: severity, coverage, overdue, stalled, today,
+        retracted sign-ins, due soon, the roster, the 24 hours;
+      - leads-only org files, the vault's missing types, worst-of, the
+        ranking, a required type's live appointee.
+
+      The first run left S8 (expired records listed as expiring) uncaught: a
+      gap, fixed by an expired licence on the roster.
+    - **Exports 27 of 28:**
+      - each as-of filter: worker, site and member history, sign-ins, the
+        talk header, vault versions, the action's last event, inspection
+        status, diary revisions, the chain prefix;
+      - the seal re-hash (hash and size apart);
+      - the ZIP's stored entries and fixed time;
+      - the claim: the settle window, the live lease, the attempt count;
+      - the fencing, the lease's direction, the "holds the lease" refusal;
+      - the contents count at commit;
+      - the requester's role;
+      - the health rule, injury details;
+      - the download's log rows;
+      - the failed status;
+      - the route's roles.
+
+      Three mutations first failed to build or match and were redone.
+    - **The survivor, by design:** X5, the received-photos section's own
+      `as_of` filter. `packFiles` applies the same cut-off to every photo, so
+      removing either one alone changes nothing.
+  - **Verification (Fri 20 Nov):**
+    - `go test -p 4 ./...` passes.
+      - The first run failed one M7 test: `TestAccessLogIsAppendOnly`
+        inserted an `export` row with no export.
+      - It now names the seeded export, and adds three cases: an export row
+        with no export, a view naming one, and one naming an export never
+        built.
+    - The date tests (CI's `DATE_TESTS`, with `TestCompliance` and
+      `TestExport`) pass as if at 00:30 and at 23:30 SAST; no existing test
+      needed a fix for 23:30.
+    - **Migrations** up, down 3 and up again: the schema dumps match.
+  - **End-to-end walk** on the real API, worker, Postgres, MinIO, Redis and
+    Mailpit (`-p siteproof-m12walk`, ports moved by an override, removed
+    afterwards). 28 steps:
+    1. `/v1/me` for an owner and a supervisor.
+    2. An inspection with a failed item and its photo; someone new signing
+       in; a talk; a diary; an incident with an injured person; 25 more
+       photos.
+    3. The summary (red, 6 red items, 2 amber), and the supervisor's rollup.
+    4. A supervisor's export refused (403); the owner's queued (201); a
+       download before it was ready refused (409).
+    5. **The worker killed the moment it claimed:** no result. Restarted,
+       it built the pack on attempt 2, and the first attempt shows `lapsed`.
+    6. The download (18 MB) has the recorded SHA-256, and wrote the pack row
+       plus 26 `export` rows.
+    7. The entries are stored, in order, every file matching its seal.
+    8. The chain, recomputed in Node from the manifest alone with CHAIN.md's
+       encoding, matches the recorded head and length.
+    9. The index shows the worker, the injury and inspector order.
+    10. After a site rename the same pack downloads byte-identical.
+    11. `/healthz/jobs` 200.
+
+    The script (Node) is not in the repo. The local `.env` needs
+    `S3_EXPORT_BUCKET` (`.env.example` has it).
+  - **Found while building:** a pack built from `to_jsonb` of whole rows
+    would change when a later migration adds a column, so sections name
+    their columns; `pack_format` is bumped when what a pack holds changes.
+    Postgres can't type a parameter a section doesn't use, so `RunSection`
+    types all seven once.
 
 ## Finding severity
 

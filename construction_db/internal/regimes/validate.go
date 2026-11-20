@@ -266,6 +266,9 @@ func (ds *DataSet) validate(dir string) error {
 		need(fileWorkforce, where, "label", a.Label)
 		oneOf(fileWorkforce, where, "expiry", a.Expiry, expiries)
 		need(fileWorkforce, where, "source_ref", a.SourceRef)
+		if a.Required != (a.RequiredNote != "") {
+			add(fileWorkforce, "%s: required_note is needed exactly when required is true", where)
+		}
 	}
 	if m := ds.Workforce.Medical.DefaultValidityMonths; m < 0 || m > 60 {
 		add(fileWorkforce, "medical: default_validity_months must be 0-60")

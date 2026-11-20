@@ -9,10 +9,10 @@
     {"key": "construction_hs_officer_registration", "label": "Construction health and safety officer: registration with a statutory body", "kind": "registration", "expiry": "required", "source_ref": "CR 2014 reg 8(6)"}
   ],
   "appointment_types": [
-    {"key": "construction_manager", "label": "Construction manager", "expiry": "optional", "source_ref": "CR 2014 reg 8(1)"},
+    {"key": "construction_manager", "label": "Construction manager", "expiry": "optional", "required": true, "required_note": "Reg 8(1) binds the principal contractor. Whether it applies to this organisation depends on its role on the site, which SiteProof does not record yet.", "source_ref": "CR 2014 reg 8(1)"},
     {"key": "assistant_construction_manager", "label": "Assistant construction manager", "expiry": "optional", "source_ref": "CR 2014 reg 8(2)"},
     {"key": "construction_hs_officer", "label": "Construction health and safety officer", "expiry": "optional", "source_ref": "CR 2014 reg 8(5)"},
-    {"key": "construction_supervisor", "label": "Construction supervisor", "expiry": "optional", "source_ref": "CR 2014 reg 8(7)"},
+    {"key": "construction_supervisor", "label": "Construction supervisor", "expiry": "optional", "required": true, "required_note": "Reg 8(7) is the construction manager's duty, so it applies where reg 8(1) does. Whether it applies to this organisation depends on its role on the site, which SiteProof does not record yet.", "source_ref": "CR 2014 reg 8(7)"},
     {"key": "assistant_construction_supervisor", "label": "Assistant construction supervisor", "expiry": "optional", "source_ref": "CR 2014 reg 8(8)"},
     {"key": "risk_assessor", "label": "Risk assessor", "expiry": "optional", "source_ref": "CR 2014 reg 9(1)"},
     {"key": "temporary_works_designer", "label": "Temporary works designer", "expiry": "optional", "source_ref": "CR 2014 reg 12(1)"},

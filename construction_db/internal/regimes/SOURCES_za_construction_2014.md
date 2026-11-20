@@ -329,6 +329,23 @@ Every one is an appointment **in writing**. Left out:
 | `bulk_mixing_plant_supervisor` | CR 2014 reg 20(1) | "the operation of a bulk mixing plant is supervised by a competent person who has been appointed in writing" |
 | `stacking_storage_supervisor` | CR 2014 reg 28(a) | "a competent person is appointed in writing with the duty of supervising all stacking and storage on a construction site" |
 
+**Required on every site (M12 D4, decided Fri 20 Nov):** `construction_manager`
+and `construction_supervisor` are `required`. They are the only unconditional
+appointments; the other types follow from an activity on the site (an
+excavation, scaffolding), which is gap detection (Rev 4 6.B, deferrable to
+early P2 by 6.D). Neither binds every organisation on a site:
+- reg 8(1) says "A principal contractor must", so a subcontractor has no
+  construction manager to appoint;
+- reg 8(7) says "A construction manager must in writing appoint construction
+  supervisors", so it falls on whoever holds the reg 8(1) appointment, not on
+  every contractor. That wording is why it is not treated as every
+  contractor's duty.
+
+SiteProof doesn't yet record whether an organisation is the principal
+contractor on a site, so a missing appointee is amber in the compliance
+summary, with the type's `required_note`. PC (BUILD_PLAN) makes a principal
+contractor's red and a subcontractor's uncounted.
+
 ### Medical certificate of fitness
 
 - **CR 2014 reg 7(8):** "A contractor must ensure that all his or her

@@ -31,7 +31,10 @@ signature by hand are for owners and SHE officers.
   `GET /v1/regimes` lists the regimes, and `GET /v1/regimes/:code/types`
   gives their competency, appointment and document types, the medical rule
   and the reminder lead times. Each type says whether it has an expiry
-  (`required`, `optional`, `none`).
+  (`required`, `optional`, `none`). An appointment type with `required:
+  true` is expected on every site (M12): the compliance summary shows a
+  site without a live appointee, with the type's `required_note` saying when
+  it may not apply.
 - **Competencies** have a type, an issue date, an expiry as the type says,
   an optional number and issuer, and a certificate: a verified `competency`
   file (files.md). A supervisor can capture one on site.
@@ -323,6 +326,8 @@ export interface AppointmentType {
   key: string;
   label: string;
   expiry: "required" | "optional" | "none";
+  required: boolean;
+  required_note: string;
   source_ref: string;
 }
 

@@ -27,6 +27,10 @@
       "bulk_mixing_plant_supervisor",
       "stacking_storage_supervisor"
     ],
+    "required_appointment_types": [
+      "construction_manager",
+      "construction_supervisor"
+    ],
     "document_types": [
       "health_and_safety_specification",
       "health_and_safety_plan",

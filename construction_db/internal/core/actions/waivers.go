@@ -68,7 +68,7 @@ func (s *Service) Waive(ctx context.Context, orgID, userID, role, siteID, waiver
 	if err != nil {
 		return nil, false, ErrBadWaiverID
 	}
-	if err := normaliseWaiver(&req, time.Now()); err != nil {
+	if err := normaliseWaiver(&req, s.Clock.Now()); err != nil {
 		return nil, false, err
 	}
 	var (

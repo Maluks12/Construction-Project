@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -14,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"construction_db/internal/core/auth"
+	"construction_db/internal/platform/clock"
 	"construction_db/internal/platform/database"
 	"construction_db/internal/platform/httpapi"
 )
@@ -143,9 +143,9 @@ func Register(r *gin.Engine, svc *Service, authSvc *auth.Service) {
 // JobsHealth is /healthz/jobs: 503 while any worker job has gone twice its
 // interval without completing (Rev 4 §2.3: alert on non-completion), so an
 // uptime monitor pages; 200 otherwise.
-func JobsHealth(pool *pgxpool.Pool) gin.HandlerFunc {
+func JobsHealth(pool *pgxpool.Pool, clk clock.Clock) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		stale, err := Stale(c.Request.Context(), pool, time.Now())
+		stale, err := Stale(c.Request.Context(), pool, clk.Now())
 		switch {
 		case err != nil:
 			httpapi.WriteUnexpected(c, "request failed", err)

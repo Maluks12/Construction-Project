@@ -175,6 +175,11 @@ Plan approved Wed 18 Nov. The decisions (D1–D26) are in `construction_db/CLAUD
   - **Time:** the phone's time counts. A sign-in that arrives late is accepted, and flagged after the diary's 48-hour grace.
   - **Expected** means the site's roster.
   - **Toolbox talks** show who was signed in but didn't sign the talk.
+    **Decided Fri 20 Nov (night shifts):** `not_signed` includes a worker
+    whose sign-in on the site was still standing at the talk's start (not
+    signed out, not ended by a later sign-in, not retracted), even one made
+    the previous date, as well as that day's sign-ins before the talk ended.
+    The day register, absent list and headcount stay by sign-in date.
   - **Lapsed credentials** produce warnings; a sign-in is never refused.
   - **Headcount hint:** distinct people among the day's sign-ins and talk signatures.
 - **Reminders** (cmd/worker; Redis for timing, Postgres for once-only).

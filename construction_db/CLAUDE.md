@@ -218,6 +218,7 @@ gofmt -l .                              # must print nothing (CI fails otherwise
 go vet ./...
 go test ./...                           # needs Docker Desktop running (testcontainers)
 go test -p 4 ./...                      # locally on Windows: at most 4 packages at once
+SITEPROOF_TEST_SAST=00:30 go test -run '<tests>' ./internal/app/   # as if at 00:30 SAST (below)
 ```
 
 On Windows, run the tests locally with `-p 4`. Several packages each start
@@ -481,6 +482,25 @@ the site diary, settings.
 - No mutation checks unless something is subtle; say so in the plan when
   one is.
 - Short status notes: what was added and any contract change.
+
+**Dates in tests (CI run #84, Fri 20 Nov).** Every day in the product is a
+site's (or record's) regime date, Africa/Johannesburg for construction; CI
+runs in UTC. Tests take dates and times from `sastClock`
+(`internal/app/sastclock_test.go`): `Today()`, `Day(n)`, `Earlier(d)` (at
+most an hour back, never before 00:00 SAST: squeezed in the first hour of
+the day), `At(day, "23:35")` for past wall times. Day views pass
+`?date=` explicitly. Database tests use
+`action_local_date(now(), 'Africa/Johannesburg')`, never `current_date`.
+
+To run the app tests as if at a given SAST time, set
+`SITEPROOF_TEST_SAST=HH:MM`: TestMain picks the latest past HH:MM in
+Johannesburg, starts Postgres with its clock moved by the same offset
+(`dbtest.StartAt`: postgres:16-alpine plus libfaketime, built once from
+`internal/platform/dbtest/faketime`, needs network the first time), and gives
+the router and the tests the same clock (`HTTPOptions.Clock`,
+`notifications.Jobs.Clock`). Only tests that take every time from the clock
+are meaningful in that mode: the attendance, toolbox not_signed, reminders,
+workers, documents, appointments and actions tests.
 
 ## Conventions (learned the hard way)
 
@@ -1787,6 +1807,24 @@ the site diary, settings.
         - E8: accepting a misspelt mode; unknown modes are already refused.
         - H7: the recompute passing the old dates; deadlines_insert
           recomputes them anyway.
+
+- **CI dates fix (Fri 20 Nov, branch fix/ci-sast-dates).** CI run #84 failed
+  at 23:35 UTC (01:35 SAST): three M11 tests mixed UTC and SAST dates.
+  - Tests take every date and time from `sastClock` (Commands, above).
+  - **Injected clock:** `internal/platform/clock`. Attendance, workers,
+    documents, appointments, actions, `/healthz/jobs` and the worker's emails
+    read now from it (nil is the real time). A sign-in's `lapsed` is now
+    computed in SQL with the database's now().
+  - **Product bug fixed:** reminder emails told dates in the first loaded
+    regime's zone; now each email's own regime (`notification_regime`,
+    000036: the site's regime, else the record's). Days in emails are counted
+    by date, not 24-hour spans (a DST change made them one short).
+  - **Decided (not_signed, night shifts):** a talk's `not_signed` includes a
+    worker whose sign-in on the site was still standing at the talk's start
+    (not signed out, not ended by a later sign-in, not retracted), even one
+    made the previous date, as well as that day's sign-ins made before the
+    talk ended. The day register, absent list and headcount stay by sign-in
+    date. Test: `TestNotSignedNightShift` (23:35, then a 00:35 talk).
 
 - **M12 answers (Thu 19 Nov), for the site compliance summary:**
   - **Expiring** means each record's own state (its reminder window).

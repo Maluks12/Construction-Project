@@ -7,6 +7,7 @@ import (
 	"construction_db/internal/core/documents"
 	"construction_db/internal/core/files"
 	"construction_db/internal/core/sites"
+	"construction_db/internal/platform/clock"
 	"construction_db/internal/regimes"
 )
 
@@ -25,4 +26,5 @@ type Deps struct {
 	Files     *files.Service     // sealed document files (M11)
 	Documents *documents.Service // versioned documents: the H&S file (M11)
 	Regimes   *regimes.Registry
+	Clock     clock.Clock // nil is the real time
 }

@@ -100,7 +100,7 @@ func (s *Service) list(ctx context.Context, tx pgx.Tx, orgID, siteID, where stri
 	}
 	defer rows.Close()
 	out := []Appointment{}
-	now := time.Now()
+	now := s.deps.Clock.Now()
 	for rows.Next() {
 		var a Appointment
 		var retAt *time.Time
@@ -169,7 +169,7 @@ func (s *Service) Put(ctx context.Context, orgID, userID, role, siteID, appointm
 			return nil, false, ErrBadDate
 		}
 	}
-	if req.ClientRecordedAt.IsZero() || req.ClientRecordedAt.After(time.Now().Add(5*time.Minute)) {
+	if req.ClientRecordedAt.IsZero() || req.ClientRecordedAt.After(s.deps.Clock.Now().Add(5*time.Minute)) {
 		return nil, false, ErrBadRecordedAt
 	}
 	if req.DeviceID != nil && (len(*req.DeviceID) == 0 || len(*req.DeviceID) > 200) {

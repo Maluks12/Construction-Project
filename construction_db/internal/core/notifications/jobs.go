@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"construction_db/internal/platform/clock"
 	"construction_db/internal/platform/database"
 	"construction_db/internal/regimes"
 )
@@ -51,6 +52,8 @@ type Jobs struct {
 	StaleSending time.Duration
 	// OnlyOrgs limits the jobs to these organisations (tests); nil means all.
 	OnlyOrgs []string
+	// Clock is now for the emails; nil is the real time.
+	Clock clock.Clock
 }
 
 func (j *Jobs) orgs(ctx context.Context) ([]string, error) {
@@ -125,6 +128,7 @@ type queued struct {
 	id, to, title, kind, threshold string
 	dueOn                          *string
 	dueAt                          *time.Time
+	regime                         *string
 }
 
 // Emails sends the queued emails, at most once each:
@@ -165,14 +169,14 @@ func (j *Jobs) Emails(ctx context.Context) (sent int, err error) {
 				                              ORDER BY created_at LIMIT 50 FOR UPDATE SKIP LOCKED)
 				    RETURNING notification_id, to_address
 				)
-				SELECT c.notification_id::text, c.to_address, n.title, n.kind, n.threshold, n.due_on::text, n.due_at
+				SELECT c.notification_id::text, c.to_address, n.title, n.kind, n.threshold, n.due_on::text, n.due_at, notification_regime(n)
 				FROM claimed c JOIN notifications n ON n.id = c.notification_id`)
 			if err != nil {
 				return err
 			}
 			batch, err = pgx.CollectRows(rows, func(r pgx.CollectableRow) (queued, error) {
 				var q queued
-				return q, r.Scan(&q.id, &q.to, &q.title, &q.kind, &q.threshold, &q.dueOn, &q.dueAt)
+				return q, r.Scan(&q.id, &q.to, &q.title, &q.kind, &q.threshold, &q.dueOn, &q.dueAt, &q.regime)
 			})
 			return err
 		})
@@ -180,7 +184,7 @@ func (j *Jobs) Emails(ctx context.Context) (sent int, err error) {
 			return sent, fmt.Errorf("emails for org %s: claim: %w", org, err)
 		}
 		for _, q := range batch {
-			subject, body := Render(q.title, q.kind, q.threshold, q.dueOn, q.dueAt, time.Now(), j.location())
+			subject, body := Render(q.title, q.kind, q.threshold, q.dueOn, q.dueAt, j.Clock.Now(), j.zone(q.regime))
 			sendErr := j.Mailer.Send(ctx, q.to, subject, body)
 			status, msg := "sent", (*string)(nil)
 			if !j.Mailer.Delivers() {

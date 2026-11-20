@@ -18,6 +18,7 @@ import (
 
 	"construction_db/internal/core/sites"
 	"construction_db/internal/editions/construction"
+	"construction_db/internal/platform/clock"
 	"construction_db/internal/platform/database"
 	"construction_db/internal/platform/dbtest"
 	"construction_db/internal/platform/storage"
@@ -55,13 +56,31 @@ func TestMain(m *testing.M) {
 	}
 	testRegistry = reg
 
-	pool, admin, cleanup, err := dbtest.Start(context.Background())
+	offset, err := sastOffset(time.Now())
+	if err != nil {
+		log.Print(err)
+		os.Exit(1)
+	}
+	testClock = clock.Offset(offset)
+	testHTTP.Clock = testClock
+
+	pool, admin, cleanup, err := dbtest.StartAt(context.Background(), offset)
 	if err != nil {
 		log.Printf("start test database: %v", err)
 		os.Exit(1)
 	}
 	testPool = pool
 	testAdmin = admin
+	if offset != 0 {
+		// The database's now() must agree with testClock, or nothing is as if.
+		var dbNow time.Time
+		if err := pool.QueryRow(context.Background(), "SELECT now()").Scan(&dbNow); err != nil || dbNow.Sub(testClock.Now()).Abs() > 5*time.Second {
+			cleanup()
+			log.Printf("database clock %s, test clock %s (err %v)", dbNow, testClock.Now(), err)
+			os.Exit(1)
+		}
+		log.Printf("running as if at %s (offset %s)", testClock.Now().In(joburgLoc).Format("2006-01-02 15:04:05 MST"), offset)
+	}
 
 	s3env, cleanupS3, err := storagetest.Start(context.Background())
 	if err != nil {

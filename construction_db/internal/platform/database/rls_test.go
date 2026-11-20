@@ -469,7 +469,7 @@ func TestRLSWrites(t *testing.T) {
 			"toolbox_attendance_workers": {`INSERT INTO toolbox_attendance_workers (org_id, site_id, attendance_id, worker_id, method, linked_by) VALUES ($1, $2, $3, $4, 'manual', $5)`,
 				[]any{rlsOrgB, rlsSiteB, rlsAttB, "41000000-0000-0000-0000-00000000000b", rlsUserB}},
 			"corrective_action_events": {`INSERT INTO corrective_action_events (id, org_id, site_id, action_id, seq, kind, actor_id, client_at, reason, status, owner_id, due_on)
-			  VALUES ('34000000-0000-0000-0000-0000000000bb', $1, $2, $3, 2, 'cancelled', $4, now(), 'Smuggled', 'cancelled', $4, current_date + 1)`,
+			  VALUES ('34000000-0000-0000-0000-0000000000bb', $1, $2, $3, 2, 'cancelled', $4, now(), 'Smuggled', 'cancelled', $4, action_local_date(now(), 'Africa/Johannesburg') + 1)`,
 				[]any{rlsOrgB, rlsSiteB, rlsActionB, rlsUserB}},
 		}
 		for _, tb := range rlsTables {

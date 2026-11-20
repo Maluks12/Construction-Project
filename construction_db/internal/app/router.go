@@ -23,6 +23,7 @@ import (
 	"construction_db/internal/core/toolbox"
 	"construction_db/internal/core/vault"
 	"construction_db/internal/core/workers"
+	"construction_db/internal/platform/clock"
 	"construction_db/internal/platform/health"
 	"construction_db/internal/platform/httpapi"
 	"construction_db/internal/platform/storage"
@@ -34,6 +35,9 @@ type HTTPOptions struct {
 	RequestTimeout time.Duration // every request's deadline
 	// Proxies whose X-Forwarded-For sets the client IP; nil trusts none.
 	TrustedProxies []string
+	// Clock is "now" for the services that date things; nil is the real
+	// time. Tests set it to run as if at another hour.
+	Clock clock.Clock
 }
 
 // ed supplies the edition and regime for new organisations and sites, and its own routes.
@@ -57,7 +61,7 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	router.Use(gin.Recovery(), httpapi.Deadline(opts.RequestTimeout))
 
 	router.GET("/healthz", health.Handler(pool))
-	router.GET("/healthz/jobs", notifications.JobsHealth(pool))
+	router.GET("/healthz/jobs", notifications.JobsHealth(pool, opts.Clock))
 
 	authSvc := auth.NewService(pool, jwtSecret, ed.Name(), ed.DefaultRegime())
 	auth.Register(router, authSvc)
@@ -76,18 +80,24 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 
 	checklists.Register(router, checklists.NewService(pool, sitesSvc), authSvc)
 	incidents.Register(router, incidents.NewService(pool, sitesSvc), authSvc)
-	actions.Register(router, actions.NewService(pool, sitesSvc), authSvc)
+	actionsSvc := actions.NewService(pool, sitesSvc)
+	actionsSvc.Clock = opts.Clock
+	actions.Register(router, actionsSvc, authSvc)
 	toolbox.Register(router, toolbox.NewService(pool, sitesSvc), authSvc)
 	workersSvc := workers.NewService(pool, sitesSvc, filesSvc, reg)
+	workersSvc.Clock = opts.Clock
 	workers.Register(router, workersSvc, authSvc)
-	attendance.Register(router, attendance.NewService(pool, sitesSvc, reg), authSvc)
+	attendanceSvc := attendance.NewService(pool, sitesSvc, reg)
+	attendanceSvc.Clock = opts.Clock
+	attendance.Register(router, attendanceSvc, authSvc)
 	documentsSvc := documents.NewService(pool, sitesSvc, filesSvc, reg)
+	documentsSvc.Clock = opts.Clock
 	vault.Register(router, documentsSvc, authSvc)
 	notifications.Register(router, notifications.NewService(pool), authSvc)
 
 	editionRoutes := router.Group("/v1/" + ed.Name())
 	editionRoutes.Use(auth.RequireAuth(authSvc))
-	ed.RegisterRoutes(editionRoutes, edition.Deps{Pool: pool, Sites: sitesSvc, Files: filesSvc, Documents: documentsSvc, Regimes: reg})
+	ed.RegisterRoutes(editionRoutes, edition.Deps{Pool: pool, Sites: sitesSvc, Files: filesSvc, Documents: documentsSvc, Regimes: reg, Clock: opts.Clock})
 
 	return router, nil
 }

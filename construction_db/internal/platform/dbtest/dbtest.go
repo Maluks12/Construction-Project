@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
@@ -23,20 +24,51 @@ const MaxConns = 10
 // (as siteproof_app, under RLS); admin is the superuser, for fixtures the app
 // may not write.
 func Start(ctx context.Context) (app, admin *pgxpool.Pool, cleanup func(), err error) {
+	return StartAt(ctx, 0)
+}
+
+// StartAt is Start with the database's clock moved by offset (whole seconds),
+// so now() agrees with a test clock.Offset(offset): the app tests run as if
+// at another hour (SITEPROOF_TEST_SAST). A non-zero offset builds
+// faketime/Dockerfile (Postgres with libfaketime) and needs network once.
+func StartAt(ctx context.Context, offset time.Duration) (app, admin *pgxpool.Pool, cleanup func(), err error) {
 	files, err := migrationFiles()
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	opts := []testcontainers.ContainerCustomizer{
+		postgres.WithDatabase("siteproof_test"),
+		postgres.WithUsername("test"),
+		postgres.WithPassword("test"),
+		postgres.WithOrderedInitScripts(files...),
+		postgres.BasicWaitStrategies(),
+	}
+	if offset != 0 {
+		dir, err := sourceDir()
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		opts = append(opts,
+			testcontainers.WithDockerfile(testcontainers.FromDockerfile{
+				Context: filepath.Join(dir, "faketime"), Repo: "siteproof-postgres-faketime", Tag: "16", KeepImage: true,
+			}),
+			// The postgres module always names its image; a build needs none.
+			testcontainers.CustomizeRequestOption(func(req *testcontainers.GenericContainerRequest) error {
+				req.Image = ""
+				return nil
+			}),
+			testcontainers.WithEnv(map[string]string{
+				"LD_PRELOAD": "/usr/lib/faketime/libfaketimeMT.so.1",
+				"FAKETIME":   fmt.Sprintf("%+d", int64(offset/time.Second)),
+				// Postgres forks: libfaketime's shared-memory lock fails there.
+				"FAKETIME_DISABLE_SHM": "1",
+				"DONT_FAKE_MONOTONIC":  "1",
+			}))
+	}
 
 	ctr, err := containertest.StartWithRetry(ctx, "postgres", containertest.RetryWait,
 		func(ctx context.Context) (*postgres.PostgresContainer, error) {
-			return postgres.Run(ctx, "postgres:16-alpine",
-				postgres.WithDatabase("siteproof_test"),
-				postgres.WithUsername("test"),
-				postgres.WithPassword("test"),
-				postgres.WithOrderedInitScripts(files...),
-				postgres.BasicWaitStrategies(),
-			)
+			return postgres.Run(ctx, "postgres:16-alpine", opts...)
 		},
 		func(c *postgres.PostgresContainer) { _ = testcontainers.TerminateContainer(c) },
 	)
@@ -71,13 +103,21 @@ func Start(ctx context.Context) (app, admin *pgxpool.Pool, cleanup func(), err e
 	return app, admin, cleanup, nil
 }
 
-func migrationFiles() ([]string, error) {
+func sourceDir() (string, error) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
-		return nil, errors.New("locate dbtest.go")
+		return "", errors.New("locate dbtest.go")
+	}
+	return filepath.Dir(thisFile), nil
+}
+
+func migrationFiles() ([]string, error) {
+	dir, err := sourceDir()
+	if err != nil {
+		return nil, err
 	}
 
-	pattern := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "migrations", "*.up.sql")
+	pattern := filepath.Join(dir, "..", "..", "..", "migrations", "*.up.sql")
 	files, err := filepath.Glob(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("find migrations: %w", err)

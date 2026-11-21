@@ -46,6 +46,7 @@ How the forecast is built (fifth revision; unchanged since):
 | M11 People & documents | light; full for sign-in, reminders, the file seal and the holiday recompute | – | **done Thu 19 Nov** | Fri 20 Nov | On the forecast date; grew in planning (sign-in, email, the holiday recompute at full rigour); built Wed 18–Thu 19 Nov, reviewed and merged Thu 19 Nov. No later date moves |
 | FIX CI dates & night shifts | full for the date fix | – | **done Fri 20 Nov** | Fri 20 Nov | Unplanned: CI run #84. Branch protection is still open (a settings change, not counted) |
 | M12 Reports & audit pack | full | – | **done Fri 20 Nov** | Sun 22 Nov | Re-estimated at 4 days that morning (the rollup, the extra summary items, a rebuildable pack); built in one day; reviewed Fri 20 Nov, approved with fixes |
+| FIX CI app timeout & lock waits | full for the lock bounds | – | **built Sat 21 Nov**, in review | – | Unplanned: CI run #90. Taken before REG4's PR, which is rebased on it |
 | REG4 Regulation 4 notification | full | 1 | Sat 21 Nov | – | Dated at the checkpoint (D13): before SYNC, so sync covers its record |
 | SYNC Offline sync API | full | 3 | Tue 24 Nov | Wed 25 Nov | Set by hand (the task count gives 1): pull and push with conflict rules across every record type built so far |
 | ONBOARD Onboarding | light; full for team management; the CSV import's all-or-nothing tested | 2 | Thu 26 Nov | Thu 26 Nov | 5 tasks (team management added Fri 20 Nov); added Tue 17 Nov |
@@ -219,6 +220,12 @@ Proposed Wed 18 Nov (not scheduled):
 - [x] Fix the SAST date assumptions in the tests behind CI run #84 (branch fix/ci-sast-dates); audit product code for dates not derived through Africa/Johannesburg. Found and fixed: reminder emails told dates in the first loaded regime's zone (now `notification_regime`, 000036), and days counted as hours ÷ 24 (done Fri 20 Nov, #14). CI runs the date-sensitive tests as if at 00:30 SAST, with a guard that production always uses the real clock (done Fri 20 Nov, chore/ci-midnight-and-plan)
 - [x] A toolbox talk's `not_signed` lists workers whose sign-in on that site was still standing at the talk's start (night shifts across midnight), and workers who signed in on the talk's date after it started; the day view, absent list and headcount stay by sign-in date (done Fri 20 Nov, #14)
 - [ ] Branch protection on main: changes by PR only, "Lint, test, build" required (due Fri 20 Nov)
+
+### FIX: CI app timeout and bounded lock waits (Sat 21 Nov, unplanned: CI run #90)
+
+- [x] internal/app under `-race` ran past Go's default 10-minute `-timeout` (CI run #90). bcrypt at its default cost in every fixture's signup and login was most of the time: tests now hash at `bcrypt.MinCost`, the API refuses to start below the default (`auth.CheckPasswordCost`), and archtest refuses it set under cmd/ (branch fix/ci-app-hang)
+- [x] Every `go test` in CI names its `-timeout`, and both jobs have `timeout-minutes` (archtest `TestCITimeouts`)
+- [x] Lock waits are bounded per pool (`database.Bounds`): the API 5 s `lock_timeout` and a 60 s `idle_in_transaction_session_timeout`, the worker 1 min and no idle limit, tests 10 s and no idle limit; migrations keep Postgres's defaults. A lock wait past the limit is 503 with Retry-After (forced test: a burst of uploads to one site)
 
 ### M12: Reports & audit pack (due Sun 22 Nov; done Fri 20 Nov; reviewed Fri 20 Nov, approved with fixes)
 

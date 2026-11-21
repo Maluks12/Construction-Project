@@ -32,7 +32,8 @@ Known spec issues:
   deadline rule = `rule_code, period, unit, basis, source_ref`; vocabulary =
   `term_key, label`; incident taxonomy = `code, label, reportable,
   report_rule_code`.
-- Three statements in Rev 4 contradict the law. The quotes and sources are in
+- Four statements in Rev 4 contradict the law (the fourth, the reg 3
+  permit threshold, is under Found in REG4). The quotes and sources are in
   `internal/regimes/SOURCES_za_construction_2014.md`:
   - §3.2: Reg 4 is not "for all other work". It applies only to excavation,
     work at height, demolition, explosives, or a single-storey dwelling for
@@ -227,6 +228,17 @@ Known spec issues:
   - **Required appointments:** reg 8(1) binds the principal contractor and
     reg 8(7) the construction manager; neither binds every organisation on a
     site (SOURCES, M12 D4).
+- Found in REG4 (Nov 2026):
+  - **Reg 4 binds "a contractor"**, not the principal contractor Rev 4 and
+    the brief assumed. It also excludes "work contemplated in regulation
+    3(1)", and reg 2(2) takes the single-storey dwelling out of reg 3
+    (quoted in SOURCES).
+  - **Rev 4 §3.2's "above R40m"** was GN 641 of 2015's phase. GN 850 of
+    2018 repealed it: 365 days and 3600 person-days, or CIDB grade 7–9. Its
+    current status wasn't confirmed against the Gazette.
+  - **"At least 7 days before"** is counted in clear days: our reading, no
+    court ruling found (D1).
+  - **Not modelled:** reg 3(7), no work before the permit is issued.
 
 ## Commands
 
@@ -373,8 +385,17 @@ both errors.
   rule selection and planning (`engine.go`), storage (`repo.go`). Due
   dates are computed only by Postgres's `deadline_due` (000015), from the
   `public_holidays` table. Tests here start their own Postgres.
-- `internal/core/incidents`: the incident register, witness statements,
-  and the deadline endpoints (`docs/api/incidents.md`).
+  Since REG4 it also serves the site deadline endpoints for every subject
+  (`service.go`, `docs/api/deadlines.md`); a subject's package registers
+  `SubjectHooks` (the lock its new versions take; clocks added after a
+  satisfaction). Incidents register in `app.NewRouter`, editions through
+  `DeadlineSubjects` (a type assertion, like `ReportsContributor`).
+  `Weakens` is the Go twin of `deadlines_weakening_check`.
+- `internal/core/incidents`: the incident register and witness statements
+  (`docs/api/incidents.md`).
+- `internal/editions/construction/reg4` (REG4): site work, its versions and
+  the form's catalogue (`docs/api/site-work.md`), under `/v1/construction`.
+  Which rules apply is regime data (`site_work.json`, `SiteWork.RulesFor`).
 - `internal/core/actions`: the corrective action register (Rev 4 §2.5):
   raise, events (reassign, move due, verify, reject, reopen, cancel),
   close-outs, waivers, and the registers (`docs/api/actions.md`). Every
@@ -630,7 +651,7 @@ under cmd/.
     up to 10 s in the API (`TestLockWaitIs503`).
   - Locks the API waits on: the site chain head (`site_chain_heads FOR
     UPDATE`, evidence complete), the evidence row; `FOR NO KEY UPDATE` on
-    incident, action and toolbox talk headers; inspections, invitations and
+    incident, site work (REG4), action and toolbox talk headers; inspections, invitations and
     site diaries `FOR UPDATE`; and the deadline triggers' `FOR SHARE` on a
     deadline. There is no advisory lock.
 - **bcrypt cost:** `auth.PasswordCost`, the default in production
@@ -2171,6 +2192,96 @@ under cmd/.
     `complete` stay one request per file.
   - **Server-only:** the history tables (000032, 000037) and exports are
     never pulled or pushed.
+  - **Open for SYNC (REG4 review, Sat 21 Nov): one cursor design for every
+    table, decided before any pull is built.** A row's server time
+    (`submitted_at`, `recorded_at`, `now()`) is taken before its transaction
+    commits, so a slow transaction can commit after a phone has pulled past
+    that time, and the row is never pulled. Options: a commit-ordered change
+    log or sequence, or a settle window behind the cursor as exports use
+    (`exports.Builder.Settle`). Site work deliberately has no cursor column
+    of its own.
+
+- **REG4, Regulation 4 notification** (Sat 21 Nov, forecast 1 day, now 2;
+  full rigour). Plan and decisions D1–D14 approved Sat 21 Nov
+  (`docs/api/reg4-handover.md` for the frontend).
+  - **Law, read from CR 2014 (the ECR copy) and GN 850 of 2018** and quoted in
+    SOURCES:
+    - reg 4(1) binds "a contractor" (not only the principal contractor), and
+      excludes "work contemplated in regulation 3(1)";
+    - reg 2(2) takes the single-storey dwelling out of reg 3;
+    - GN 850 replaced reg 3(1)'s printed thresholds (365 days **and** 3600
+      person-days, or CIDB grade 7–9) and repealed GN 641 of 2015, Rev 4's
+      "above R40m".
+  - **Decisions:**
+    - **D1:** clear days (unit `clear_days`, before only).
+    - **D2:** facts the user ticks, with both exclusions.
+    - **D3:** reg 4 overdue red, reg 3 amber with a caveat.
+    - **D4:** a late or past start is recorded, overdue, with
+      `late_when_recorded`.
+    - **D5:** versions only; withdrawing or moving later takes a lead.
+    - **D6:** GN 850's thresholds.
+    - **D7:** the deadline endpoints moved to `internal/core/deadlines`, with
+      subject hooks.
+    - **D9:** kind `site_work_deadline`, lead days 7, 2, 0.
+    - **D10/D11:** the `site_work_deadlines` category; the `site_work` pack
+      section; `pack_format` 2.
+    - **D12:** the H&S file document as proof.
+    - **D13:** synced like incidents.
+    - **D14:** 2 days.
+  - **Migrations:**
+    - 000044: `deadline_due` learns `clear_days`.
+    - 000045: `site_work`, `site_work_versions`.
+    - 000046: deadlines with a `site_work_id` subject, proof documents, the
+      guard, weakening, satisfaction and recompute per subject.
+    - 000047: reminders.
+  - **Tests and walk:** all pass, at 00:30 and 23:30 SAST too
+    (`TestSiteWork` is in DATE_TESTS). The end-to-end walk on the real API,
+    worker, Postgres, MinIO, Redis and Mailpit passed 18 of 18 checks. The
+    four new down migrations were run and reapplied.
+  - **Mutation checks:**
+    - regime readings 3 of 3; clear days 3 of 3;
+    - 000045 6 of 6; 000046 11 of 11; reminders 3 of 3;
+    - the Go rules 5 of 6; summary 2 of 2; pack 1 of 2.
+    - Two mutations are masked by design: the Go lead check is backed by the
+      trigger, and the pack's file list duplicates the H&S file section's.
+  - **Contract changes:** see the handover.
+  - **Review (Sat 21 Nov): approved with fixes, done the same day.**
+    - **R1, reminders per computed deadline** (000048): deadline reminders
+      are about the deadline row (`subject_type` "deadline", `subject_id`
+      the row). A moved start, a corrected `occurred_at`, a holiday or a
+      reinstatement makes a new row, so its thresholds come again; the old
+      row's stop and its queued emails are cancelled. "deadline_duty" stays
+      valid for rows stored before.
+    - **R2:** the "notice given for start <date>" note (handover,
+      deadlines.md).
+    - **R4, NUL refused on every route:** `httpapi.RejectNUL`, before auth.
+      It walks the decoded JSON tokens (values and keys, however nested),
+      the query and the path params. Invalid UTF-8 needs no check:
+      encoding/json replaces it with U+FFFD. `TestEveryRouteRefusesNUL`
+      walks all 123 registered routes and skips none. Per field, also:
+      reg4 `amend_reason` and `device_id`, the deadline retract reason.
+    - **Clock:** deadlines (`Weakens` takes `now`), incidents, checklists,
+      toolbox and the diary take the injected clock. Left on real time, by
+      design:
+      - auth token and session expiry, and invite expiry: security, real
+        time;
+      - `storage` presign expiry: S3 checks it against its own clock;
+      - the worker's Redis heartbeat: liveness.
+    - **R5, pack spans:** a version's span starts at the record's earliest
+      due date if that's before its start. A cancelled version ends on its
+      day; an open-ended earlier version ends when the next was submitted.
+      The site_work section's own file list is gone: it was dead, since the
+      H&S file section packs every linked version.
+    - **SOURCES:** the draft CR 2025 (GN 5983); GN 850 on lawlibrary.
+    - **BUILD_PLAN:** a task to watch for CR 2025 being made final.
+    - **`.env.example`:** checked by `TestEnvExampleHasEveryRequiredVariable`.
+    - **Mutation checks:**
+      - R1 3 of 3;
+      - the NUL guard 2 of 2 (taken out of the router: 124 failures);
+      - spans 2 of 2;
+      - `.env.example` 1 of 1.
+    - **Convention:** never name a Go file `nul.go` (or `con`, `aux`, `prn`):
+      they are Windows device names, and Git on Windows refuses the path.
 
 ## Finding severity
 

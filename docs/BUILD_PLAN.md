@@ -12,7 +12,9 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 - **Pricing is per active site, never per user.** Users are unlimited on every plan; plans limit active sites.
 - **CHSO partners get a once-off referral payout**, not a recurring share. It's paid after the referred client has paid its first 3 months, or on its first annual prepay.
 
-## Forecast (Fri 20 Nov, seventh revision: the checkpoint)
+## Forecast (Fri 20 Nov, seventh revision: the checkpoint; eighth, Sat 21 Nov: REG4)
+
+**Eighth revision (Sat 21 Nov, REG4).** REG4 was re-estimated at 2 days when planned that morning (D14: a second deadline subject across five consumers, the deadline endpoints moved to core), and built the same day, so it took its original 1 day. Review is still not modelled. No later date moves: SYNC still finishes Tue 24 Nov, v1 **Tue 22 Dec** (Wed 9 Dec without the gap milestones). SYNC must settle one pull cursor for every table first (`construction_db/CLAUDE.md`, SYNC answers).
 
 **Seventh revision (Fri 20 Nov, the M12 checkpoint).** M12 was built on Fri 20 Nov, in one day against the 4 days re-estimated that morning (reviewed the same day and approved with ten fixes, which took the rest of it). REG4 is dated straight after it (D13, 1 day). The checkpoint (M12, below) went through Rev 4 §6.D's 105 P1 rows and found 38 tasks no milestone held; with no cuts (Sun 15 Nov) they are placed by D14: G35 joins IOD (2 days, was 1); G36–G38 join DEPLOY (3 days, was 2: G37 is code); the required-appointments task (D4) joins PC (4 tasks, 2 days); the other 34 make three new milestones after PC, GAPS-A (11 tasks, 4 days), GAPS-B (8, 3) and GAPS-C (16, 6). The rules are unchanged. **v1 moves from Sun 6 Dec to Tue 22 Dec**, 17 days after Sat 5 Dec. Without the gap milestones it would be **Wed 9 Dec**, 4 days late (REG4, and the extra days in IOD, DEPLOY and PC). The choice between the two is the user's: the gaps are Rev 4 P1, and Rev 4 itself rates JBCC and the PC compliance rollup P2 (Known spec issues, M12).
 
@@ -46,8 +48,8 @@ How the forecast is built (fifth revision; unchanged since):
 | M11 People & documents | light; full for sign-in, reminders, the file seal and the holiday recompute | – | **done Thu 19 Nov** | Fri 20 Nov | On the forecast date; grew in planning (sign-in, email, the holiday recompute at full rigour); built Wed 18–Thu 19 Nov, reviewed and merged Thu 19 Nov. No later date moves |
 | FIX CI dates & night shifts | full for the date fix | – | **done Fri 20 Nov** | Fri 20 Nov | Unplanned: CI run #84. Branch protection is still open (a settings change, not counted) |
 | M12 Reports & audit pack | full | – | **done Fri 20 Nov** | Sun 22 Nov | Re-estimated at 4 days that morning (the rollup, the extra summary items, a rebuildable pack); built in one day; reviewed Fri 20 Nov, approved with fixes |
-| FIX CI app timeout & lock waits | full for the lock bounds | – | **built Sat 21 Nov**, in review | – | Unplanned: CI run #90. Taken before REG4's PR, which is rebased on it |
-| REG4 Regulation 4 notification | full | 1 | Sat 21 Nov | – | Dated at the checkpoint (D13): before SYNC, so sync covers its record |
+| FIX CI app timeout & lock waits | full for the lock bounds | – | **done Sat 21 Nov** (#17) | – | Unplanned: CI run #90. Taken before REG4, which is rebased on it |
+| REG4 Regulation 4 notification | full | – | **done Sat 21 Nov** | – | Dated at the checkpoint (D13): before SYNC, so sync covers its record. Re-estimated at 2 days when planned (D14); built in one |
 | SYNC Offline sync API | full | 3 | Tue 24 Nov | Wed 25 Nov | Set by hand (the task count gives 1): pull and push with conflict rules across every record type built so far |
 | ONBOARD Onboarding | light; full for team management; the CSV import's all-or-nothing tested | 2 | Thu 26 Nov | Thu 26 Nov | 5 tasks (team management added Fri 20 Nov); added Tue 17 Nov |
 | BILL Billing | light; full for invoicing, price versions, metering and webhooks | 4 | Mon 30 Nov | Mon 30 Nov | 9 tasks (3 days, was 2 tasks), plus 1 for the Stitch sandbox (external) |
@@ -361,7 +363,7 @@ Plan approved Fri 20 Nov (decisions D1–D16 in `construction_db/CLAUDE.md`, Sta
 | Appointments register and letters | partly: the register (M11); no letters | G13 |
 | Appointment gap detection | not built (two required types flagged, M12 D4) | G14 |
 | Section 37(2) mandatary agreements | not built | G15 |
-| Regulation 4 notification | not built | REG4 |
+| Regulation 4 notification | built (REG4, Sat 21 Nov) | REG4 |
 | H&S plan and specification storage | built (H&S file, M11) | |
 | MCoF Annexure 3 tracking | built (medicals, M11) | |
 | OHSA s24 reportable incident flow | partly: the clocks (M8); no Annexure 1 preparation | G11 |
@@ -501,7 +503,16 @@ Answers decided Fri 20 Nov (`construction_db/CLAUDE.md`, Status): REG4 records a
 
 Rev 4's construction pack has "Regulation 4 notification, P1, 7-day deadline and tracking", but no task existed. `editions/construction/reg4` is empty.
 
-- [ ] A site's planned construction work (start date, and which of reg 4(1)(a)–(d) or 4(2) applies), creating `cr2014_reg4_notification` (and, for reg 3 permits, `cr2014_reg3_permit_application`) deadlines through the M8 engine (`applies_when: site_work`). Decide whether "at least 7 days before" means clear days. Rev 4 §3.2 overstates reg 4's scope (see SOURCES)
+- [x] A site's planned construction work (start date, and which of reg 4(1)(a)–(d) or 4(2) applies), creating `cr2014_reg4_notification` (and, for reg 3 permits, `cr2014_reg3_permit_application`) deadlines through the M8 engine (`applies_when: site_work`). Decide whether "at least 7 days before" means clear days. Rev 4 §3.2 overstates reg 4's scope (see SOURCES). **Done Sat 21 Nov** (D1–D14 in `construction_db/CLAUDE.md`, Status): clear days; reg 3 thresholds from GN 850 of 2018; the deadline endpoints moved to `internal/core/deadlines`; reminders, the compliance summary and the audit pack (`pack_format` 2) know site work. Handover: `docs/api/reg4-handover.md`
+
+- [x] Review fixes (Sat 21 Nov, approved with fixes): R1 deadline reminders per computed deadline (000048, `subject_type` "deadline"); R2 the moved-start note (handover); R4 NUL refused on every route (`httpapi.RejectNUL`, before auth; reg4 `amend_reason` and `device_id`, the deadline retract reason); the injected clock in deadlines, incidents, checklists, toolbox and diary; R5 pack spans (earliest due date; cancelled ends on its day; the dead file list deleted); SOURCES: draft CR 2025, GN 850 on lawlibrary; `.env.example` checked by a test. R3 (`include_health` opt-in) is its own PR later
+
+### Watch: Construction Regulations 2025 (added Sat 21 Nov, REG4 review)
+
+- [ ] Watch for the Construction Regulations 2025 being made final (draft: GN 5983, GG 52267, 12 Mar 2025; comments closed 12 Jun 2025; draft reg 33(1) repeals CR 2014; no final promulgation found as of 21 Nov 2026). If made final:
+  - a new regime data set, `za_construction_2025`, quoted from the final text, with its own checklists, deadline rules, site work facts and SOURCES;
+  - decide how existing sites move: `sites.regime_id` is per site, so either a migration moves every construction site on the commencement date, or sites move one by one. Records keep the regime they were made under (deadlines copy their rule; inspections their template);
+  - reg 3/4 (permits and notifications) may change: re-check the site work facts and the clear-day reading.
 
 ### GAPS-A, GAPS-B, GAPS-C: the §6.D gaps (added Fri 20 Nov at the checkpoint; forecast Sat 12, Tue 15 and Mon 21 Dec)
 

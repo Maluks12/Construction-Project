@@ -15,7 +15,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 
+	"construction_db/internal/core/auth"
 	"construction_db/internal/core/sites"
 	"construction_db/internal/editions/construction"
 	"construction_db/internal/platform/clock"
@@ -49,6 +51,9 @@ var (
 
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
+	// Every fixture signs people up and in: at bcrypt's default cost that was
+	// most of this package's time under -race (CI run #90).
+	auth.PasswordCost = bcrypt.MinCost
 
 	reg, err := regimes.Load()
 	if err != nil {

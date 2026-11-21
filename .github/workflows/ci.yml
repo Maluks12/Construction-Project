@@ -17,6 +17,9 @@ jobs:
   test:
     name: Lint, test, build
     runs-on: ubuntu-latest
+    # Each go test names its own -timeout (per package); this caps the job if
+    # anything else hangs. archtest's TestCITimeouts checks both.
+    timeout-minutes: 40
     defaults:
       run:
         # The Go module lives in construction_db/, not the repo root.
@@ -42,10 +45,11 @@ jobs:
         run: go vet ./...
 
       - name: Import boundary (core must not import editions)
-        run: go test -run 'TestImportBoundary|TestViolations' ./internal/archtest/
+        run: go test -timeout 5m -run 'TestImportBoundary|TestViolations' ./internal/archtest/
 
+      # internal/app ran past Go's default 10m under -race (CI run #90).
       - name: Test
-        run: go test -race ./...
+        run: go test -race -timeout 15m ./...
 
       # The date-sensitive app tests again, as if just after and just before
       # midnight SAST: Postgres runs under libfaketime (dbtest/faketime, built
@@ -59,7 +63,7 @@ jobs:
         run: |
           set -o pipefail
           for at in 00:30 23:30; do
-            SITEPROOF_TEST_SAST=$at go test -count=1 -v -run "$DATE_TESTS" ./internal/app/ 2>&1 | tee sast.log | grep -E '^(--- FAIL|FAIL|ok)|running as if'
+            SITEPROOF_TEST_SAST=$at go test -count=1 -timeout 10m -v -run "$DATE_TESTS" ./internal/app/ 2>&1 | tee sast.log | grep -E '^(--- FAIL|FAIL|ok)|running as if'
             # Fails if the run fell back to the real time.
             grep -q "running as if at .* $at" sast.log
           done
@@ -71,6 +75,7 @@ jobs:
     name: Docker image
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write

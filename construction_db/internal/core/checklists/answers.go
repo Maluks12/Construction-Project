@@ -17,7 +17,7 @@ import (
 // Only the inspector who started the inspection may answer, while it is in
 // progress; an archived site doesn't stop them (decided 10 Nov).
 func (s *Service) Answer(ctx context.Context, orgID, userID, role, siteID, inspectionID, itemKey string, req AnswerRequest) (*InspectionItem, error) {
-	if err := normaliseAnswer(&req); err != nil {
+	if err := normaliseAnswer(&req, s.Clock.Now()); err != nil {
 		return nil, err
 	}
 
@@ -96,8 +96,8 @@ func inProgress(in *Inspection) error {
 
 // normaliseAnswer checks what can be checked without the database, and puts
 // the request in the form it is stored in, so a retry compares equal.
-func normaliseAnswer(req *AnswerRequest) error {
-	if req.ClientAnsweredAt.After(time.Now().Add(maxClockSkew)) {
+func normaliseAnswer(req *AnswerRequest, now time.Time) error {
+	if req.ClientAnsweredAt.After(now.Add(maxClockSkew)) {
 		return ErrAnswerInFuture
 	}
 	switch {

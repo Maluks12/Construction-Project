@@ -64,6 +64,10 @@ Body: `RetractRequest`. 201 retracted, 200 the same again; 400 `"reason must be 
 
 The letter: `ViewURL` (files.md), logged, valid 60 seconds. 404 `"appointment not found"`.
 
+## Across the API
+
+- 400 `"text must not contain NUL characters"`: a NUL character (`\u0000`) anywhere in the JSON body (any value or key, however nested), the query string or the path, on every endpoint, checked before the token (REG4 review). Postgres text can't store one.
+
 ## Types for `web/src/lib/types.ts`
 
 `RecordState` and `Retraction` are in workers.md.

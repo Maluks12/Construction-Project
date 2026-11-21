@@ -29,13 +29,14 @@ const (
 	CatVerifications     = "verifications"
 	CatSignIns           = "sign_ins"
 	CatIncidentDeadlines = "incident_deadlines"
+	CatSiteWorkDeadlines = "site_work_deadlines" // the edition's (REG4)
 	CatWorkerRecords     = "worker_records"
 	CatAbsentWorkers     = "absent_workers"
 	CatPendingUploads    = "pending_uploads"
 )
 
 var CategoryKeys = []string{CatHSFile, CatVault, CatAppointments, CatFindings, CatActions, CatVerifications,
-	CatSignIns, CatIncidentDeadlines, CatWorkerRecords, CatAbsentWorkers, CatPendingUploads}
+	CatSignIns, CatIncidentDeadlines, CatSiteWorkDeadlines, CatWorkerRecords, CatAbsentWorkers, CatPendingUploads}
 
 // What an item is about: subject_type, with subject_id its record's id
 // (null for a required type with nothing recorded).
@@ -94,6 +95,7 @@ type Item struct {
 	ItemKey      *string `json:"item_key"`
 	WorkerID     *string `json:"worker_id"`
 	IncidentID   *string `json:"incident_id"`
+	SiteWorkID   *string `json:"site_work_id"`
 	ActionID     *string `json:"action_id"`
 	TypeKey      *string `json:"type_key"`
 	Severity     *string `json:"severity"`

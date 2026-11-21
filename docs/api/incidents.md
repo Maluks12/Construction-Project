@@ -1,8 +1,10 @@
 # Incidents API
 
 For the dashboard and the mobile app: the incident register, the deadlines
-each incident starts (statutory reports, investigations), recording that a
-deadline was met, and witness statements. The backend keeps this file true:
+each incident starts (statutory reports, investigations), and witness
+statements. Deadlines themselves, and recording that one was met, are in
+`docs/api/deadlines.md`; an `Incident`'s `deadlines` are that file's
+`Deadline`. The backend keeps this file true:
 `TestAPIDoc` (in `construction_db/internal/core/incidents`) fails if the
 types below stop matching the Go code, or if an error text the handlers send
 isn't quoted here.
@@ -127,120 +129,14 @@ then shows `superseded_by`. Works on an archived site.
 | 404 | `"site not found"`, `"incident not found"` |
 | 409 | `"statement id already used with different details"`, `"that statement already has a correction"`, `"evidence not verified yet"` |
 
-### `GET /v1/sites/:siteId/deadlines?state=&limit=` — a site's live deadlines
-
-Owner, SHE officer, supervisor. `DeadlineList`: live deadlines only
-(superseded and withdrawn rows are on the incident), soonest `due_at`
-first. `state` is one of `open`, `due_now`, `overdue`, `satisfied`,
-`satisfied_late`; `limit` 1–200, default 50.
-
-| Status | When |
-|---|---|
-| 200 | `DeadlineList` |
-| 400 | `"state must be open, due_now, overdue, satisfied or satisfied_late"`, `"limit must be 1-200"` |
-| 404 | `"site not found"` |
-
-### `GET /v1/sites/:siteId/deadlines/:deadlineId` — one deadline
-
-Owner, SHE officer, supervisor. `DeadlineDetail`: the row, with every
-satisfaction of its duty (retracted ones too), oldest first.
-
-| Status | When |
-|---|---|
-| 200 | `DeadlineDetail` |
-| 404 | `"site not found"`, `"deadline not found"` |
-
-### `PUT /v1/sites/:siteId/deadlines/:deadlineId/satisfactions/:satisfactionId` — record that a deadline was met
-
-Body: `SatisfactionRequest`. Owner, SHE officer, supervisor (a forthwith
-call is usually made from site). The phone makes up `satisfactionId`.
-`satisfied_at` is when the call was made or the form sent, not when it is
-recorded.
-
-A satisfaction belongs to the **duty**, not the row: if the deadline is
-later recomputed (a corrected `occurred_at`), the satisfaction carries over
-and is judged against the new due time. You may name any row of the duty;
-it is recorded against the live one, which the response returns. Recording
-a call can start a further clock: a death after the notice needs its own
-notice (GAR 8(2)). That row has `added_by_satisfaction_id` set. No version
-lists it in `changes.added`; later versions list it as carried.
-
-A phone that was offline may record a call days after it was made. When
-`satisfied_at` is before `due_at` but the call was recorded at or after
-`due_at`, the satisfaction has `recorded_after_due: true`. It still counts as
-met in time. The dashboard shows both times ("called Tue 17 Nov 09:10,
-recorded Mon 23 Nov 14:02"), because an overdue alert may have shown in the
-meantime. A forthwith deadline never sets it.
-
-| Status | When |
-|---|---|
-| 201 | Recorded. `DeadlineDetail` of the live row |
-| 200 | The same satisfaction again (every field identical, same person): `DeadlineDetail` of the duty's live row now (the row it was recorded against, if the duty has been withdrawn since) |
-| 400 | `"satisfaction id must be a UUID"`, `"satisfied_at is required"`, `"satisfied_at is in the future; check the device clock"`, `"satisfied_at must not be before the deadline's basis_at"`, `"method must be phone, email, fax, in_person, online, post or other"`, `"reference must be 1-200 characters"`, `"note must be 1-2000 characters"`, `"evidence_id must be a UUID"`; photo: `"evidence not found on this site"`, `"evidence was rejected"` (as `EvidenceProblem`) |
-| 404 | `"site not found"`, `"deadline not found"` |
-| 409 | `"satisfaction id already used with different details"`, `"deadline is already satisfied; retract that satisfaction first"`, `"deadline is withdrawn; its rule no longer applies"`, `"evidence not verified yet"` |
-
-### `POST /v1/sites/:siteId/deadlines/:deadlineId/satisfactions/:satisfactionId/retract` — take a satisfaction back
-
-Body: `RetractRequest`. **Owner or SHE officer** only. For a satisfaction
-recorded in error: it stays on record with who retracted it, when and why,
-and the duty is open again (its alerts come back).
-
-Retracting a GAR 8(1) notice whose recording started the death notice
-(GAR 8(2)) leaves the death notice live until the next amendment. That
-amendment withdraws it, because the death no longer follows a recorded
-notice. Withdrawing a report deadline that isn't met takes an owner or SHE
-officer, so a supervisor's next amendment of that incident gets 403 until a
-notice is recorded again or a lead amends it.
-
-| Status | When |
-|---|---|
-| 201 | Retracted. `DeadlineDetail` |
-| 200 | Already retracted with the same reason |
-| 400 | `"reason must be 1-500 characters"` |
-| 403 | `"only an owner or a SHE officer can retract a satisfaction"` |
-| 404 | `"site not found"`, `"deadline not found"`, `"satisfaction not found"` (not a satisfaction of this deadline's duty) |
-| 409 | `"satisfaction was already retracted with a different reason"` |
-
 ## Deadlines
 
-A `Deadline` is one computation of a duty: e.g. "the written notice for this
-incident, from 16 Nov 10:00".
-
-- **When it's due.** `due_at` is the first instant **after** the deadline:
-  met in time means before `due_at`. For day-based rules, `due_on` is the
-  last day (in `time_zone`, `Africa/Johannesburg` for South African sites):
-  show "by the end of Mon 23 Nov". Days are counted from the day after the
-  incident's date.
-- **Forthwith** (`unit: "immediately"`) is a prompt to call now, not a
-  countdown: `due_at` is the basis itself, the state is `due_now` until a
-  call is recorded, and any recorded call meets it.
-- **The legal latest date.** `due` is never pushed past a Sunday or public
-  holiday, so it is the conservative date to act on and the one alerts use.
-  When the last day is a Sunday or public holiday, the law (Interpretation
-  Act s4) allows at least until the next day that is neither (a Saturday
-  counts): that is `legal_latest_on`, with `legal_latest_source_ref`. One
-  reading of s4 allows longer still; that is unsettled (see
-  `SOURCES_za_construction_2014.md`). Show it beside the due date as "the law
-  allows at least until …", never instead of it.
-- `excluded_days` lists the days a working-day count skipped (weekends,
-  public holidays), so users can see why a date fell where it did.
-- `state`:
-
-| state | meaning |
-|---|---|
-| `open` | not met; due in the future |
-| `due_now` | a forthwith duty, not met yet |
-| `overdue` | not met; past `due_at` |
-| `satisfied` | met before `due_at` (or a forthwith duty met at all) |
-| `satisfied_late` | met, after `due_at` |
-| `superseded` | replaced by a recomputation (`superseded_by`) |
-| `withdrawn` | the rule no longer applies after an amendment |
-
-`closed_by`, `closed_at` and `closed_reason` say who submitted the version
-that superseded or withdrew a row, when, and its `amend_reason`.
-`added_by_satisfaction_id` is set on a row that recording a satisfaction
-added, rather than a version.
+The deadline endpoints (list a site's live deadlines, get one, record that
+one was met, take a satisfaction back) and the `Deadline` type are in
+`docs/api/deadlines.md` (moved there in REG4, when site work became a second
+kind of record that starts deadlines). Their paths, bodies and error texts
+are unchanged. An incident's rows have `subject_type: "incident"` and
+`incident_id` set.
 
 ## Incident types
 
@@ -266,6 +162,7 @@ From the `za_construction_2014` regime (Construction Regulations 2014 sites).
 
 ## Across the API
 
+- 400 `"text must not contain NUL characters"`: a NUL character (`\u0000`) anywhere in the JSON body (any value or key, however nested), the query string or the path, on every endpoint, checked before the token (REG4 review). Postgres text can't store one.
 - **503 `"server busy, try again"`** with a `Retry-After` header (seconds):
   the request ran out of time, or waited over 5 seconds for a record another
   request was changing (a burst of uploads to one site, say). Retry after
@@ -285,10 +182,6 @@ and similar `_on` fields are dates (`YYYY-MM-DD`). Ids are UUIDs.
 <!-- types -->
 ```ts
 export type Treatment = "none" | "first_aid" | "medical_treatment" | "hospitalised";
-
-export type DeadlineState = "open" | "due_now" | "overdue" | "satisfied" | "satisfied_late" | "superseded" | "withdrawn";
-
-export type SatisfactionMethod = "phone" | "email" | "fax" | "in_person" | "online" | "post" | "other";
 
 export interface SubmitVersionRequest {
   taxonomy_codes: string[];
@@ -419,113 +312,6 @@ export interface StatementRequest {
   device_id?: string | null;
   evidence_id?: string | null;
   supersedes_id?: string | null;
-}
-
-export interface Deadline {
-  id: string;
-  duty_id: string;
-  incident_id: string | null;
-  rule_key: string;
-  label: string;
-  kind: string;
-  period: number;
-  unit: string;
-  direction: string;
-  basis: string;
-  source_ref: string;
-  caveat: string | null;
-  basis_at: string;
-  time_zone: string;
-  due_at: string;
-  due_on: string | null;
-  excluded_days: string[];
-  legal_latest_on: string | null;
-  legal_latest_at: string | null;
-  legal_latest_source_ref: string | null;
-  computed_in_version: number;
-  computed_at: string;
-  added_by_satisfaction_id: string | null;
-  overdue_when_computed: boolean;
-  state: DeadlineState;
-  closed_as: string | null;
-  superseded_by: string | null;
-  closed_in_version: number | null;
-  closed_by: string | null;
-  closed_at: string | null;
-  closed_reason: string | null;
-  satisfaction: Satisfaction | null;
-}
-
-export interface Satisfaction {
-  id: string;
-  deadline_id: string;
-  satisfied_at: string;
-  method: SatisfactionMethod;
-  reference: string | null;
-  note: string | null;
-  evidence_id: string | null;
-  recorded_by: string;
-  recorded_at: string;
-  recorded_after_due: boolean;
-  retraction: Retraction | null;
-}
-
-export interface Retraction {
-  retracted_by: string;
-  retracted_at: string;
-  reason: string;
-}
-
-export interface DeadlineDetail {
-  id: string;
-  duty_id: string;
-  incident_id: string | null;
-  rule_key: string;
-  label: string;
-  kind: string;
-  period: number;
-  unit: string;
-  direction: string;
-  basis: string;
-  source_ref: string;
-  caveat: string | null;
-  basis_at: string;
-  time_zone: string;
-  due_at: string;
-  due_on: string | null;
-  excluded_days: string[];
-  legal_latest_on: string | null;
-  legal_latest_at: string | null;
-  legal_latest_source_ref: string | null;
-  computed_in_version: number;
-  computed_at: string;
-  added_by_satisfaction_id: string | null;
-  overdue_when_computed: boolean;
-  state: DeadlineState;
-  closed_as: string | null;
-  superseded_by: string | null;
-  closed_in_version: number | null;
-  closed_by: string | null;
-  closed_at: string | null;
-  closed_reason: string | null;
-  satisfaction: Satisfaction | null;
-  satisfactions: Satisfaction[];
-}
-
-export interface DeadlineList {
-  deadlines: Deadline[];
-}
-
-export interface SatisfactionRequest {
-  satisfied_at: string;
-  method: SatisfactionMethod;
-  reference?: string | null;
-  note?: string | null;
-  evidence_id?: string | null;
-}
-
-export interface RetractRequest {
-  reason: string;
 }
 
 export interface EvidenceProblem {

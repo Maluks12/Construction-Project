@@ -33,6 +33,27 @@ another request was changing; retry after that many seconds.
 4. Packs are kept for **7 days** (`expires_at`), then deleted. The export
    record stays for good, with the pack's `sha256`.
 
+**Pack format 2 (REG4):** packs now have a `site_work` section ("Notifications
+and permits (CR 2014 reg 3 and 4)"), after the H&S file: every version of a
+site work record, its deadline rows and their satisfactions, with the
+linked Annexure 2 or permit named by document and version (its file is in
+the H&S file section, which holds every version received by `as_of`,
+retracted or not). An export queued before REG4 (format 1) can't be
+rebuilt by this version; nothing had shipped.
+
+A record is in the pack when any of its versions' spans, as of `as_of`,
+overlaps the period (REG4 review R5). A version's span:
+
+- **starts** on its `starts_on` or on the record's earliest deadline due
+  date, whichever is earlier. A permit application due a month before the
+  work is in that month's pack;
+- **ends** on its `ends_on`, if it has one. Otherwise:
+  - a **cancelled** version ends on the day it was submitted, in the site's
+    time zone, so cancelled work isn't in every later pack;
+  - an earlier version ends on the day the next version was submitted;
+  - the latest planned version is **open-ended**: ongoing work is in every
+    pack from its start.
+
 **Checking a copy:** compute the SHA-256 of a ZIP someone holds (`sha256sum
 pack.zip`, `certutil -hashfile pack.zip SHA256`) and compare it with the
 export's `sha256`. Equal means not one byte changed. The pack's
@@ -132,6 +153,10 @@ is written before the link is made: if logging fails, there is no link.
 - 409 `"export not ready yet"`, `"export failed; request a new export"`,
   `"export expired; request a new export"`.
 - 404 `"export not found"`, `"site not found"`.
+
+## Across the API
+
+- 400 `"text must not contain NUL characters"`: a NUL character (`\u0000`) anywhere in the JSON body (any value or key, however nested), the query string or the path, on every endpoint, checked before the token (REG4 review). Postgres text can't store one.
 
 ## Types for `web/src/lib/types.ts`
 

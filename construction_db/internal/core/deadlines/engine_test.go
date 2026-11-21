@@ -173,6 +173,60 @@ func TestApplicable(t *testing.T) {
 	})
 }
 
+func TestApplicableSiteWork(t *testing.T) {
+	ds := zaData(t)
+	const (
+		reg3 = "cr2014_reg3_permit_application"
+		reg4 = "cr2014_reg4_notification"
+	)
+	start, err := deadlines.StartOfDay("2026-11-30", "Africa/Johannesburg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := start.UTC().Format(time.RFC3339); got != "2026-11-29T22:00:00Z" {
+		t.Fatalf("StartOfDay = %s, want local midnight", got)
+	}
+	at := func(key string) string { return key + "@2026-11-29T22:00:00Z" }
+	tests := []struct {
+		name      string
+		facts     []string
+		cancelled bool
+		want      []string
+	}{
+		{"nothing triggers", nil, false, []string{}},
+		{"excavation", []string{"excavation"}, false, []string{at(reg4)}},
+		{"a permit site gets no reg 4 notice", []string{"cidb_grade_7_8_or_9", "demolition"}, false, []string{at(reg3)}},
+		{"below GN 850: reg 4", []string{"exceeds_365_days", "excavation"}, false, []string{at(reg4)}},
+		{"a dwelling never needs a permit", []string{"single_storey_dwelling_for_resident_client", "cidb_grade_7_8_or_9"}, false, []string{at(reg4)}},
+		{"cancelled: nothing", []string{"excavation"}, true, []string{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := deadlines.ApplicableSiteWork(ds, deadlines.SiteWorkFacts{Facts: tc.facts, StartsAt: start, Cancelled: tc.cancelled})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if keys := clockKeys(got); !slices.Equal(keys, tc.want) {
+				t.Errorf("got %v, want %v", keys, tc.want)
+			}
+		})
+	}
+	t.Run("unknown fact", func(t *testing.T) {
+		_, err := deadlines.ApplicableSiteWork(ds, deadlines.SiteWorkFacts{Facts: []string{"tunneling"}, StartsAt: start})
+		if !errors.Is(err, deadlines.ErrUnknownFact) {
+			t.Errorf("got %v, want ErrUnknownFact", err)
+		}
+	})
+	t.Run("a moved start supersedes", func(t *testing.T) {
+		later := start.AddDate(0, 0, 7)
+		clocks, _ := deadlines.ApplicableSiteWork(ds, deadlines.SiteWorkFacts{Facts: []string{"excavation"}, StartsAt: later})
+		steps := deadlines.Plan(clocks, []deadlines.Duty{{ID: "d1", RuleKey: reg4, Live: &deadlines.LiveDeadline{ID: "l1", BasisAt: start}}})
+		if len(steps) != 1 || steps[0].Action != deadlines.Supersede || !steps[0].BasisAt.Equal(later) {
+			t.Errorf("steps %+v, want one supersede from the new start", steps)
+		}
+	})
+}
+
 func TestPlan(t *testing.T) {
 	ds := zaData(t)
 	rule := func(key string) regimes.DeadlineRule {

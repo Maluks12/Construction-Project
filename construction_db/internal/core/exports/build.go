@@ -502,7 +502,7 @@ func (b *Builder) assemble(ctx context.Context, orgID, exportID string) (*Manife
 }
 
 // Section order: an inspector's (Rev 3 §2.3.10), then the rest.
-var sectionOrder = []string{"vault", "appointments", "hs_file", "workers", "toolbox_talks", "inspections", "actions",
+var sectionOrder = []string{"vault", "appointments", "hs_file", "site_work", "workers", "toolbox_talks", "inspections", "actions",
 	"incidents", "diary", "sign_ins", "received_photos"}
 
 func orderSections(in []Section) []Section {

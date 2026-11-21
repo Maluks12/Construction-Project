@@ -14,6 +14,7 @@ import (
 
 	"construction_db/internal/core/evidence"
 	"construction_db/internal/core/sites"
+	"construction_db/internal/platform/clock"
 	"construction_db/internal/platform/database"
 )
 
@@ -27,6 +28,7 @@ const clockSkew = 5 * time.Minute
 type Service struct {
 	pool  *pgxpool.Pool
 	sites *sites.Service
+	Clock clock.Clock // nil is the real time
 }
 
 func NewService(pool *pgxpool.Pool, sitesSvc *sites.Service) *Service {
@@ -81,7 +83,7 @@ func (s *Service) PutRevision(ctx context.Context, orgID, userID, role, siteID, 
 	if date, err = parseDate(date); err != nil {
 		return nil, false, err
 	}
-	if err := normaliseRevision(&req, time.Now()); err != nil {
+	if err := normaliseRevision(&req, s.Clock.Now()); err != nil {
 		return nil, false, err
 	}
 	var (
@@ -131,7 +133,7 @@ func (s *Service) putRevisionOnce(ctx context.Context, orgID, userID, role, site
 			return err
 		}
 
-		now := time.Now()
+		now := s.Clock.Now()
 		after := !req.ClientSaved.Before(days.closes)
 		switch {
 		case days.opens.After(now.Add(clockSkew)):
@@ -298,7 +300,7 @@ func (s *Service) PutAddendum(ctx context.Context, orgID, userID, role, siteID, 
 	if date, err = parseDate(date); err != nil {
 		return nil, false, err
 	}
-	now := time.Now()
+	now := s.Clock.Now()
 	switch {
 	case !text(req.Reason, 500):
 		return nil, false, ErrBadReason

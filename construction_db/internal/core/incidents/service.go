@@ -19,6 +19,7 @@ import (
 	"construction_db/internal/core/deadlines"
 	"construction_db/internal/core/evidence"
 	"construction_db/internal/core/sites"
+	"construction_db/internal/platform/clock"
 	"construction_db/internal/platform/database"
 	"construction_db/internal/regimes"
 )
@@ -30,6 +31,7 @@ const clockSkew = 5 * time.Minute
 type Service struct {
 	pool  *pgxpool.Pool
 	sites *sites.Service
+	Clock clock.Clock // nil is the real time
 }
 
 func NewService(pool *pgxpool.Pool, sitesSvc *sites.Service) *Service {
@@ -59,7 +61,7 @@ func (s *Service) Submit(ctx context.Context, orgID, userID, role, siteID, incid
 	if err != nil || n < 1 {
 		return nil, false, ErrBadVersion
 	}
-	if err := normaliseVersion(&req, n, time.Now()); err != nil {
+	if err := normaliseVersion(&req, n, s.Clock.Now()); err != nil {
 		return nil, false, err
 	}
 
@@ -153,9 +155,10 @@ func (s *Service) submitOnce(ctx context.Context, orgID, userID, role, siteID, i
 			return err
 		}
 
+		ref := deadlines.Ref{Kind: deadlines.SubjectIncident, ID: id}
 		duties := []deadlines.Duty{}
 		if h != nil {
-			if duties, err = deadlines.Duties(ctx, tx, orgID, id); err != nil {
+			if duties, err = deadlines.Duties(ctx, tx, orgID, ref); err != nil {
 				return err
 			}
 		}
@@ -164,13 +167,17 @@ func (s *Service) submitOnce(ctx context.Context, orgID, userID, role, siteID, i
 			return err
 		}
 		steps := deadlines.Plan(clocks, duties)
-		sub := deadlines.Subject{OrgID: orgID, SiteID: site.ID, IncidentID: id, RegimeID: sr.RegimeID, Regime: ds.Regime, Version: n}
+		sub := deadlines.Subject{OrgID: orgID, SiteID: site.ID, Ref: ref, RegimeID: sr.RegimeID, Regime: ds.Regime, Version: n}
 
 		// The database refuses this at commit too; checking first gives a
 		// 403 before anything is written.
 		if !isLead(role) {
-			if err := checkNotWeakening(ctx, tx, ds, sub, duties, steps); err != nil {
+			weakens, err := deadlines.Weakens(ctx, tx, ds, sub, duties, steps, s.Clock.Now())
+			if err != nil {
 				return err
+			}
+			if weakens {
+				return ErrWeakeningNeedsLead
 			}
 		}
 
@@ -202,42 +209,6 @@ func (s *Service) submitOnce(ctx context.Context, orgID, userID, role, siteID, i
 		return err
 	})
 	return inc, created, err
-}
-
-// checkNotWeakening refuses, for someone who isn't an owner or SHE officer,
-// a plan that withdraws an open report deadline or moves a report deadline
-// later (satisfied or not), as deadlines_weakening_check does.
-func checkNotWeakening(ctx context.Context, tx pgx.Tx, ds *regimes.DataSet, sub deadlines.Subject, duties []deadlines.Duty, steps []deadlines.Step) error {
-	byID := map[string]deadlines.Duty{}
-	for _, d := range duties {
-		byID[d.ID] = d
-	}
-	for _, st := range steps {
-		duty := byID[st.DutyID]
-		rule, ok := ruleOf(ds, duty.RuleKey)
-		if !ok || rule.Kind != "report" {
-			continue
-		}
-		switch st.Action {
-		case deadlines.Withdraw:
-			if duty.SatisfiedAt == nil {
-				return ErrWeakeningNeedsLead
-			}
-		case deadlines.Supersede:
-			live, err := deadlines.GetLiveForDuty(ctx, tx, sub.OrgID, duty.ID, time.Now())
-			if err != nil {
-				return err
-			}
-			due, err := deadlines.DueAt(ctx, tx, sub, st.Rule, st.BasisAt)
-			if err != nil {
-				return err
-			}
-			if due.After(live.DueAt) {
-				return ErrWeakeningNeedsLead
-			}
-		}
-	}
-	return nil
 }
 
 func ruleOf(ds *regimes.DataSet, key string) (regimes.DeadlineRule, bool) {
@@ -466,7 +437,7 @@ func (s *Service) view(ctx context.Context, db DBTX, ds *regimes.DataSet, orgID 
 	inc := &Incident{ID: h.ID, SiteID: h.SiteID, ReportedBy: h.ReportedBy, CreatedAt: h.CreatedAt, LatestVersion: h.LatestVersion,
 		Version: v.Version}
 	inc.Version.Types, inc.Reportable = typesOf(ds, v.Codes)
-	if inc.Deadlines, err = deadlines.ListForIncident(ctx, db, orgID, h.ID, time.Now()); err != nil {
+	if inc.Deadlines, err = deadlines.ListForSubject(ctx, db, orgID, deadlines.Ref{Kind: deadlines.SubjectIncident, ID: h.ID}, s.Clock.Now()); err != nil {
 		return nil, err
 	}
 	inc.Changes = changesIn(inc.Deadlines, n)
@@ -583,7 +554,7 @@ func (s *Service) List(ctx context.Context, orgID, userID, role, siteID, typ, re
 		if typ != "" && !slices.ContainsFunc(sr.Data.Taxonomy, func(t regimes.IncidentType) bool { return t.Key == typ }) {
 			return ErrBadType
 		}
-		rows, err := listSummaries(ctx, tx, orgID, sr.Site.ID, time.Now())
+		rows, err := listSummaries(ctx, tx, orgID, sr.Site.ID, s.Clock.Now())
 		if err != nil {
 			return err
 		}
@@ -622,20 +593,10 @@ func mapRule(err error) error {
 		return ErrWeakeningNeedsLead
 	case isRule(err, "occurred after its site was archived"):
 		return ErrSiteArchived
-	case isRule(err, "already satisfied"):
-		return ErrAlreadySatisfied
-	case isBeforeCalendar(err):
+	case deadlines.IsBeforeCalendar(err):
 		return ErrBeforeCalendar
 	}
 	return err
-}
-
-// isBeforeCalendar: deadline_due needed a day before the holiday calendar
-// starts (000015). A day after its end is a calendar to extend, so a 500.
-func isBeforeCalendar(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "22000" && strings.HasPrefix(pgErr.Message, "holiday calendar:") &&
-		strings.HasSuffix(pgErr.Message, "is before it")
 }
 
 // isRule: err is a check_violation raised by one of the guards, whose
@@ -664,10 +625,7 @@ var sentinels = []error{
 	ErrReasonOnFirst, ErrWeakeningNeedsLead, ErrBeforeCalendar, ErrEvidenceNotFound, ErrEvidenceRejected, ErrEvidenceNotVerified, ErrBadType,
 	ErrBadReportable, ErrBadOpen, ErrBadLimit,
 	ErrBadStatementID, ErrStatementIDReused, ErrBadWitnessName, ErrBadWitnessContact, ErrBadStatement, ErrNoTakenAt,
-	ErrTakenInFuture, ErrBadSupersedes, ErrStatementCorrected,
-	ErrDeadlineNotFound, ErrBadSatisfactionID, ErrSatisfactionNotFound, ErrSatisfactionIDReused,
-	ErrAlreadySatisfied, ErrDeadlineWithdrawn, ErrNoSatisfiedAt, ErrSatisfiedInFuture, ErrSatisfiedBeforeBasis, ErrBadMethod,
-	ErrBadReference, ErrBadNote, ErrBadEvidenceID, ErrCantRetract, ErrBadReason, ErrRetractionDiffers, ErrBadState,
+	ErrTakenInFuture, ErrBadSupersedes, ErrStatementCorrected, ErrBadEvidenceID,
 }
 
 func isNotFound(err error) bool {

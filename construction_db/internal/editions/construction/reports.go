@@ -3,12 +3,19 @@ package construction
 import (
 	"context"
 	"fmt"
+	"slices"
+	"time"
 
+	"github.com/jackc/pgx/v5"
+
+	"construction_db/internal/core/deadlines"
 	"construction_db/internal/core/documents"
 	"construction_db/internal/core/edition"
 	"construction_db/internal/core/reports"
 	"construction_db/internal/core/workers"
 	"construction_db/internal/editions/construction/appointments"
+	"construction_db/internal/platform/database"
+	"construction_db/internal/regimes"
 )
 
 // ReportsContributor adds the H&S file and appointments to the summary.
@@ -35,7 +42,65 @@ func (c contributor) ComplianceCategories(ctx context.Context, sc reports.SiteCo
 	if err != nil {
 		return nil, fmt.Errorf("appointments: %w", err)
 	}
-	return []reports.Category{hs, appointmentCategory(sc, list)}, nil
+	work, err := c.siteWorkCategory(ctx, sc)
+	if err != nil {
+		return nil, err
+	}
+	return []reports.Category{hs, appointmentCategory(sc, list), work}, nil
+}
+
+// siteWorkCategory (REG4 D3, D10): an overdue notice is red when the rule
+// binds the contractor (reg 4), amber with its caveat when it binds the
+// client (reg 3), since SiteProof doesn't record the organisation's role on
+// the site yet. Due within the first notification lead day: amber.
+func (c contributor) siteWorkCategory(ctx context.Context, sc reports.SiteContext) (reports.Category, error) {
+	cat := reports.Category{Key: reports.CatSiteWorkDeadlines, Counted: true, Items: []reports.Item{}}
+	var live []deadlines.Deadline
+	err := database.WithTenant(ctx, c.deps.Pool, database.Tenant{OrgID: sc.OrgID, UserID: sc.UserID}, func(tx pgx.Tx) error {
+		var err error
+		live, err = deadlines.ListLiveForSite(ctx, tx, sc.OrgID, sc.Site.ID, sc.Now)
+		return err
+	})
+	if err != nil {
+		return cat, fmt.Errorf("site work deadlines: %w", err)
+	}
+	soon := 0
+	if d := sc.Regime.Reminders.NotificationDaysBefore; len(d) > 0 {
+		soon = d[0]
+	}
+	red, amber := reports.Red, reports.Amber
+	for _, d := range live {
+		if d.SubjectType != deadlines.SubjectSiteWork {
+			continue
+		}
+		client := false
+		if i := slices.IndexFunc(sc.Regime.Deadlines, func(r regimes.DeadlineRule) bool { return r.Key == d.RuleKey }); i >= 0 {
+			client = sc.Regime.Deadlines[i].DutyHolder == regimes.DutyClient
+		}
+		item := reports.Item{SubjectType: reports.SubjectDeadline, SubjectID: &d.ID, Label: d.Label, SiteWorkID: d.SiteWorkID,
+			DueOn: d.DueOn, Since: &d.DueAt}
+		switch {
+		case d.State == deadlines.StateOverdue && client:
+			item.State, item.Colour, item.Note = reports.ItemOverdue, &amber, d.Caveat
+		case d.State == deadlines.StateOverdue:
+			item.State, item.Colour = reports.ItemOverdue, &red
+		case d.State == deadlines.StateOpen && d.DueOn != nil && dueWithin(*d.DueOn, sc.Today, soon):
+			item.State, item.Colour = reports.ItemDueSoon, &amber
+			if client {
+				item.Note = d.Caveat
+			}
+		default:
+			continue
+		}
+		cat.Items = append(cat.Items, item)
+	}
+	return cat, nil
+}
+
+func dueWithin(dueOn, today string, days int) bool {
+	due, err1 := time.Parse(time.DateOnly, dueOn)
+	t, err2 := time.Parse(time.DateOnly, today)
+	return err1 == nil && err2 == nil && !due.After(t.AddDate(0, 0, days))
 }
 
 // appointmentCategory: a required type (D4) with no live appointee is amber, with its note.

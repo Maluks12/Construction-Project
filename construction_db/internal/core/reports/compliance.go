@@ -285,6 +285,9 @@ func (s *Service) incidentDeadlines(ctx context.Context, tx pgx.Tx, sc SiteConte
 		soon = d[0]
 	}
 	for _, d := range live {
+		if d.SubjectType != deadlines.SubjectIncident {
+			continue // site work's are the edition's category (REG4 D10)
+		}
 		var state, col string
 		switch {
 		case d.State == deadlines.StateOverdue:

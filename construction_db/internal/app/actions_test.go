@@ -461,7 +461,7 @@ func TestActionEvents(t *testing.T) {
 			"future":           {eventBody(actions.DoCancel, now.Add(time.Hour), map[string]any{"reason": "x"}), actions.ErrClientAtInFuture.Error()},
 			"extra field":      {eventBody(actions.DoCancel, now, map[string]any{"reason": "x", "due_on": localDay(now, 1)}), actions.ErrUnexpectedField.Error()},
 			"no reason":        {eventBody(actions.DoCancel, now, nil), actions.ErrReasonRequired.Error()},
-			"long reason":      {eventBody(actions.DoCancel, now, map[string]any{"reason": string(make([]rune, 501))}), actions.ErrBadReason.Error()},
+			"long reason":      {eventBody(actions.DoCancel, now, map[string]any{"reason": strings.Repeat("x", 501)}), actions.ErrBadReason.Error()},
 			"reassign no one":  {eventBody(actions.DoReassign, now, nil), actions.ErrBadOwnerID.Error()},
 			"move without due": {eventBody(actions.DoMoveDue, now, nil), actions.ErrBadDueOn.Error()},
 		} {

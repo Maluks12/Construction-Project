@@ -60,9 +60,9 @@ func decodeIncident(t *testing.T, rec *httptest.ResponseRecorder) incidents.Inci
 	return inc
 }
 
-func decodeDetail(t *testing.T, rec *httptest.ResponseRecorder) incidents.DeadlineDetail {
+func decodeDetail(t *testing.T, rec *httptest.ResponseRecorder) deadlines.DeadlineDetail {
 	t.Helper()
-	var d incidents.DeadlineDetail
+	var d deadlines.DeadlineDetail
 	if err := json.Unmarshal(rec.Body.Bytes(), &d); err != nil {
 		t.Fatalf("decode deadline: %v (body: %s)", err, rec.Body.String())
 	}
@@ -103,7 +103,7 @@ func submitNew(t *testing.T, f evidenceFixture, token string, body map[string]an
 	return decodeIncident(t, rec)
 }
 
-func satisfy(t *testing.T, f evidenceFixture, token, deadline string, at time.Time, want int) incidents.DeadlineDetail {
+func satisfy(t *testing.T, f evidenceFixture, token, deadline string, at time.Time, want int) deadlines.DeadlineDetail {
 	t.Helper()
 	rec := do(t, f.router, http.MethodPut, satisfactionPath(f.siteA, deadline, uuid.NewString()), token,
 		map[string]any{"satisfied_at": rfc(at), "method": "phone", "reference": "Call ref 123"})

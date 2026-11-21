@@ -19,7 +19,7 @@ func (s *Service) RecordStatement(ctx context.Context, orgID, userID, role, site
 	if err != nil {
 		return nil, false, ErrBadStatementID
 	}
-	if err := normaliseStatement(&req, time.Now()); err != nil {
+	if err := normaliseStatement(&req, s.Clock.Now()); err != nil {
 		return nil, false, err
 	}
 

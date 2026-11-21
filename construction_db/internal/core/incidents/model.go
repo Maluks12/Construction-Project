@@ -159,27 +159,6 @@ type StatementRequest struct {
 	SupersedesID   *string   `json:"supersedes_id"`
 }
 
-// SatisfactionRequest records that a deadline's duty was met.
-type SatisfactionRequest struct {
-	SatisfiedAt time.Time `json:"satisfied_at"`
-	Method      string    `json:"method"`
-	Reference   *string   `json:"reference"`
-	Note        *string   `json:"note"`
-	EvidenceID  *string   `json:"evidence_id"`
-}
-
-// RetractRequest takes a satisfaction back.
-type RetractRequest struct {
-	Reason string `json:"reason"`
-}
-
-// DeadlineDetail is one deadline row with every satisfaction of its duty,
-// retracted ones included, oldest first.
-type DeadlineDetail struct {
-	deadlines.Deadline
-	Satisfactions []deadlines.Satisfaction `json:"satisfactions"`
-}
-
 // Errors with fixed texts; docs/api/incidents.md quotes each one.
 var (
 	ErrIncidentNotFound    = errors.New("incident not found")
@@ -219,7 +198,7 @@ var (
 	ErrReasonRequired      = errors.New("amend_reason is required for an amendment (1-500 characters)")
 	ErrReasonOnFirst       = errors.New("version 1 has no amend_reason")
 	ErrWeakeningNeedsLead  = errors.New("only an owner or a SHE officer can withdraw a report deadline or move it later")
-	ErrBeforeCalendar      = errors.New("deadlines can't be computed for this incident: the holiday calendar starts on 2024-01-01")
+	ErrBeforeCalendar      = deadlines.ErrBeforeCalendar
 	ErrEvidenceNotFound    = errors.New("evidence not found on this site")
 	ErrEvidenceRejected    = errors.New("evidence was rejected")
 	ErrEvidenceNotVerified = errors.New("evidence not verified yet")
@@ -237,24 +216,7 @@ var (
 	ErrTakenInFuture      = errors.New("taken_at is in the future; check the device clock")
 	ErrBadSupersedes      = errors.New("supersedes_id must be a statement on this incident")
 	ErrStatementCorrected = errors.New("that statement already has a correction")
-
-	ErrDeadlineNotFound     = errors.New("deadline not found")
-	ErrBadSatisfactionID    = errors.New("satisfaction id must be a UUID")
-	ErrSatisfactionNotFound = errors.New("satisfaction not found")
-	ErrSatisfactionIDReused = errors.New("satisfaction id already used with different details")
-	ErrAlreadySatisfied     = errors.New("deadline is already satisfied; retract that satisfaction first")
-	ErrDeadlineWithdrawn    = errors.New("deadline is withdrawn; its rule no longer applies")
-	ErrNoSatisfiedAt        = errors.New("satisfied_at is required")
-	ErrSatisfiedInFuture    = errors.New("satisfied_at is in the future; check the device clock")
-	ErrSatisfiedBeforeBasis = errors.New("satisfied_at must not be before the deadline's basis_at")
-	ErrBadMethod            = errors.New("method must be phone, email, fax, in_person, online, post or other")
-	ErrBadReference         = errors.New("reference must be 1-200 characters")
-	ErrBadNote              = errors.New("note must be 1-2000 characters")
-	ErrBadEvidenceID        = errors.New("evidence_id must be a UUID")
-	ErrCantRetract          = errors.New("only an owner or a SHE officer can retract a satisfaction")
-	ErrBadReason            = errors.New("reason must be 1-500 characters")
-	ErrRetractionDiffers    = errors.New("satisfaction was already retracted with a different reason")
-	ErrBadState             = errors.New("state must be open, due_now, overdue, satisfied or satisfied_late")
+	ErrBadEvidenceID      = errors.New("evidence_id must be a UUID")
 )
 
 // EvidenceError names the photos a request can't use.

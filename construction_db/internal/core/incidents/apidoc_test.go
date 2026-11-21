@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"construction_db/internal/core/deadlines"
 	"construction_db/internal/platform/apidoctest"
 	"construction_db/internal/regimes"
 )
@@ -16,38 +15,27 @@ func TestAPIDoc(t *testing.T) {
 	for name, v := range map[string]any{
 		"Incident": Incident{}, "Version": Version{}, "IncidentType": IncidentType{}, "Person": Person{},
 		"AttachedEvidence": AttachedEvidence{}, "DeadlineChanges": DeadlineChanges{}, "WitnessStatement": WitnessStatement{},
-		"IncidentSummary": IncidentSummary{}, "Deadline": deadlines.Deadline{}, "Satisfaction": deadlines.Satisfaction{},
-		"Retraction": deadlines.Retraction{}, "DeadlineDetail": DeadlineDetail{},
+		"IncidentSummary": IncidentSummary{},
 	} {
 		t.Run(name, func(t *testing.T) { doc.CheckStruct(t, name, v, false) })
 	}
 	for name, v := range map[string]any{
 		"SubmitVersionRequest": SubmitVersionRequest{}, "PersonInput": PersonInput{}, "StatementRequest": StatementRequest{},
-		"SatisfactionRequest": SatisfactionRequest{}, "RetractRequest": RetractRequest{},
 	} {
 		t.Run(name, func(t *testing.T) { doc.CheckStruct(t, name, v, true) })
 	}
 	// Built inline by the handler.
 	doc.CheckFields(t, "IncidentList", []string{"incidents"})
-	doc.CheckFields(t, "DeadlineList", []string{"deadlines"})
 	doc.CheckFields(t, "EvidenceProblem", []string{"error", "evidence_ids"})
 	doc.CheckFields(t, "UnknownTypes", []string{"error", "taxonomy_codes"})
 	doc.CheckFields(t, "NotNextVersion", []string{"error", "latest_version"})
 
 	doc.CheckUnion(t, "Treatment", Treatments)
-	doc.CheckUnion(t, "DeadlineState", deadlines.States)
-	doc.CheckUnion(t, "SatisfactionMethod", deadlines.Methods)
 
 	// Every error text the handlers send is quoted in the reference.
 	for _, e := range sentinels {
 		if quoted := `"` + e.Error() + `"`; !strings.Contains(doc.Text, quoted) {
 			t.Errorf("the reference doesn't quote the error %s", quoted)
-		}
-	}
-	// And every state is explained.
-	for _, s := range deadlines.States {
-		if row := "| `" + s + "` |"; !strings.Contains(doc.Text, row) {
-			t.Errorf("the reference has no row for state %s", s)
 		}
 	}
 }

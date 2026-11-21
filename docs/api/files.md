@@ -91,6 +91,7 @@ Opening a medical certificate as anyone but an owner or SHE officer is 403
 
 ## Across the API
 
+- 400 `"text must not contain NUL characters"`: a NUL character (`\u0000`) anywhere in the JSON body (any value or key, however nested), the query string or the path, on every endpoint, checked before the token (REG4 review). Postgres text can't store one.
 - **503 `"server busy, try again"`** with a `Retry-After` header (seconds):
   the request ran out of time, or waited over 5 seconds for a record another
   request was changing. Retry after that many seconds.

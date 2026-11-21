@@ -57,6 +57,10 @@ Some writes depend on the record as well as the role (a supervisor may
 reassign an action they raised, or close out one they own). Those aren't
 capabilities: show the button and let the endpoint answer.
 
+## Across the API
+
+- 400 `"text must not contain NUL characters"`: a NUL character (`\u0000`) anywhere in the JSON body (any value or key, however nested), the query string or the path, on every endpoint, checked before the token (REG4 review). Postgres text can't store one.
+
 ## Types for `web/src/lib/types.ts`
 
 <!-- types -->

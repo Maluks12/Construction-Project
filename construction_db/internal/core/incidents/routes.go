@@ -24,12 +24,5 @@ func Register(r *gin.Engine, svc *Service, authSvc *auth.Service) {
 	incidents.PUT("/:incidentId/versions/:version", h.Submit)
 	// PUT: the device chooses the statement id.
 	incidents.PUT("/:incidentId/witness-statements/:statementId", h.RecordStatement)
-
-	deadlines := r.Group("/v1/sites/:id/deadlines", reporters...)
-	deadlines.GET("", h.ListDeadlines)
-	deadlines.GET("/:deadlineId", h.GetDeadline)
-	// PUT: the device chooses the satisfaction id.
-	deadlines.PUT("/:deadlineId/satisfactions/:satisfactionId", h.Satisfy)
-	// POST, but safe to repeat with the same reason (200).
-	deadlines.POST("/:deadlineId/satisfactions/:satisfactionId/retract", h.Retract)
+	// The deadline endpoints are internal/core/deadlines' (REG4).
 }

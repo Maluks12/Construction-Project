@@ -162,6 +162,7 @@ repeat with the same reason.
 
 ## Across the API
 
+- 400 `"text must not contain NUL characters"`: a NUL character (`\u0000`) anywhere in the JSON body (any value or key, however nested), the query string or the path, on every endpoint, checked before the token (REG4 review). Postgres text can't store one.
 - **503 `"server busy, try again"`** with a `Retry-After` header (seconds):
   the request ran out of time, or waited over 5 seconds for a record another
   request was changing (a burst of uploads to one site, say). Retry after

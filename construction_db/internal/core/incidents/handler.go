@@ -48,14 +48,13 @@ func writeError(c *gin.Context, err error) {
 	case errors.As(err, &nextErr):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "latest_version": nextErr.LatestVersion})
 
-	case is(err, ErrWeakeningNeedsLead, ErrCantRetract):
+	case errors.Is(err, ErrWeakeningNeedsLead):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, sites.ErrSiteNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "site not found"})
-	case is(err, ErrIncidentNotFound, ErrVersionNotFound, ErrDeadlineNotFound, ErrSatisfactionNotFound):
+	case is(err, ErrIncidentNotFound, ErrVersionNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-	case is(err, ErrSiteArchived, ErrIDReused, ErrVersionDiffers, ErrNotNextVersion, ErrStatementIDReused,
-		ErrStatementCorrected, ErrSatisfactionIDReused, ErrAlreadySatisfied, ErrDeadlineWithdrawn, ErrRetractionDiffers):
+	case is(err, ErrSiteArchived, ErrIDReused, ErrVersionDiffers, ErrNotNextVersion, ErrStatementIDReused, ErrStatementCorrected):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case isSentinel(err):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -143,55 +142,4 @@ func (h *Handler) RecordStatement(c *gin.Context) {
 		return
 	}
 	c.JSON(status(created), st)
-}
-
-func (h *Handler) ListDeadlines(c *gin.Context) {
-	n, ok := limit(c)
-	if !ok {
-		return
-	}
-	out, err := h.svc.ListDeadlines(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c),
-		c.Param("id"), c.Query("state"), n)
-	if err != nil {
-		writeError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"deadlines": out})
-}
-
-func (h *Handler) GetDeadline(c *gin.Context) {
-	d, err := h.svc.GetDeadline(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c), c.Param("id"), c.Param("deadlineId"))
-	if err != nil {
-		writeError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, d)
-}
-
-func (h *Handler) Satisfy(c *gin.Context) {
-	var req SatisfactionRequest
-	if !bind(c, &req) {
-		return
-	}
-	d, created, err := h.svc.Satisfy(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c),
-		c.Param("id"), c.Param("deadlineId"), c.Param("satisfactionId"), req)
-	if err != nil {
-		writeError(c, err)
-		return
-	}
-	c.JSON(status(created), d)
-}
-
-func (h *Handler) Retract(c *gin.Context) {
-	var req RetractRequest
-	if !bind(c, &req) {
-		return
-	}
-	d, created, err := h.svc.Retract(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c),
-		c.Param("id"), c.Param("deadlineId"), c.Param("satisfactionId"), req)
-	if err != nil {
-		writeError(c, err)
-		return
-	}
-	c.JSON(status(created), d)
 }

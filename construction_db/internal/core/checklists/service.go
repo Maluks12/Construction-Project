@@ -9,12 +9,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"construction_db/internal/core/sites"
+	"construction_db/internal/platform/clock"
 	"construction_db/internal/regimes"
 )
 
 type Service struct {
 	pool  *pgxpool.Pool
 	sites *sites.Service
+	Clock clock.Clock // nil is the real time
 }
 
 func NewService(pool *pgxpool.Pool, sitesSvc *sites.Service) *Service {

@@ -44,7 +44,16 @@ type Clock struct {
 	BasisAt time.Time
 }
 
+// SiteWorkFacts are what one version of site work says. StartsAt is its
+// starts_on at local midnight (StartOfDay).
+type SiteWorkFacts struct {
+	Facts     []string
+	StartsAt  time.Time
+	Cancelled bool
+}
+
 var (
+	ErrUnknownFact            = errors.New("unknown site work fact")
 	ErrUnknownType            = errors.New("unknown incident type")
 	ErrEmployerAwareRequired  = errors.New("employer_aware_at is required when an employee of the organisation is injured")
 	errRuleWithoutApplication = errors.New("deadline rule has an applies_when the engine doesn't know")
@@ -58,7 +67,7 @@ var (
 //     injured or dead, timed from employer_aware_at;
 //   - person_died_after_notice: someone died after one of AfterSatisfied was
 //     met, timed from the earliest such death;
-//   - site_work: never for an incident.
+//   - site_work: never for an incident (ApplicableSiteWork).
 //
 // duties gives the satisfactions person_died_after_notice looks at.
 func Applicable(ds *regimes.DataSet, f Facts, duties []Duty) ([]Clock, error) {
@@ -110,6 +119,42 @@ func Applicable(ds *regimes.DataSet, f Facts, duties []Duty) ([]Clock, error) {
 		}
 	}
 	return clocks, nil
+}
+
+// ApplicableSiteWork returns the clocks a site work version starts, in the
+// regime's rule order: the site_work rules its facts start (site_work.json),
+// all timed from its start. A cancelled version starts none.
+func ApplicableSiteWork(ds *regimes.DataSet, f SiteWorkFacts) ([]Clock, error) {
+	for _, k := range f.Facts {
+		if _, ok := ds.SiteWork.Fact(k); !ok {
+			return nil, fmt.Errorf("%w: %s", ErrUnknownFact, k)
+		}
+	}
+	if f.Cancelled {
+		return nil, nil
+	}
+	keys := ds.SiteWork.RulesFor(f.Facts)
+	var clocks []Clock
+	for _, r := range ds.Deadlines {
+		if r.AppliesWhen == regimes.AppliesSiteWork && slices.Contains(keys, r.Key) {
+			clocks = append(clocks, Clock{Rule: r, BasisAt: f.StartsAt})
+		}
+	}
+	return clocks, nil
+}
+
+// StartOfDay is day's first instant in zone: a site work basis, as
+// deadlines_insert (000046) requires.
+func StartOfDay(day, zone string) (time.Time, error) {
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("start of day: %w", err)
+	}
+	t, err := time.ParseInLocation(time.DateOnly, day, loc)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("start of day: %w", err)
+	}
+	return t, nil
 }
 
 // deathAfterNotice is the earliest death later than the earliest satisfaction

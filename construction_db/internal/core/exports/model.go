@@ -10,8 +10,8 @@ import (
 
 // PackFormat is the pack's layout version. A change to what the pack holds
 // or how it is written gets the next number: a rebuild gives the recorded
-// SHA-256 only in the same format (D10).
-const PackFormat = 1
+// SHA-256 only in the same format (D10). 2: the site_work section (REG4).
+const PackFormat = 2
 
 const (
 	// MaxDays is the longest range: 366 local dates.

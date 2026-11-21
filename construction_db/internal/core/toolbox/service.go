@@ -17,6 +17,7 @@ import (
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/evidence"
 	"construction_db/internal/core/sites"
+	"construction_db/internal/platform/clock"
 	"construction_db/internal/platform/database"
 	"construction_db/internal/regimes"
 )
@@ -28,6 +29,7 @@ const clockSkew = 5 * time.Minute
 type Service struct {
 	pool  *pgxpool.Pool
 	sites *sites.Service
+	Clock clock.Clock // nil is the real time
 }
 
 func NewService(pool *pgxpool.Pool, sitesSvc *sites.Service) *Service {
@@ -72,7 +74,7 @@ func (s *Service) PutTalk(ctx context.Context, orgID, userID, role, siteID, talk
 	if err != nil {
 		return nil, false, ErrBadTalkID
 	}
-	if err := normaliseTalk(&req, time.Now()); err != nil {
+	if err := normaliseTalk(&req, s.Clock.Now()); err != nil {
 		return nil, false, err
 	}
 	var (
@@ -297,7 +299,7 @@ func (s *Service) Sign(ctx context.Context, orgID, userID, role, siteID, talkID,
 	if err != nil {
 		return nil, false, ErrBadAttendanceID
 	}
-	if err := normaliseSign(&req, time.Now()); err != nil {
+	if err := normaliseSign(&req, s.Clock.Now()); err != nil {
 		return nil, false, err
 	}
 	var (
@@ -437,7 +439,7 @@ func (s *Service) Retract(ctx context.Context, orgID, userID, role, siteID, talk
 	if err != nil {
 		return nil, false, ErrAttendanceNotFound
 	}
-	now := time.Now()
+	now := s.Clock.Now()
 	switch {
 	case !textOK(&req.Reason, 500):
 		return nil, false, ErrBadReason

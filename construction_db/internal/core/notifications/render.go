@@ -60,6 +60,7 @@ func Render(title, kind, threshold string, dueOn *string, dueAt *time.Time, now 
 	date := due.Format("2 Jan 2006")
 	left := calendarDays(today, due)
 
+	deadline := kind == "incident_deadline" || kind == "site_work_deadline"
 	var sentence string
 	switch {
 	case kind == "integrity_alarm":
@@ -71,13 +72,13 @@ func Render(title, kind, threshold string, dueOn *string, dueAt *time.Time, now 
 		sentence = title + " must be done forthwith: now, not later."
 	case kind == "action_overdue" && hasDay:
 		sentence = title + " is overdue by " + days(-left) + " (it was due on " + date + ")."
-	case kind == "incident_deadline" && hasDay && now.After(deadlineEnd(due)):
+	case deadline && hasDay && now.After(deadlineEnd(due)):
 		sentence = title + " is overdue by " + days(-left) + " (it was due on " + date + ")."
-	case kind == "incident_deadline" && hasDay:
+	case deadline && hasDay:
 		sentence = title + " is due " + when(left, date) + "."
-	case kind == "incident_deadline" && dueAt != nil && now.After(*dueAt):
+	case deadline && dueAt != nil && now.After(*dueAt):
 		sentence = title + " is overdue: it was due at " + dueAt.In(loc).Format("15:04 on 2 Jan 2006") + "."
-	case kind == "incident_deadline" && dueAt != nil:
+	case deadline && dueAt != nil:
 		sentence = title + " is due at " + dueAt.In(loc).Format("15:04 on 2 Jan 2006") + "."
 	case hasDay && left < 0:
 		sentence = title + " expired on " + date + ", " + days(-left) + " ago."

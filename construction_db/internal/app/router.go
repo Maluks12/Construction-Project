@@ -12,6 +12,7 @@ import (
 	"construction_db/internal/core/attendance"
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/checklists"
+	"construction_db/internal/core/deadlines"
 	"construction_db/internal/core/documents"
 	"construction_db/internal/core/edition"
 	"construction_db/internal/core/evidence"
@@ -63,7 +64,8 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	}
 	// Recovery outermost, so a panic is still a 500; then one deadline for
 	// everything after it, auth included.
-	router.Use(gin.Recovery(), httpapi.Deadline(opts.RequestTimeout))
+	// No NUL reaches a handler (REG4 review R4); before auth, so it holds for every route.
+	router.Use(gin.Recovery(), httpapi.Deadline(opts.RequestTimeout), httpapi.RejectNUL())
 
 	router.GET("/healthz", health.Handler(pool))
 	router.GET("/healthz/jobs", notifications.JobsHealth(pool, opts.Clock))
@@ -83,12 +85,21 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	filesSvc := files.NewService(pool, sitesSvc, store)
 	files.Register(router, filesSvc, authSvc)
 
-	checklists.Register(router, checklists.NewService(pool, sitesSvc), authSvc)
-	incidents.Register(router, incidents.NewService(pool, sitesSvc), authSvc)
+	checklistsSvc := checklists.NewService(pool, sitesSvc)
+	checklistsSvc.Clock = opts.Clock
+	checklists.Register(router, checklistsSvc, authSvc)
+	incidentsSvc := incidents.NewService(pool, sitesSvc)
+	incidentsSvc.Clock = opts.Clock
+	incidents.Register(router, incidentsSvc, authSvc)
+	deadlinesSvc := deadlines.NewService(pool, sitesSvc)
+	deadlinesSvc.Clock = opts.Clock
+	deadlinesSvc.Register(deadlines.SubjectIncident, incidentsSvc.DeadlineHooks())
 	actionsSvc := actions.NewService(pool, sitesSvc)
 	actionsSvc.Clock = opts.Clock
 	actions.Register(router, actionsSvc, authSvc)
-	toolbox.Register(router, toolbox.NewService(pool, sitesSvc), authSvc)
+	toolboxSvc := toolbox.NewService(pool, sitesSvc)
+	toolboxSvc.Clock = opts.Clock
+	toolbox.Register(router, toolboxSvc, authSvc)
 	workersSvc := workers.NewService(pool, sitesSvc, filesSvc, reg)
 	workersSvc.Clock = opts.Clock
 	workers.Register(router, workersSvc, authSvc)
@@ -101,6 +112,12 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	notifications.Register(router, notifications.NewService(pool), authSvc)
 
 	deps := edition.Deps{Pool: pool, Sites: sitesSvc, Files: filesSvc, Documents: documentsSvc, Regimes: reg, Clock: opts.Clock}
+	if se, ok := ed.(deadlineSubjectEdition); ok {
+		for kind, h := range se.DeadlineSubjects(deps) {
+			deadlinesSvc.Register(kind, h)
+		}
+	}
+	deadlines.Register(router, deadlinesSvc, authSvc)
 	var contrib reports.Contributor
 	if re, ok := ed.(reportingEdition); ok {
 		contrib = re.ReportsContributor(deps)
@@ -125,4 +142,10 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 // summary (M12); the edition.Edition interface stays as it was.
 type reportingEdition interface {
 	ReportsContributor(edition.Deps) reports.Contributor
+}
+
+// deadlineSubjectEdition is an edition with deadline subjects of its own
+// (REG4: site work).
+type deadlineSubjectEdition interface {
+	DeadlineSubjects(edition.Deps) map[deadlines.SubjectKind]deadlines.SubjectHooks
 }

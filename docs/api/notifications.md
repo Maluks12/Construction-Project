@@ -20,7 +20,8 @@ Lead times come from the regime (`reminders` in `GET
 
 | `kind` | About (`subject_type`) | To | When (`threshold`) |
 |---|---|---|---|
-| `incident_deadline` | a reporting or investigation duty (`deadline_duty`) | the incident version's submitter, owners, SHE officers, the site's supervisors | `forthwith` at once; day-based: `before_2d`, `on_day`, then `overdue`; hour-based: `open`, then `overdue` |
+| `incident_deadline` | one computed reporting or investigation deadline (`deadline`: `subject_id` is the deadline row, `GET /v1/sites/:id/deadlines/:subject_id`) | the incident version's submitter, owners, SHE officers, the site's supervisors | `forthwith` at once; day-based: `before_2d`, `on_day`, then `overdue`; hour-based: `open`, then `overdue` |
+| `site_work_deadline` | one computed notice deadline before construction work starts (`deadline`, as above; REG4: CR 2014 reg 4 notification, reg 3 permit application). The title names the start: "… (Site A; work starts 30 Nov 2026)" | the site work's latest submitter, owners, SHE officers, the site's supervisors | `before_7d`, `before_2d`, `on_day`, then `overdue` |
 | `action_overdue` | a corrective action (`action`) | `escalation_1` the action's owner and raiser; `escalation_2` (1 day later) SHE officers; `escalation_3` (3 days) owners | days overdue |
 | `verification_stalled` | a close-out awaiting verification (`closeout`) | owners and SHE officers | `stalled`, after 2 days |
 | `competency_expiry`, `medical_expiry` | `competency`, `medical` | owners, SHE officers, supervisors of sites where the worker is on the roster (today's roster: a sign-in-added entry counts for `roster_lapse_days` after the worker's last sign-in) | `before_30d`, `before_14d`, `before_7d`, `on_day` |
@@ -41,6 +42,15 @@ Lead times come from the regime (`reminders` in `GET
   site: its own regime's).
 - **Each reminder comes once per subject and threshold.** A restart, or two
   workers at once, never repeats one.
+- **Deadline reminders are per computed deadline** (REG4 review, R1). When
+  a deadline is recomputed (a corrected `occurred_at`, a moved start date, a
+  holiday, work cancelled then reinstated), the new row is a new subject: its
+  thresholds come again, for its own date, and the old row's stop (its queued
+  emails are cancelled; its inbox items show `subject_state: "superseded"`).
+  A recomputation that keeps the same date still makes a new row, so its
+  reminders come again. **Wire change:** `subject_type` is `"deadline"` and
+  `subject_id` the deadline row's id; `kind` and `threshold` are as before.
+  Reminders stored before REG4 keep `"deadline_duty"` with the duty's id.
 - When the first look is already past several lead times, only the latest
   is sent: a licence recorded 5 days before it expires gets `before_7d`, not
   three at once.
@@ -78,13 +88,17 @@ completing (Rev 4 §2.3). The jobs are `reminders` (15 minutes), `emails`
 builder; 1 minute: each build is a run, an idle pass is one, and a long
 build records a heartbeat each time it renews its lease).
 
+## Across the API
+
+- 400 `"text must not contain NUL characters"`: a NUL character (`\u0000`) anywhere in the JSON body (any value or key, however nested), the query string or the path, on every endpoint, checked before the token (REG4 review). Postgres text can't store one.
+
 ## Types for `web/src/lib/types.ts`
 
 <!-- types -->
 ```ts
-export type NotificationKind = "incident_deadline" | "action_overdue" | "verification_stalled" | "competency_expiry" | "medical_expiry" | "appointment_expiry" | "document_expiry" | "integrity_alarm";
+export type NotificationKind = "incident_deadline" | "site_work_deadline" | "action_overdue" | "verification_stalled" | "competency_expiry" | "medical_expiry" | "appointment_expiry" | "document_expiry" | "integrity_alarm";
 
-export type NotificationSubject = "deadline_duty" | "action" | "closeout" | "competency" | "medical" | "appointment" | "document" | "export";
+export type NotificationSubject = "deadline" | "deadline_duty" | "action" | "closeout" | "competency" | "medical" | "appointment" | "document" | "export";
 
 export type SubjectState = "current" | "superseded";
 

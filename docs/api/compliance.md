@@ -38,7 +38,8 @@ else green. **The site's `status` is its worst category.** `red_items` and
 | `actions` | yes | an open action past its due date, with `escalation_step` 1–3 | – |
 | `verifications` | yes | – | a close-out awaiting verification for more than 2 days |
 | `sign_ins` | yes | a sign-in today whose worker has a warning now (`no_valid_medical`, `medical_unfit`, `competency_expired`) | – |
-| `incident_deadlines` | yes | a deadline overdue, or a forthwith one (`due_now`) not met | a deadline due within 2 days |
+| `incident_deadlines` | yes | an incident deadline overdue, or a forthwith one (`due_now`) not met | an incident deadline due within 2 days |
+| `site_work_deadlines` | yes (construction sites) | a reg 4 notification overdue (it binds the contractor) | a reg 3 permit application overdue, with `note` (it binds the client, and SiteProof doesn't record this organisation's role on the site yet); a notice due within 7 days (REG4) |
 | `worker_records` | yes | – | a competency or medical of a worker on the site's roster in its expiring window (30 days) |
 | `absent_workers` | no | | roster workers who haven't signed in today |
 | `pending_uploads` | no | | the site's photos and document files declared more than 24 hours ago and never completed |
@@ -81,7 +82,7 @@ else green. **The site's `status` is its worst category.** `red_items` and
 | `action` | the action | `GET /v1/sites/:id/actions/:subject_id` |
 | `closeout` | the close-out | `action_id`: `GET /v1/sites/:id/actions/:action_id`, verify |
 | `sign_in` | the sign-in | `worker_id`: `GET /v1/workers/:worker_id` |
-| `deadline` | the deadline | `GET /v1/sites/:id/deadlines/:subject_id`, `incident_id` |
+| `deadline` | the deadline | `GET /v1/sites/:id/deadlines/:subject_id`; its record: `incident_id` or `site_work_id` |
 | `competency`, `medical` | the record | `worker_id`: `GET /v1/workers/:worker_id` |
 | `roster_entry` | the roster entry | `worker_id` |
 | `evidence` | the evidence | `GET /v1/sites/:id/evidence/:subject_id` |
@@ -104,13 +105,17 @@ not its items; open a site's summary for those.
 for owners and SHE officers the `pending_uploads` of document files with no
 site (worker certificates, vault documents).
 
+## Across the API
+
+- 400 `"text must not contain NUL characters"`: a NUL character (`\u0000`) anywhere in the JSON body (any value or key, however nested), the query string or the path, on every endpoint, checked before the token (REG4 review). Postgres text can't store one.
+
 ## Types for `web/src/lib/types.ts`
 
 <!-- types -->
 ```ts
 export type Colour = "red" | "amber" | "green";
 
-export type CategoryKey = "hs_file" | "vault" | "appointments" | "findings" | "actions" | "verifications" | "sign_ins" | "incident_deadlines" | "worker_records" | "absent_workers" | "pending_uploads";
+export type CategoryKey = "hs_file" | "vault" | "appointments" | "findings" | "actions" | "verifications" | "sign_ins" | "incident_deadlines" | "site_work_deadlines" | "worker_records" | "absent_workers" | "pending_uploads";
 
 export type ComplianceSubject = "document" | "document_type" | "appointment" | "appointment_type" | "finding" | "action" | "closeout" | "sign_in" | "deadline" | "competency" | "medical" | "roster_entry" | "evidence" | "file";
 
@@ -126,6 +131,7 @@ export interface ComplianceItem {
   item_key: string | null;
   worker_id: string | null;
   incident_id: string | null;
+  site_work_id: string | null;
   action_id: string | null;
   type_key: string | null;
   severity: string | null;

@@ -126,6 +126,7 @@ type exportFixture struct {
 	actionFixture
 	worker, talk, incident, medical string
 	action, closeout, lgs, open     string // open: an inspection still in progress
+	siteWork, annexure2             string // REG4: work starting today, its notice met with the Annexure 2
 	talkStart                       time.Time
 }
 
@@ -181,6 +182,17 @@ func newExportFixture(t *testing.T, name string) exportFixture {
 	wantStatus(t, do(t, r, http.MethodPut, appointmentPath(f.siteA, uuid.NewString()), f.owner, map[string]any{
 		"worker_id": f.worker, "type_key": "construction_supervisor", "appointed_on": clk.Today(),
 		"file_id": letter, "client_recorded_at": rfc(clk.Now())}), http.StatusCreated)
+	// Site work starting today (REG4), its notice recorded with the Annexure 2.
+	f.siteWork = uuid.NewString()
+	rec := do(t, r, http.MethodPut, workVersionPath(f.siteA, f.siteWork, 1), f.owner, workBody(clk, clk.Today(), "excavation"))
+	wantStatus(t, rec, http.StatusCreated)
+	notice := liveWork(t, decodeWork(t, rec), reg4Key)
+	annex := uploadFile(t, r, f.owner, files.PurposeSiteDocument, &f.siteA)
+	f.annexure2 = uuid.NewString()
+	wantStatus(t, do(t, r, http.MethodPut, safetyFilePath(f.siteA, f.annexure2), f.owner, map[string]any{
+		"type_key": "notification_of_construction_work", "title": "Annexure 2", "version": versionReq(annex, nil)}), http.StatusCreated)
+	wantStatus(t, do(t, r, http.MethodPut, satisfactionPath(f.siteA, notice.ID, uuid.NewString()), f.owner, map[string]any{
+		"satisfied_at": rfc(clk.Earlier(time.Minute)), "method": "email", "document_id": f.annexure2, "document_version": 1}), http.StatusCreated)
 	return f
 }
 
@@ -279,9 +291,12 @@ func TestExportPack(t *testing.T) {
 	for _, s := range m.Sections {
 		keys = append(keys, s.Key)
 	}
-	if want := []string{"vault", "appointments", "hs_file", "workers", "toolbox_talks", "inspections", "actions",
+	if want := []string{"vault", "appointments", "hs_file", "site_work", "workers", "toolbox_talks", "inspections", "actions",
 		"incidents", "diary", "sign_ins", "received_photos"}; !slices.Equal(keys, want) {
 		t.Errorf("sections %v, want %v", keys, want)
+	}
+	if m.Format != 2 || !bytes.Contains(entries["manifest.json"], []byte(f.siteWork)) || !bytes.Contains(entries["manifest.json"], []byte(f.annexure2)) {
+		t.Errorf("pack_format %d, or the site work or its Annexure 2 is missing", m.Format)
 	}
 	if !bytes.Contains(entries["manifest.json"], []byte(f.medical)) || !strings.Contains(string(entries["index.html"]), "Sipho Dlamini") {
 		t.Error("the medical or the worker's name is missing")
@@ -341,6 +356,8 @@ func TestExportPack(t *testing.T) {
 		versionReq(lgs2, map[string]any{"issuer": "FEM", "expires_on": clk.Day(400)})), http.StatusCreated)
 	wantStatus(t, do(t, r, http.MethodPut, revisionPath(f.siteA, clk.Today(), uuid.NewString()), f.supervisor,
 		revisionBody(clk.Earlier(time.Second), map[string]any{"work_done": "Formwork stripped"})), http.StatusCreated)
+	wantStatus(t, do(t, r, http.MethodPut, workVersionPath(f.siteA, f.siteWork, 2), f.owner,
+		amendWork(workBody(clk, clk.Today(), "excavation"), "Description corrected", "description", "Basement excavation")), http.StatusCreated)
 	if got := sha(build(t, b, org, id)); got != *e.SHA256 {
 		t.Errorf("after edits and new records: rebuilt %s, recorded %s", got, *e.SHA256)
 	}

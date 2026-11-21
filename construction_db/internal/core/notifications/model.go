@@ -10,11 +10,13 @@ import (
 	"time"
 )
 
-// Kinds, subject types and states as 000029 and 000041 have them.
+// Kinds, subject types and states as 000029, 000041, 000047 and 000048 have
+// them. New deadline reminders are about a "deadline" row (REG4 R1);
+// "deadline_duty" is kept for those stored before.
 var (
-	Kinds = []string{"incident_deadline", "action_overdue", "verification_stalled", "competency_expiry", "medical_expiry",
+	Kinds = []string{"incident_deadline", "site_work_deadline", "action_overdue", "verification_stalled", "competency_expiry", "medical_expiry",
 		"appointment_expiry", "document_expiry", "integrity_alarm"}
-	SubjectTypes = []string{"deadline_duty", "action", "closeout", "competency", "medical", "appointment", "document", "export"}
+	SubjectTypes = []string{"deadline", "deadline_duty", "action", "closeout", "competency", "medical", "appointment", "document", "export"}
 )
 
 const (

@@ -18,20 +18,34 @@ type DBTX interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+// What a deadline is about: one foreign key column per kind (000017, 000046).
+type SubjectKind string
+
+const (
+	SubjectIncident SubjectKind = "incident"
+	SubjectSiteWork SubjectKind = "site_work"
+)
+
+var SubjectKinds = []string{string(SubjectIncident), string(SubjectSiteWork)}
+
 // Deadline is one stored computation of a duty, as the API shows it.
 type Deadline struct {
-	ID         string  `json:"id"`
-	DutyID     string  `json:"duty_id"`
-	IncidentID *string `json:"incident_id"`
-	RuleKey    string  `json:"rule_key"`
-	Label      string  `json:"label"`
-	Kind       string  `json:"kind"`
-	Period     int     `json:"period"`
-	Unit       string  `json:"unit"`
-	Direction  string  `json:"direction"`
-	Basis      string  `json:"basis"`
-	SourceRef  string  `json:"source_ref"`
-	Caveat     *string `json:"caveat"`
+	ID          string      `json:"id"`
+	DutyID      string      `json:"duty_id"`
+	SubjectType SubjectKind `json:"subject_type"`
+	IncidentID  *string     `json:"incident_id"`
+	SiteWorkID  *string     `json:"site_work_id"`
+	RuleKey     string      `json:"rule_key"`
+	Label       string      `json:"label"`
+	Kind        string      `json:"kind"`
+	Period      int         `json:"period"`
+	Unit        string      `json:"unit"`
+	Direction   string      `json:"direction"`
+	Basis       string      `json:"basis"`
+	SourceRef   string      `json:"source_ref"`
+	Caveat      *string     `json:"caveat"`
+	// H&S file document types a satisfaction may link as proof.
+	ProofDocumentTypes []string `json:"proof_document_types"`
 	// When the clock started, and the zone its days are counted in.
 	BasisAt  time.Time `json:"basis_at"`
 	TimeZone string    `json:"time_zone"`
@@ -76,8 +90,11 @@ type Satisfaction struct {
 	Reference   *string   `json:"reference"`
 	Note        *string   `json:"note"`
 	EvidenceID  *string   `json:"evidence_id"`
-	RecordedBy  string    `json:"recorded_by"`
-	RecordedAt  time.Time `json:"recorded_at"`
+	// A version of a site H&S file document, as proof (REG4 D12).
+	DocumentID      *string   `json:"document_id"`
+	DocumentVersion *int      `json:"document_version"`
+	RecordedBy      string    `json:"recorded_by"`
+	RecordedAt      time.Time `json:"recorded_at"`
 	// Met in time but recorded after the due time (satisfied_at < due_at <=
 	// recorded_at), e.g. a phone that synced late: an alert may have shown
 	// meanwhile. Judged against the deadline it is shown with.
@@ -96,11 +113,11 @@ type Retraction struct {
 var Methods = []string{"phone", "email", "fax", "in_person", "online", "post", "other"}
 
 const deadlineColumns = `
-	d.id, d.duty_id, d.incident_id, d.rule_key, d.rule_label, d.kind, d.period, d.unit, d.direction, d.basis, d.source_ref,
-	d.caveat, d.basis_at, d.time_zone, d.due_at, d.due_on::text, d.excluded_days::text[], d.legal_latest_on::text,
+	d.id, d.duty_id, d.incident_id, d.site_work_id, d.rule_key, d.rule_label, d.kind, d.period, d.unit, d.direction, d.basis, d.source_ref,
+	d.caveat, d.proof_document_types, d.basis_at, d.time_zone, d.due_at, d.due_on::text, d.excluded_days::text[], d.legal_latest_on::text,
 	d.legal_latest_at, d.legal_latest_source_ref, d.computed_in_version, d.computed_at, d.added_by_satisfaction_id, d.closed_as, d.superseded_by,
 	d.closed_in_version, d.closed_by, d.closed_at, d.closed_reason,
-	s.id, s.deadline_id, s.satisfied_at, s.method, s.reference, s.note, s.evidence_id, s.recorded_by, s.recorded_at`
+	s.id, s.deadline_id, s.satisfied_at, s.method, s.reference, s.note, s.evidence_id, s.document_id, s.document_version, s.recorded_by, s.recorded_at`
 
 // selectDeadlines joins each row to its duty's current satisfaction.
 const selectDeadlines = `SELECT` + deadlineColumns + `
@@ -113,16 +130,24 @@ func scanDeadline(row pgx.Row, now time.Time) (Deadline, error) {
 	var (
 		d                                    Deadline
 		satID, satDeadline, satMethod, satBy *string
-		satRef, satNote, satEvidence         *string
+		satRef, satNote, satEvidence, satDoc *string
+		satDocVersion                        *int
 		satAt, satRecorded                   *time.Time
 	)
-	err := row.Scan(&d.ID, &d.DutyID, &d.IncidentID, &d.RuleKey, &d.Label, &d.Kind, &d.Period, &d.Unit, &d.Direction, &d.Basis,
-		&d.SourceRef, &d.Caveat, &d.BasisAt, &d.TimeZone, &d.DueAt, &d.DueOn, &d.ExcludedDays, &d.LegalLatestOn,
+	err := row.Scan(&d.ID, &d.DutyID, &d.IncidentID, &d.SiteWorkID, &d.RuleKey, &d.Label, &d.Kind, &d.Period, &d.Unit, &d.Direction, &d.Basis,
+		&d.SourceRef, &d.Caveat, &d.ProofDocumentTypes, &d.BasisAt, &d.TimeZone, &d.DueAt, &d.DueOn, &d.ExcludedDays, &d.LegalLatestOn,
 		&d.LegalLatestAt, &d.LegalLatestSourceRef, &d.ComputedInVersion, &d.ComputedAt, &d.AddedBySatisfactionID, &d.ClosedAs, &d.SupersededBy,
 		&d.ClosedInVersion, &d.ClosedBy, &d.ClosedAt, &d.ClosedReason,
-		&satID, &satDeadline, &satAt, &satMethod, &satRef, &satNote, &satEvidence, &satBy, &satRecorded)
+		&satID, &satDeadline, &satAt, &satMethod, &satRef, &satNote, &satEvidence, &satDoc, &satDocVersion, &satBy, &satRecorded)
 	if err != nil {
 		return Deadline{}, err
+	}
+	d.SubjectType = SubjectIncident
+	if d.SiteWorkID != nil {
+		d.SubjectType = SubjectSiteWork
+	}
+	if d.ProofDocumentTypes == nil {
+		d.ProofDocumentTypes = []string{}
 	}
 	d.BasisAt, d.DueAt, d.ComputedAt = d.BasisAt.UTC(), d.DueAt.UTC(), d.ComputedAt.UTC()
 	d.LegalLatestAt, d.ClosedAt = utc(d.LegalLatestAt), utc(d.ClosedAt)
@@ -131,7 +156,8 @@ func scanDeadline(row pgx.Row, now time.Time) (Deadline, error) {
 	}
 	if satID != nil {
 		d.Satisfaction = &Satisfaction{ID: *satID, DeadlineID: *satDeadline, SatisfiedAt: satAt.UTC(), Method: *satMethod,
-			Reference: satRef, Note: satNote, EvidenceID: satEvidence, RecordedBy: *satBy, RecordedAt: satRecorded.UTC()}
+			Reference: satRef, Note: satNote, EvidenceID: satEvidence, DocumentID: satDoc, DocumentVersion: satDocVersion,
+			RecordedBy: *satBy, RecordedAt: satRecorded.UTC()}
 		d.Satisfaction.RecordedAfterDue = RecordedAfterDue(d.Unit, d.DueAt, *d.Satisfaction)
 	}
 	d.OverdueWhenComputed = d.Unit != "immediately" && !d.ComputedAt.Before(d.DueAt)
@@ -177,15 +203,32 @@ func collect(rows pgx.Rows, now time.Time) ([]Deadline, error) {
 	return out, nil
 }
 
-// ListForIncident returns every row of an incident's duties, live and closed,
+// Ref names one subject.
+type Ref struct {
+	Kind SubjectKind
+	ID   string
+}
+
+// columns are the two subject columns' values: the ref's id in its own, NULL
+// in the other.
+func (r Ref) columns() (incident, siteWork *string) {
+	id := r.ID
+	if r.Kind == SubjectSiteWork {
+		return nil, &id
+	}
+	return &id, nil
+}
+
+// ListForSubject returns every row of a subject's duties, live and closed,
 // grouped by duty in the order the duties were created, oldest computation
 // first.
-func ListForIncident(ctx context.Context, db DBTX, orgID, incidentID string, now time.Time) ([]Deadline, error) {
+func ListForSubject(ctx context.Context, db DBTX, orgID string, ref Ref, now time.Time) ([]Deadline, error) {
+	inc, work := ref.columns()
 	rows, err := db.Query(ctx, selectDeadlines+`
-		WHERE d.org_id = $1 AND d.incident_id = $2
-		ORDER BY du.created_at, du.rule_key, d.computed_in_version, d.computed_at`, orgID, incidentID)
+		WHERE d.org_id = $1 AND (d.incident_id = $2 OR d.site_work_id = $3)
+		ORDER BY du.created_at, du.rule_key, d.computed_in_version, d.computed_at`, orgID, inc, work)
 	if err != nil {
-		return nil, fmt.Errorf("list incident deadlines: %w", err)
+		return nil, fmt.Errorf("list subject deadlines: %w", err)
 	}
 	return collect(rows, now)
 }
@@ -223,8 +266,8 @@ func GetLiveForDuty(ctx context.Context, db DBTX, orgID, dutyID string, now time
 // included, oldest first.
 func ListSatisfactions(ctx context.Context, db DBTX, orgID, dutyID string) ([]Satisfaction, error) {
 	rows, err := db.Query(ctx, `
-		SELECT s.id, s.deadline_id, s.satisfied_at, s.method, s.reference, s.note, s.evidence_id, s.recorded_by, s.recorded_at,
-		       r.retracted_by, r.retracted_at, r.reason
+		SELECT s.id, s.deadline_id, s.satisfied_at, s.method, s.reference, s.note, s.evidence_id, s.document_id, s.document_version,
+		       s.recorded_by, s.recorded_at, r.retracted_by, r.retracted_at, r.reason
 		FROM deadline_satisfactions s
 		LEFT JOIN deadline_satisfaction_retractions r ON r.satisfaction_id = s.id
 		WHERE s.org_id = $1 AND s.duty_id = $2
@@ -240,8 +283,8 @@ func ListSatisfactions(ctx context.Context, db DBTX, orgID, dutyID string) ([]Sa
 			by, reason *string
 			at         *time.Time
 		)
-		if err := rows.Scan(&s.ID, &s.DeadlineID, &s.SatisfiedAt, &s.Method, &s.Reference, &s.Note, &s.EvidenceID, &s.RecordedBy,
-			&s.RecordedAt, &by, &at, &reason); err != nil {
+		if err := rows.Scan(&s.ID, &s.DeadlineID, &s.SatisfiedAt, &s.Method, &s.Reference, &s.Note, &s.EvidenceID, &s.DocumentID,
+			&s.DocumentVersion, &s.RecordedBy, &s.RecordedAt, &by, &at, &reason); err != nil {
 			return nil, fmt.Errorf("scan satisfaction: %w", err)
 		}
 		s.SatisfiedAt, s.RecordedAt = s.SatisfiedAt.UTC(), s.RecordedAt.UTC()
@@ -265,13 +308,13 @@ func GetSatisfaction(ctx context.Context, db DBTX, orgID, id string) (*Satisfact
 		at         *time.Time
 	)
 	err := db.QueryRow(ctx, `
-		SELECT s.id, s.deadline_id, s.satisfied_at, s.method, s.reference, s.note, s.evidence_id, s.recorded_by, s.recorded_at,
-		       r.retracted_by, r.retracted_at, r.reason, s.duty_id
+		SELECT s.id, s.deadline_id, s.satisfied_at, s.method, s.reference, s.note, s.evidence_id, s.document_id, s.document_version,
+		       s.recorded_by, s.recorded_at, r.retracted_by, r.retracted_at, r.reason, s.duty_id
 		FROM deadline_satisfactions s
 		LEFT JOIN deadline_satisfaction_retractions r ON r.satisfaction_id = s.id
 		WHERE s.org_id = $1 AND s.id = $2`, orgID, id).
-		Scan(&s.ID, &s.DeadlineID, &s.SatisfiedAt, &s.Method, &s.Reference, &s.Note, &s.EvidenceID, &s.RecordedBy, &s.RecordedAt,
-			&by, &at, &reason, &dutyID)
+		Scan(&s.ID, &s.DeadlineID, &s.SatisfiedAt, &s.Method, &s.Reference, &s.Note, &s.EvidenceID, &s.DocumentID, &s.DocumentVersion,
+			&s.RecordedBy, &s.RecordedAt, &by, &at, &reason, &dutyID)
 	if err != nil {
 		return nil, "", fmt.Errorf("get satisfaction: %w", err)
 	}
@@ -282,16 +325,17 @@ func GetSatisfaction(ctx context.Context, db DBTX, orgID, id string) (*Satisfact
 	return &s, dutyID, nil
 }
 
-// Duties returns an incident's duties with their live rows and current
+// Duties returns a subject's duties with their live rows and current
 // satisfactions: the engine's view of what is already stored.
-func Duties(ctx context.Context, db DBTX, orgID, incidentID string) ([]Duty, error) {
+func Duties(ctx context.Context, db DBTX, orgID string, ref Ref) ([]Duty, error) {
+	inc, work := ref.columns()
 	rows, err := db.Query(ctx, `
 		SELECT du.id, du.rule_key, d.id, d.basis_at, s.satisfied_at
 		FROM deadline_duties du
 		LEFT JOIN deadlines d ON d.duty_id = du.id AND d.closed_as IS NULL
 		LEFT JOIN deadline_satisfactions s ON s.id = du.satisfaction_id
-		WHERE du.org_id = $1 AND du.incident_id = $2
-		ORDER BY du.created_at, du.rule_key`, orgID, incidentID)
+		WHERE du.org_id = $1 AND (du.incident_id = $2 OR du.site_work_id = $3)
+		ORDER BY du.created_at, du.rule_key`, orgID, inc, work)
 	if err != nil {
 		return nil, fmt.Errorf("list duties: %w", err)
 	}
@@ -320,9 +364,10 @@ func Duties(ctx context.Context, db DBTX, orgID, incidentID string) ([]Duty, err
 
 // Subject is what a deadline is about, and where its clock is kept.
 type Subject struct {
-	OrgID, SiteID, IncidentID, RegimeID string
-	Regime                              regimes.Regime
-	Version                             int // the incident version computing or closing rows
+	OrgID, SiteID, RegimeID string
+	Ref                     Ref
+	Regime                  regimes.Regime
+	Version                 int // the subject's version computing or closing rows
 	// The satisfaction whose recording adds the rows, when it isn't a version.
 	AddedBySatisfaction *string
 }
@@ -363,9 +408,10 @@ func Apply(ctx context.Context, db DBTX, sub Subject, steps []Step) error {
 		case Add:
 			duty := st.DutyID
 			if duty == "" {
+				inc, work := sub.Ref.columns()
 				if err := db.QueryRow(ctx, `
-					INSERT INTO deadline_duties (org_id, site_id, incident_id, rule_key) VALUES ($1, $2, $3, $4) RETURNING id`,
-					sub.OrgID, sub.SiteID, sub.IncidentID, st.Rule.Key).Scan(&duty); err != nil {
+					INSERT INTO deadline_duties (org_id, site_id, incident_id, site_work_id, rule_key) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+					sub.OrgID, sub.SiteID, inc, work, st.Rule.Key).Scan(&duty); err != nil {
 					return fmt.Errorf("insert duty: %w", err)
 				}
 			}
@@ -398,13 +444,18 @@ func insertRow(ctx context.Context, db DBTX, sub Subject, id, dutyID string, r r
 	if r.Caveat != "" {
 		caveat = &r.Caveat
 	}
+	proof := r.ProofDocumentTypes
+	if proof == nil {
+		proof = []string{}
+	}
+	inc, work := sub.Ref.columns()
 	_, err := db.Exec(ctx, `
-		INSERT INTO deadlines (id, org_id, site_id, duty_id, incident_id, regime_id, rule_key, rule_label, kind, period, unit,
-		                       direction, basis, source_ref, caveat, basis_at, time_zone, jurisdiction, due_at, excluded_days,
-		                       computed_in_version, added_by_satisfaction_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, now(), '{}', $19, $20)`,
-		id, sub.OrgID, sub.SiteID, dutyID, sub.IncidentID, sub.RegimeID, r.Key, r.Label, r.Kind, r.Period, r.Unit,
-		r.Direction, r.Basis, r.SourceRef, caveat, basisAt, sub.Regime.TimeZone, sub.Regime.Jurisdiction, sub.Version,
+		INSERT INTO deadlines (id, org_id, site_id, duty_id, incident_id, site_work_id, regime_id, rule_key, rule_label, kind, period, unit,
+		                       direction, basis, source_ref, caveat, proof_document_types, basis_at, time_zone, jurisdiction, due_at,
+		                       excluded_days, computed_in_version, added_by_satisfaction_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, now(), '{}', $21, $22)`,
+		id, sub.OrgID, sub.SiteID, dutyID, inc, work, sub.RegimeID, r.Key, r.Label, r.Kind, r.Period, r.Unit,
+		r.Direction, r.Basis, r.SourceRef, caveat, proof, basisAt, sub.Regime.TimeZone, sub.Regime.Jurisdiction, sub.Version,
 		sub.AddedBySatisfaction)
 	if err != nil {
 		return fmt.Errorf("insert deadline: %w", err)
@@ -412,14 +463,25 @@ func insertRow(ctx context.Context, db DBTX, sub Subject, id, dutyID string, r r
 	return nil
 }
 
+// NewSatisfaction is what InsertSatisfaction stores.
+type NewSatisfaction struct {
+	ID, DutyID, DeadlineID    string
+	SatisfiedAt               time.Time
+	Method                    string
+	Reference, Note, Evidence *string
+	Document                  *string
+	DocumentVersion           *int
+	RecordedBy                string
+}
+
 // InsertSatisfaction records a satisfaction against the duty's live row.
-func InsertSatisfaction(ctx context.Context, db DBTX, orgID, siteID, id, dutyID, deadlineID string, at time.Time, method string,
-	reference, note, evidenceID *string, by string) error {
+func InsertSatisfaction(ctx context.Context, db DBTX, orgID, siteID string, s NewSatisfaction) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO deadline_satisfactions (id, org_id, site_id, duty_id, deadline_id, satisfied_at, method, reference, note,
-		                                    evidence_id, recorded_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-		id, orgID, siteID, dutyID, deadlineID, at, method, reference, note, evidenceID, by)
+		                                    evidence_id, document_id, document_version, recorded_by)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+		s.ID, orgID, siteID, s.DutyID, s.DeadlineID, s.SatisfiedAt, s.Method, s.Reference, s.Note, s.Evidence,
+		s.Document, s.DocumentVersion, s.RecordedBy)
 	if err != nil {
 		return fmt.Errorf("insert satisfaction: %w", err)
 	}

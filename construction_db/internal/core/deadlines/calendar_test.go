@@ -134,14 +134,32 @@ func TestDeadlineDue(t *testing.T) {
 			want: due{at: "2027-03-24T22:00:00Z", on: "2027-03-24", excluded: []string{"2027-03-26", "2027-03-27", "2027-03-28", "2027-03-29"}},
 		},
 		{
-			// cr2014_reg4_notification's parameters. No legal latest for "before".
+			// IA s4 counting (6 clear days), unchanged by clear_days. No legal latest for "before".
 			name: "7 calendar days before", basis: "2026-11-30 07:00", period: 7, unit: "calendar_days", direction: "before",
 			want: due{at: "2026-11-23T22:00:00Z", on: "2026-11-23"},
 		},
 		{
-			// cr2014_reg3_permit_application's parameters.
 			name: "30 calendar days before", basis: "2027-01-15 07:00", period: 30, unit: "calendar_days", direction: "before",
 			want: due{at: "2026-12-16T22:00:00Z", on: "2026-12-16"},
+		},
+		{
+			// REG4 D1: Mon 30 Nov start, 7 clear days (23 to 29 Nov) after the notice.
+			name: "7 clear days before", basis: "2026-11-30 07:00", period: 7, unit: "clear_days", direction: "before",
+			want: due{at: "2026-11-22T22:00:00Z", on: "2026-11-22"},
+		},
+		{
+			// 00:30 SAST is still Sunday in UTC; the local date counts.
+			name: "clear days from the local date", basis: "2026-11-30 00:30", period: 7, unit: "clear_days", direction: "before",
+			want: due{at: "2026-11-22T22:00:00Z", on: "2026-11-22"},
+		},
+		{
+			name: "30 clear days before", basis: "2027-01-15 07:00", period: 30, unit: "clear_days", direction: "before",
+			want: due{at: "2026-12-15T22:00:00Z", on: "2026-12-15"},
+		},
+		{
+			// Due on Sun 20 Dec: not moved, and Christmas inside the window changes nothing.
+			name: "clear days ignore Sundays and holidays", basis: "2026-12-28 06:00", period: 7, unit: "clear_days", direction: "before",
+			want: due{at: "2026-12-20T22:00:00Z", on: "2026-12-20"},
 		},
 		{
 			name: "hours are a moment", basis: "2026-11-16 14:00", period: 48, unit: "hours", direction: "after",
@@ -198,6 +216,8 @@ func TestDeadlineDueRefuses(t *testing.T) {
 		{"immediately with a period", basis, 1, "immediately", "after", sast, "23514", "period 0"},
 		{"immediately before", basis, 0, "immediately", "before", sast, "23514", "period 0"},
 		{"zero days", basis, 0, "calendar_days", "after", sast, "23514", "period must be 1 or more"},
+		{"clear days after", basis, 7, "clear_days", "after", sast, "23514", "clear_days takes direction before"},
+		{"zero clear days", basis, 0, "clear_days", "before", sast, "23514", "period must be 1 or more"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

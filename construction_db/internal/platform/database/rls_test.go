@@ -48,6 +48,8 @@ const (
 	rlsFileA     = "40000000-0000-0000-0000-00000000000a" // a verified competency certificate, viewed once
 	rlsExportA   = "4b000000-0000-0000-0000-00000000000a" // a built audit export (M12)
 	rlsFileB     = "40000000-0000-0000-0000-00000000000b"
+	rlsWorkA     = "50000000-0000-0000-0000-00000000000a" // site work, version 1: excavation from 1 Dec 2026
+	rlsWorkB     = "50000000-0000-0000-0000-00000000000b"
 	rlsDiaryDate = "2026-01-15"
 )
 
@@ -138,6 +140,8 @@ var rlsTables = []rlsTable{
 	{"deadline_satisfactions", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"deadlines", "org_id", rlsOrgA, rlsOrgB, "closed_as", deleteDenied},
 	{"deadline_duties", "org_id", rlsOrgA, rlsOrgB, "satisfaction_id", deleteDenied},
+	{"site_work_versions", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
+	{"site_work", "org_id", rlsOrgA, rlsOrgB, "latest_version", deleteDenied},
 	{"witness_statements", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"incident_version_evidence", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
 	{"incident_people", "org_id", rlsOrgA, rlsOrgB, "", deleteDenied},
@@ -338,6 +342,9 @@ var seedOnce = sync.OnceValue(func() error {
 			{`INSERT INTO audit_export_evidence (org_id, export_id, site_id, evidence_id) VALUES ($1, $2, $3, $4)`, []any{org, id("4b"), site, ev}},
 			{`INSERT INTO audit_export_files (org_id, export_id, file_id) VALUES ($1, $2, $3)`, []any{org, id("4b"), id("40")}},
 			{`INSERT INTO audit_export_downloads (org_id, export_id, user_id) VALUES ($1, $2, $3)`, []any{org, id("4b"), user}},
+			// REG4: planned excavation.
+			{siteWorkSQL, []any{id("50"), org, site, user}},
+			{workVersionSQL, []any{org, site, id("50"), 1, "2026-12-01", []string{"excavation"}, "planned", user, "0 minutes", nil}},
 		}
 		for _, s := range stmts {
 			if _, err := tx.Exec(ctx, s.sql, s.args...); err != nil {
@@ -504,6 +511,8 @@ func TestRLSWrites(t *testing.T) {
 			"site_history":         {`INSERT INTO site_history (org_id, site_id, regime_id, name, status, changed_at) SELECT $1, $2, id, 'Smuggled', 'active', now() FROM regulatory_regimes LIMIT 1`, []any{rlsOrgB, rlsSiteB}},
 			"member_history":       {`INSERT INTO member_history (org_id, user_id, role, status, full_name, changed_at) VALUES ($1, $2, 'owner', 'active', 'Smuggled', now())`, []any{rlsOrgB, rlsUserB}},
 			"toolbox_talk_history": {`INSERT INTO toolbox_talk_history (org_id, site_id, talk_id, topic, presenter_name, started_at, changed_at) VALUES ($1, $2, $3, 'Smuggled', 'P', now(), now())`, []any{rlsOrgB, rlsSiteB, rlsTalkB}},
+			"site_work":            {siteWorkSQL, []any{"50000000-0000-0000-0000-0000000000bb", rlsOrgB, rlsSiteB, rlsUserB}},
+			"site_work_versions":   {workVersionSQL, []any{rlsOrgB, rlsSiteB, rlsWorkB, 2, "2026-12-08", []string{}, "cancelled", rlsUserB, "0 minutes", "Smuggled"}},
 			"corrective_action_events": {`INSERT INTO corrective_action_events (id, org_id, site_id, action_id, seq, kind, actor_id, client_at, reason, status, owner_id, due_on)
 			  VALUES ('34000000-0000-0000-0000-0000000000bb', $1, $2, $3, 2, 'cancelled', $4, now(), 'Smuggled', 'cancelled', $4, action_local_date(now(), 'Africa/Johannesburg') + 1)`,
 				[]any{rlsOrgB, rlsSiteB, rlsActionB, rlsUserB}},

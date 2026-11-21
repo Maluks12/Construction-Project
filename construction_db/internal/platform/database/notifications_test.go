@@ -153,7 +153,8 @@ func TestNotificationsDue(t *testing.T) {
 
 	t.Run("the seeded deadline is forthwith; the awaiting action stalls after 2 days", func(t *testing.T) {
 		ds := dueAt(t, tx, now.AddDate(0, 0, 3))
-		if got := dueFor(ds, rlsDutyA); len(got["forthwith"]) == 0 {
+		// Reminders are about the deadline row since REG4 R1, not its duty.
+		if got := dueFor(ds, rlsDeadA); len(got["forthwith"]) == 0 {
 			t.Errorf("the forthwith deadline: %v", got)
 		}
 		var closeout string

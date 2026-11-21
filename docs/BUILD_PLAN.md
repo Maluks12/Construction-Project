@@ -225,7 +225,7 @@ Proposed Wed 18 Nov (not scheduled):
 
 - [x] internal/app under `-race` ran past Go's default 10-minute `-timeout` (CI run #90). bcrypt at its default cost in every fixture's signup and login was most of the time: tests now hash at `bcrypt.MinCost`, the API refuses to start below the default (`auth.CheckPasswordCost`), and archtest refuses it set under cmd/ (branch fix/ci-app-hang)
 - [x] Every `go test` in CI names its `-timeout`, and both jobs have `timeout-minutes` (archtest `TestCITimeouts`)
-- [x] Lock waits are bounded per pool (`database.Bounds`): the API 5 s `lock_timeout` and a 60 s `idle_in_transaction_session_timeout`, the worker 1 min and no idle limit, tests 10 s and no idle limit; migrations keep Postgres's defaults. A lock wait past the limit is 503 with Retry-After (forced test: a burst of uploads to one site)
+- [x] Lock waits are bounded per pool (`database.Bounds`): the API 5 s `lock_timeout` and a 60 s `idle_in_transaction_session_timeout`, the worker 1 min and no idle limit, tests 10 s and no idle limit (none at all under libfaketime, whose timers fired early); migrations keep Postgres's defaults. A lock wait past the limit is 503 with Retry-After (forced test: a burst of uploads to one site)
 
 ### M12: Reports & audit pack (due Sun 22 Nov; done Fri 20 Nov; reviewed Fri 20 Nov, approved with fixes)
 

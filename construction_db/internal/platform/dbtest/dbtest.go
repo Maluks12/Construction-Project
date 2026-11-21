@@ -21,9 +21,9 @@ import (
 const MaxConns = 10
 
 // Bounds make a lock wait fail in seconds, Postgres naming the lock, instead
-// of hanging until the package timeout. No idle limit: under libfaketime
-// (StartAt) Postgres ended pooled connections that weren't idle in a
-// transaction (25P03), failing the date tests.
+// of hanging until the package timeout. Not under libfaketime (StartAt with
+// an offset): there Postgres's timers fired early, an idle limit ending
+// pooled connections (25P03) and a 10 s lock_timeout firing after about 1 s.
 var Bounds = database.Bounds{LockTimeout: 10 * time.Second}
 
 // Start runs Postgres with every migration applied. app connects like the API
@@ -88,7 +88,11 @@ func StartAt(ctx context.Context, offset time.Duration) (app, admin *pgxpool.Poo
 		return nil, nil, nil, fmt.Errorf("connection string: %w", err)
 	}
 
-	app, err = database.Connect(ctx, url, MaxConns, Bounds)
+	bounds := Bounds
+	if offset != 0 {
+		bounds = database.Bounds{}
+	}
+	app, err = database.Connect(ctx, url, MaxConns, bounds)
 	if err != nil {
 		_ = testcontainers.TerminateContainer(ctr)
 		return nil, nil, nil, fmt.Errorf("connect: %w", err)

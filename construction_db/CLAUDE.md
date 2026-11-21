@@ -619,10 +619,12 @@ under cmd/.
   - Worker (`WorkerBounds`): `lock_timeout` 1 min, no idle limit (the export
     builder's snapshot stays open while it streams a pack to S3).
   - Tests (`dbtest.Bounds`): `lock_timeout` 10 s, so a stuck test fails in
-    seconds naming the lock, not at the package timeout. No idle limit:
-    under libfaketime it ended pooled connections that weren't in a
-    transaction (25P03), failing the date tests. **Open:** why libfaketime
-    causes that is unexplained.
+    seconds naming the lock, not at the package timeout. No idle limit,
+    and no limits at all under libfaketime (`StartAt` with an offset):
+    there Postgres's timers fired early, an idle limit ending pooled
+    connections that weren't in a transaction (25P03) and the 10 s
+    `lock_timeout` firing after about 1 s (55P03; CI on PR #17's first
+    run). **Open:** why libfaketime causes that is unexplained.
   - `lock_timeout` bounds each wait, not the statement: a request queued
     behind another waiter on a row waits for its turn, then for the row, so
     up to 10 s in the API (`TestLockWaitIs503`).

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/edition"
@@ -29,6 +30,7 @@ func (e fakeEdition) RegisterRoutes(r *gin.RouterGroup, deps edition.Deps) {
 // The fake handler follows the CLAUDE.md rule: resolve the site through
 // deps.Sites.Regime and 404 unless its regime belongs to this edition.
 func TestEditionRoutes(t *testing.T) {
+	sfx := uuid.NewString()[:8] // fresh per run, so -count=N works
 	ed := fakeEdition{
 		name:   "construction",
 		regime: "za_construction_2014",
@@ -52,8 +54,8 @@ func TestEditionRoutes(t *testing.T) {
 		t.Fatalf("new router: %v", err)
 	}
 
-	token := signup(t, router, "Edition Co", "owner@edition.test")
-	otherToken := signup(t, router, "Other Edition Co", "owner@other-edition.test")
+	token := signup(t, router, "Edition Co", "owner@edition-"+sfx+".test")
+	otherToken := signup(t, router, "Other Edition Co", "owner@other-edition-"+sfx+".test")
 	site := listSites(t, router, token)[0].ID
 	otherSite := listSites(t, router, otherToken)[0].ID
 

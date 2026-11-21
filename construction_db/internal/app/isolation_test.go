@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
@@ -134,10 +135,11 @@ func newRouter(t *testing.T) *gin.Engine {
 }
 
 func TestSiteIsolation(t *testing.T) {
+	sfx := uuid.NewString()[:8] // fresh per run, so -count=N works
 	router := newRouter(t)
 
-	tokenA := signup(t, router, "Org A", "owner-a@isolation.test")
-	tokenB := signup(t, router, "Org B", "owner-b@isolation.test")
+	tokenA := signup(t, router, "Org A", "owner-a@isolation-"+sfx+".test")
+	tokenB := signup(t, router, "Org B", "owner-b@isolation-"+sfx+".test")
 
 	sitesB := listSites(t, router, tokenB)
 	if len(sitesB) != 1 {

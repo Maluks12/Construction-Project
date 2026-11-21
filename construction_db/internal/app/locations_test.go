@@ -5,21 +5,24 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/sites"
 )
 
 func TestLocations(t *testing.T) {
+	sfx := uuid.NewString()[:8] // fresh per run, so -count=N works
 	router := newRouter(t)
 
-	ownerToken := signup(t, router, "Loc Co", "owner@locations.test")
-	otherToken := signup(t, router, "Loc Other Co", "owner@locations-other.test")
+	ownerToken := signup(t, router, "Loc Co", "owner@locations-"+sfx+".test")
+	otherToken := signup(t, router, "Loc Other Co", "owner@locations-other-"+sfx+".test")
 
 	site := listSites(t, router, ownerToken)[0].ID
 	site2 := createSite(t, router, ownerToken, "Second Site")
 
-	supID := inviteMember(t, router, ownerToken, "foreman@locations.test", auth.RoleSupervisor)
-	supToken := login(t, router, "foreman@locations.test")
+	supID := inviteMember(t, router, ownerToken, "foreman@locations-"+sfx+".test", auth.RoleSupervisor)
+	supToken := login(t, router, "foreman@locations-"+sfx+".test")
 	if rec := do(t, router, http.MethodPut, "/v1/sites/"+site+"/members/"+supID, ownerToken, nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("assign supervisor: got %d (body: %s)", rec.Code, rec.Body.String())
 	}

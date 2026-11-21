@@ -8,6 +8,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"construction_db/internal/core/auth"
@@ -17,19 +18,20 @@ import (
 )
 
 func TestSiteRegime(t *testing.T) {
+	sfx := uuid.NewString()[:8] // fresh per run, so -count=N works
 	ctx := context.Background()
 	router := newRouter(t)
 	svc := sites.NewService(testPool, testRegistry, testEdition.DefaultRegime())
 
-	ownerToken := signup(t, router, "Regime Co", "owner@regime.test")
-	otherToken := signup(t, router, "Other Regime Co", "owner@other-regime.test")
+	ownerToken := signup(t, router, "Regime Co", "owner@regime-"+sfx+".test")
+	otherToken := signup(t, router, "Other Regime Co", "owner@other-regime-"+sfx+".test")
 	owner := me(t, router, ownerToken)
 
 	signupSite := listSites(t, router, ownerToken)[0].ID
 	createdSite := createSite(t, router, ownerToken, "Second Site")
 	otherSite := listSites(t, router, otherToken)[0].ID
 
-	supervisorID := inviteMember(t, router, ownerToken, "foreman@regime.test", auth.RoleSupervisor)
+	supervisorID := inviteMember(t, router, ownerToken, "foreman@regime-"+sfx+".test", auth.RoleSupervisor)
 	if rec := do(t, router, http.MethodPut, "/v1/sites/"+signupSite+"/members/"+supervisorID, ownerToken, nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("assign supervisor: got %d (body: %s)", rec.Code, rec.Body.String())
 	}

@@ -2,28 +2,34 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/invites"
 )
 
 func TestInvites(t *testing.T) {
+	sfx := uuid.NewString()[:8]                           // fresh per run, so -count=N works
+	mob := fmt.Sprintf("+2781%06d", rand.IntN(1_000_000)) // then one digit per person
 	router := newRouter(t)
 
-	ownerToken := signup(t, router, "Invite Co", "owner@invites.test")
-	otherToken := signup(t, router, "Invite Other Co", "owner@invites-other.test")
+	ownerToken := signup(t, router, "Invite Co", "owner@invites-"+sfx+".test")
+	otherToken := signup(t, router, "Invite Other Co", "owner@invites-other-"+sfx+".test")
 
-	inviteMember(t, router, ownerToken, "she@invites.test", auth.RoleSHEOfficer)
-	inviteMember(t, router, ownerToken, "sup@invites.test", auth.RoleSupervisor)
-	sheToken := login(t, router, "she@invites.test")
-	supToken := login(t, router, "sup@invites.test")
+	inviteMember(t, router, ownerToken, "she@invites-"+sfx+".test", auth.RoleSHEOfficer)
+	inviteMember(t, router, ownerToken, "sup@invites-"+sfx+".test", auth.RoleSupervisor)
+	sheToken := login(t, router, "she@invites-"+sfx+".test")
+	supToken := login(t, router, "sup@invites-"+sfx+".test")
 
-	sipho := sendInvite(t, router, ownerToken, map[string]any{"full_name": "Sipho Dlamini", "mobile": "+27820000001", "role": auth.RoleSupervisor})
-	revoked := sendInvite(t, router, ownerToken, map[string]any{"full_name": "Revoked", "mobile": "+27820000002", "role": auth.RoleBookkeeper})
-	expired := sendInvite(t, router, ownerToken, map[string]any{"full_name": "Late", "mobile": "+27820000003", "role": auth.RoleBookkeeper})
-	existing := sendInvite(t, router, ownerToken, map[string]any{"full_name": "ignored", "email": "owner@invites-other.test", "role": auth.RoleSHEOfficer})
+	sipho := sendInvite(t, router, ownerToken, map[string]any{"full_name": "Sipho Dlamini", "mobile": mob + "1", "role": auth.RoleSupervisor})
+	revoked := sendInvite(t, router, ownerToken, map[string]any{"full_name": "Revoked", "mobile": mob + "2", "role": auth.RoleBookkeeper})
+	expired := sendInvite(t, router, ownerToken, map[string]any{"full_name": "Late", "mobile": mob + "3", "role": auth.RoleBookkeeper})
+	existing := sendInvite(t, router, ownerToken, map[string]any{"full_name": "ignored", "email": "owner@invites-other-" + sfx + ".test", "role": auth.RoleSHEOfficer})
 
 	execAsTenant(t, me(t, router, ownerToken).OrgID, 1,
 		`UPDATE invitations SET expires_at = now() - interval '1 minute' WHERE id = $1`, expired.ID)
@@ -45,15 +51,15 @@ func TestInvites(t *testing.T) {
 		body   any
 		want   int
 	}{
-		{"no token", "", http.MethodPost, "/v1/invites", map[string]any{"full_name": "X", "mobile": "+27820000009", "role": "supervisor"}, http.StatusUnauthorized},
-		{"supervisor cannot invite", supToken, http.MethodPost, "/v1/invites", map[string]any{"full_name": "X", "mobile": "+27820000009", "role": "supervisor"}, http.StatusForbidden},
+		{"no token", "", http.MethodPost, "/v1/invites", map[string]any{"full_name": "X", "mobile": mob + "9", "role": "supervisor"}, http.StatusUnauthorized},
+		{"supervisor cannot invite", supToken, http.MethodPost, "/v1/invites", map[string]any{"full_name": "X", "mobile": mob + "9", "role": "supervisor"}, http.StatusForbidden},
 		{"supervisor cannot list", supToken, http.MethodGet, "/v1/invites", nil, http.StatusForbidden},
-		{"SHE officer cannot invite an owner", sheToken, http.MethodPost, "/v1/invites", map[string]any{"full_name": "X", "mobile": "+27820000009", "role": "owner"}, http.StatusForbidden},
+		{"SHE officer cannot invite an owner", sheToken, http.MethodPost, "/v1/invites", map[string]any{"full_name": "X", "mobile": mob + "9", "role": "owner"}, http.StatusForbidden},
 		{"no email or mobile", ownerToken, http.MethodPost, "/v1/invites", map[string]any{"full_name": "X", "role": "supervisor"}, http.StatusBadRequest},
-		{"blank name", ownerToken, http.MethodPost, "/v1/invites", map[string]any{"full_name": "   ", "mobile": "+27820000009", "role": "supervisor"}, http.StatusBadRequest},
+		{"blank name", ownerToken, http.MethodPost, "/v1/invites", map[string]any{"full_name": "   ", "mobile": mob + "9", "role": "supervisor"}, http.StatusBadRequest},
 		{"mobile not in +27 format", ownerToken, http.MethodPost, "/v1/invites", map[string]any{"full_name": "X", "mobile": "0820000009", "role": "supervisor"}, http.StatusBadRequest},
-		{"already an active member", ownerToken, http.MethodPost, "/v1/invites", map[string]any{"full_name": "X", "email": "SUP@invites.test", "role": "bookkeeper"}, http.StatusConflict},
-		{"email and mobile of different people", ownerToken, http.MethodPost, "/v1/invites", map[string]any{"full_name": "X", "email": "sup@invites.test", "mobile": "+27820000001", "role": "bookkeeper"}, http.StatusConflict},
+		{"already an active member", ownerToken, http.MethodPost, "/v1/invites", map[string]any{"full_name": "X", "email": "SUP@invites-" + sfx + ".test", "role": "bookkeeper"}, http.StatusConflict},
+		{"email and mobile of different people", ownerToken, http.MethodPost, "/v1/invites", map[string]any{"full_name": "X", "email": "sup@invites-" + sfx + ".test", "mobile": mob + "1", "role": "bookkeeper"}, http.StatusConflict},
 		{"other org cannot revoke", otherToken, http.MethodDelete, "/v1/invites/" + revoked.ID, nil, http.StatusNotFound},
 		{"malformed invite id", ownerToken, http.MethodDelete, "/v1/invites/not-a-uuid", nil, http.StatusNotFound},
 		{"owner revokes", ownerToken, http.MethodDelete, "/v1/invites/" + revoked.ID, nil, http.StatusNoContent},
@@ -65,7 +71,7 @@ func TestInvites(t *testing.T) {
 		{"accept expired", "", http.MethodPost, "/v1/invites/accept", map[string]any{"token": expired.Token, "password": "correcthorse1"}, http.StatusBadRequest},
 		{"accept with short password", "", http.MethodPost, "/v1/invites/accept", map[string]any{"token": sipho.Token, "password": "short"}, http.StatusBadRequest},
 		{"existing account, wrong password", "", http.MethodPost, "/v1/invites/accept", map[string]any{"token": existing.Token, "password": "not-their-password"}, http.StatusUnauthorized},
-		{"login before accepting", "", http.MethodPost, "/v1/auth/login", map[string]any{"mobile": "+27820000001", "password": "correcthorse1"}, http.StatusUnauthorized},
+		{"login before accepting", "", http.MethodPost, "/v1/auth/login", map[string]any{"mobile": mob + "1", "password": "correcthorse1"}, http.StatusUnauthorized},
 	}
 
 	for _, tc := range tests {
@@ -84,11 +90,11 @@ func TestInvites(t *testing.T) {
 		want              int
 		msg               error
 	}{
-		{"already a member", ownerToken, "/v1/invites", map[string]any{"full_name": "X", "email": "sup@invites.test", "role": "bookkeeper"}, http.StatusConflict, invites.ErrAlreadyMember},
-		{"contact conflict", ownerToken, "/v1/invites", map[string]any{"full_name": "X", "email": "sup@invites.test", "mobile": "+27820000001", "role": "bookkeeper"}, http.StatusConflict, invites.ErrContactConflict},
+		{"already a member", ownerToken, "/v1/invites", map[string]any{"full_name": "X", "email": "sup@invites-" + sfx + ".test", "role": "bookkeeper"}, http.StatusConflict, invites.ErrAlreadyMember},
+		{"contact conflict", ownerToken, "/v1/invites", map[string]any{"full_name": "X", "email": "sup@invites-" + sfx + ".test", "mobile": mob + "1", "role": "bookkeeper"}, http.StatusConflict, invites.ErrContactConflict},
 		{"wrong password", "", "/v1/invites/accept", map[string]any{"token": existing.Token, "password": "not-their-password"}, http.StatusUnauthorized, invites.ErrWrongPassword},
 		{"expired invite", "", "/v1/invites/accept", map[string]any{"token": expired.Token, "password": "correcthorse1"}, http.StatusBadRequest, invites.ErrInvalidInvite},
-		{"login wrong password", "", "/v1/auth/login", map[string]any{"email": "owner@invites.test", "password": "not-their-password"}, http.StatusUnauthorized, auth.ErrInvalidCredentials},
+		{"login wrong password", "", "/v1/auth/login", map[string]any{"email": "owner@invites-" + sfx + ".test", "password": "not-their-password"}, http.StatusUnauthorized, auth.ErrInvalidCredentials},
 	}
 	for _, tc := range exact {
 		t.Run("exact error: "+tc.name, func(t *testing.T) {
@@ -123,7 +129,7 @@ func TestInvites(t *testing.T) {
 
 		acceptInvite(t, router, sipho.Token, "correcthorse1", http.StatusBadRequest) // can't use it twice
 
-		rec = do(t, router, http.MethodPost, "/v1/auth/login", "", map[string]any{"mobile": "+27820000001", "password": "correcthorse1"})
+		rec = do(t, router, http.MethodPost, "/v1/auth/login", "", map[string]any{"mobile": mob + "1", "password": "correcthorse1"})
 		if rec.Code != http.StatusOK {
 			t.Fatalf("login by mobile: got %d (body: %s)", rec.Code, rec.Body.String())
 		}

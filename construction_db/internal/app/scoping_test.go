@@ -2,6 +2,8 @@ package app
 
 import (
 	"bytes"
+	"github.com/google/uuid"
+
 	"construction_db/internal/core/invites"
 	"encoding/json"
 	"io"
@@ -14,10 +16,11 @@ import (
 )
 
 func TestSiteScoping(t *testing.T) {
+	sfx := uuid.NewString()[:8] // fresh per run, so -count=N works
 	router := newRouter(t)
 
-	ownerToken := signup(t, router, "Scope Co", "owner@scoping.test")
-	otherToken := signup(t, router, "Other Co", "owner@other-scoping.test")
+	ownerToken := signup(t, router, "Scope Co", "owner@scoping-"+sfx+".test")
+	otherToken := signup(t, router, "Other Co", "owner@other-scoping-"+sfx+".test")
 
 	other := me(t, router, otherToken)
 
@@ -25,8 +28,8 @@ func TestSiteScoping(t *testing.T) {
 	siteB := createSite(t, router, ownerToken, "Unassigned Site")
 	otherSite := listSites(t, router, otherToken)[0].ID
 
-	supervisorID := inviteMember(t, router, ownerToken, "foreman@scoping.test", auth.RoleSupervisor)
-	supToken := login(t, router, "foreman@scoping.test")
+	supervisorID := inviteMember(t, router, ownerToken, "foreman@scoping-"+sfx+".test", auth.RoleSupervisor)
+	supToken := login(t, router, "foreman@scoping-"+sfx+".test")
 
 	if rec := do(t, router, http.MethodPut, "/v1/sites/"+siteA+"/members/"+supervisorID, ownerToken, nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("assign supervisor: got %d (body: %s)", rec.Code, rec.Body.String())

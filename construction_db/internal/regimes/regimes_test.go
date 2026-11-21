@@ -24,7 +24,17 @@ const (
 		"direction": "after", "basis": "incident_occurred_at", "applies_when": "incident_type", "source_ref": "test ref"},
 		{"key": "test_death", "label": "Report the death", "kind": "report", "period": 0, "unit": "immediately",
 		"direction": "after", "basis": "person_died_at", "applies_when": "person_died_after_notice",
-		"after_satisfied": ["test_now"], "caveat": "Test caveat", "source_ref": "test ref"}]`
+		"after_satisfied": ["test_now"], "caveat": "Test caveat", "source_ref": "test ref"},
+		{"key": "test_notify", "label": "Notify", "kind": "notification", "period": 7, "unit": "clear_days",
+		"direction": "before", "basis": "work_starts_at", "applies_when": "site_work", "duty_holder": "contractor",
+		"proof_document_types": ["plan"], "source_ref": "test ref"},
+		{"key": "test_permit", "label": "Apply", "kind": "notification", "period": 30, "unit": "clear_days",
+		"direction": "before", "basis": "work_starts_at", "applies_when": "site_work", "duty_holder": "client", "source_ref": "test ref"}]`
+	siteWorkJSON = `{"facts": [{"key": "dig", "label": "Dig", "source_ref": "r"}, {"key": "long", "label": "Long", "source_ref": "r"},
+		{"key": "big", "label": "Big", "source_ref": "r"}, {"key": "grade", "label": "Grade", "source_ref": "r"},
+		{"key": "house", "label": "House", "source_ref": "r"}],
+		"rules": [{"rule_key": "test_permit", "when_any": [["long", "big"], ["grade"]], "unless_facts": ["house"], "unless_rules": [], "source_ref": "r"},
+		{"rule_key": "test_notify", "when_any": [["dig"], ["house"]], "unless_facts": [], "unless_rules": ["test_permit"], "source_ref": "r"}]}`
 	taxonomyJSON = `[{"key": "injury", "label": "Injury", "reportable": true,
 		"deadline_rules": ["test_rule", "test_now", "test_investigate"]},
 		{"key": "medical_treatment", "label": "Medical treatment", "reportable": false, "deadline_rules": ["test_investigate"]},
@@ -37,7 +47,7 @@ const (
 	documentsJSON = `[{"key": "plan", "label": "Plan", "scope": "site", "required": true, "expiry": "none", "source_ref": "r"},
 		{"key": "lgs", "label": "LGS", "scope": "org", "required": true, "expiry": "required", "issuers": ["CF"], "source_ref": "r"}]`
 	remindersJSON = `{"worker_expiry_days": [30, 0], "company_document_days": [60, 0], "deadline_days_before": [2, 0],
-		"action_escalation_days": [0, 1, 3], "verification_stalled_days": 2, "roster_lapse_days": 14, "source_ref": "r"}`
+		"notification_days_before": [7, 2, 0], "action_escalation_days": [0, 1, 3], "verification_stalled_days": 2, "roster_lapse_days": 14, "source_ref": "r"}`
 )
 
 func validFS() fstest.MapFS {
@@ -51,6 +61,7 @@ func validFS() fstest.MapFS {
 		"test_regime/workforce.json":      {Data: []byte(workforceJSON)},
 		"test_regime/documents.json":      {Data: []byte(documentsJSON)},
 		"test_regime/reminders.json":      {Data: []byte(remindersJSON)},
+		"test_regime/site_work.json":      {Data: []byte(siteWorkJSON)},
 	}
 }
 
@@ -118,15 +129,21 @@ func TestLoadFSValid(t *testing.T) {
 	if ds.Taxonomy[2].DeadlineRules == nil {
 		t.Error("near_miss deadline_rules should be an empty list, not nil")
 	}
-	if len(ds.Deadlines) != 4 || ds.Deadlines[1].Unit != "immediately" || ds.Deadlines[1].Period != 0 {
+	if len(ds.Deadlines) != 6 || ds.Deadlines[1].Unit != "immediately" || ds.Deadlines[1].Period != 0 {
 		t.Errorf("deadlines = %+v", ds.Deadlines)
 	}
 	if d := ds.Deadlines[3]; !slices.Equal(d.AfterSatisfied, []string{"test_now"}) || d.Caveat != "Test caveat" {
 		t.Errorf("death rule = %+v", d)
 	}
 	// Omitted after_satisfied comes back as [], like every other list.
-	if ds.Deadlines[0].AfterSatisfied == nil {
-		t.Error("after_satisfied should be an empty list, not nil")
+	if ds.Deadlines[0].AfterSatisfied == nil || ds.Deadlines[0].ProofDocumentTypes == nil {
+		t.Error("after_satisfied and proof_document_types should be empty lists, not nil")
+	}
+	if d := ds.Deadlines[4]; d.DutyHolder != DutyContractor || !slices.Equal(d.ProofDocumentTypes, []string{"plan"}) {
+		t.Errorf("site work rule = %+v", d)
+	}
+	if len(ds.SiteWork.Facts) != 5 || len(ds.SiteWork.Rules) != 2 || ds.SiteWork.Rules[1].UnlessFacts == nil {
+		t.Errorf("site work = %+v", ds.SiteWork)
 	}
 }
 
@@ -411,6 +428,62 @@ func TestLoadFSRejects(t *testing.T) {
 		"incident type lists a death rule": {
 			with(validFS(), taxonomyFile, `[{"key": "injury", "label": "Injury", "reportable": true, "deadline_rules": ["test_rule", "test_death"]}]`),
 			`deadline_rules entry "test_death" has applies_when "person_died_after_notice"; an incident type may only list "incident_type" rules`,
+		},
+		"clear days after": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, `"unit": "calendar_days",
+		"direction": "after"`, `"unit": "clear_days",
+		"direction": "after"`, 1)),
+			`deadlines[0]: direction must be "before" when unit is "clear_days"`,
+		},
+		"site work rule without a duty holder": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, `"duty_holder": "client", `, "", 1)),
+			`deadlines[5]: duty_holder "" is not one of client, contractor`,
+		},
+		"duty holder on an incident rule": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON,
+				`"applies_when": "incident_type", "source_ref"`, `"applies_when": "incident_type", "duty_holder": "client", "source_ref"`, 1)),
+			`deadlines[0]: duty_holder is only for "site_work" rules`,
+		},
+		"proof that isn't a site document": {
+			with(validFS(), deadlinesFile, strings.Replace(deadlinesJSON, `["plan"]`, `["lgs"]`, 1)),
+			`deadlines[4]: proof_document_types entry "lgs" is not a site document type`,
+		},
+		"missing site work file": {
+			with(validFS(), "test_regime/site_work.json", ""),
+			"test_regime/site_work.json",
+		},
+		"site work rule never listed": {
+			with(validFS(), "test_regime/site_work.json", `{"facts": [{"key": "dig", "label": "Dig", "source_ref": "r"}],
+				"rules": [{"rule_key": "test_notify", "when_any": [["dig"]], "source_ref": "r"}]}`),
+			`deadline "test_permit" has applies_when "site_work" but no rules entry, so it would never start`,
+		},
+		"site work rules entry for an incident rule": {
+			with(validFS(), "test_regime/site_work.json", strings.Replace(siteWorkJSON, `"rule_key": "test_permit"`, `"rule_key": "test_rule"`, 1)),
+			`rules[0]: rule_key "test_rule" is not a "site_work" rule`,
+		},
+		"unknown fact in a group": {
+			with(validFS(), "test_regime/site_work.json", strings.Replace(siteWorkJSON, `["long", "big"]`, `["long", "huge"]`, 1)),
+			`rules[0]: when_any[0] names unknown fact "huge"`,
+		},
+		"empty group": {
+			with(validFS(), "test_regime/site_work.json", strings.Replace(siteWorkJSON, `["grade"]`, `[]`, 1)),
+			`rules[0]: when_any[1] is empty`,
+		},
+		"unknown unless fact": {
+			with(validFS(), "test_regime/site_work.json", strings.Replace(siteWorkJSON, `"unless_facts": ["house"]`, `"unless_facts": ["shed"]`, 1)),
+			`rules[0]: unless_facts names unknown fact "shed"`,
+		},
+		"unless rules cycle": {
+			with(validFS(), "test_regime/site_work.json", strings.Replace(siteWorkJSON, `"unless_rules": []`, `"unless_rules": ["test_notify"]`, 1)),
+			`unless_rules cycle through`,
+		},
+		"fact without a source": {
+			with(validFS(), "test_regime/site_work.json", strings.Replace(siteWorkJSON, `"label": "Dig", "source_ref": "r"`, `"label": "Dig", "source_ref": ""`, 1)),
+			`facts[0]: source_ref is required`,
+		},
+		"notification days missing": {
+			with(validFS(), "test_regime/reminders.json", strings.Replace(remindersJSON, `"notification_days_before": [7, 2, 0], `, "", 1)),
+			"notification_days_before is required",
 		},
 		"report on a non-reportable type": {
 			with(validFS(), taxonomyFile, `[{"key": "near_miss", "label": "Near miss", "reportable": false, "deadline_rules": ["test_rule"]}]`),

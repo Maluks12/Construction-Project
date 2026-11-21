@@ -36,6 +36,7 @@ const (
 	fileWorkforce     = "workforce.json"
 	fileDocuments     = "documents.json"
 	fileReminders     = "reminders.json"
+	fileSiteWork      = "site_work.json"
 )
 
 // Regime mirrors a regulatory_regimes row. Version is the version of the law
@@ -78,6 +79,8 @@ type ChecklistItem struct {
 // countdown, so the engine shows it as something to do now rather than a due
 // date (Rev 4, section 4).
 //
+// Unit "clear_days" (before only) counts neither end day (REG4 D1).
+//
 // Kind says what the clock is for: "report" (something sent to an authority
 // after an event), "investigation" (an internal duty) or "notification"
 // (something due before work starts).
@@ -94,19 +97,46 @@ type ChecklistItem struct {
 //
 // Caveat is optional text shown with every deadline from this rule.
 //
+// DutyHolder: whom a site_work rule binds (REG4 D3). ProofDocumentTypes:
+// site documents a satisfaction may link (D12).
+//
 // Holidays are not here: the calendar is a database table (Rev 4, section 2.3).
 type DeadlineRule struct {
-	Key            string   `json:"key"`
-	Label          string   `json:"label"`
-	Kind           string   `json:"kind"`
-	Period         int      `json:"period"`
-	Unit           string   `json:"unit"`
-	Direction      string   `json:"direction"`
-	Basis          string   `json:"basis"`
-	AppliesWhen    string   `json:"applies_when"`
-	AfterSatisfied []string `json:"after_satisfied"`
-	Caveat         string   `json:"caveat"`
-	SourceRef      string   `json:"source_ref"`
+	Key                string   `json:"key"`
+	Label              string   `json:"label"`
+	Kind               string   `json:"kind"`
+	Period             int      `json:"period"`
+	Unit               string   `json:"unit"`
+	Direction          string   `json:"direction"`
+	Basis              string   `json:"basis"`
+	AppliesWhen        string   `json:"applies_when"`
+	AfterSatisfied     []string `json:"after_satisfied"`
+	Caveat             string   `json:"caveat"`
+	DutyHolder         string   `json:"duty_holder"`
+	ProofDocumentTypes []string `json:"proof_document_types"`
+	SourceRef          string   `json:"source_ref"`
+}
+
+// SiteWorkFact is a box the user ticks about intended work (REG4 D2).
+type SiteWorkFact struct {
+	Key       string `json:"key"`
+	Label     string `json:"label"`
+	SourceRef string `json:"source_ref"`
+}
+
+// SiteWorkRule applies when every fact of some WhenAny group is ticked, unless
+// an UnlessFacts fact is ticked or an UnlessRules rule applies.
+type SiteWorkRule struct {
+	RuleKey     string     `json:"rule_key"`
+	WhenAny     [][]string `json:"when_any"`
+	UnlessFacts []string   `json:"unless_facts"`
+	UnlessRules []string   `json:"unless_rules"`
+	SourceRef   string     `json:"source_ref"`
+}
+
+type SiteWork struct {
+	Facts []SiteWorkFact `json:"facts"`
+	Rules []SiteWorkRule `json:"rules"`
 }
 
 // IncidentType is one entry in the incident taxonomy. DeadlineRules are the
@@ -206,9 +236,11 @@ type DocumentType struct {
 // ActionEscalationDays are days overdue for the action's owner and raiser,
 // then SHE officers, then owners.
 type Reminders struct {
-	WorkerExpiryDays        []int `json:"worker_expiry_days"`
-	CompanyDocumentDays     []int `json:"company_document_days"`
-	DeadlineDaysBefore      []int `json:"deadline_days_before"`
+	WorkerExpiryDays    []int `json:"worker_expiry_days"`
+	CompanyDocumentDays []int `json:"company_document_days"`
+	DeadlineDaysBefore  []int `json:"deadline_days_before"`
+	// For "notification" rules (due before work starts), REG4 D9.
+	NotificationDaysBefore  []int `json:"notification_days_before"`
 	ActionEscalationDays    []int `json:"action_escalation_days"`
 	VerificationStalledDays int   `json:"verification_stalled_days"`
 	// A roster entry a sign-in added stops counting as expected after this
@@ -227,6 +259,7 @@ type DataSet struct {
 	Workforce     Workforce           `json:"workforce"`
 	DocumentTypes []DocumentType      `json:"document_types"`
 	Reminders     Reminders           `json:"reminders"`
+	SiteWork      SiteWork            `json:"site_work"`
 }
 
 // Registry holds every loaded data set by regime code. It is built once at
@@ -258,7 +291,7 @@ func (r *Registry) Codes() []string {
 }
 
 // LoadFS loads every data set in fsys: one directory per regime, each with all
-// nine files. It reports every problem it finds, not just the first, so one
+// ten files. It reports every problem it finds, not just the first, so one
 // failed startup (or test run) shows everything that needs fixing.
 func LoadFS(fsys fs.FS) (*Registry, error) {
 	entries, err := fs.ReadDir(fsys, ".")
@@ -305,6 +338,7 @@ func loadDataSet(fsys fs.FS, dir string) (*DataSet, error) {
 		{fileWorkforce, &ds.Workforce},
 		{fileDocuments, &ds.DocumentTypes},
 		{fileReminders, &ds.Reminders},
+		{fileSiteWork, &ds.SiteWork},
 	}
 
 	var errs []error
@@ -332,6 +366,27 @@ func loadDataSet(fsys fs.FS, dir string) (*DataSet, error) {
 	for i := range ds.Deadlines {
 		if ds.Deadlines[i].AfterSatisfied == nil {
 			ds.Deadlines[i].AfterSatisfied = []string{}
+		}
+		if ds.Deadlines[i].ProofDocumentTypes == nil {
+			ds.Deadlines[i].ProofDocumentTypes = []string{}
+		}
+	}
+	if ds.SiteWork.Facts == nil {
+		ds.SiteWork.Facts = []SiteWorkFact{}
+	}
+	if ds.SiteWork.Rules == nil {
+		ds.SiteWork.Rules = []SiteWorkRule{}
+	}
+	for i := range ds.SiteWork.Rules {
+		r := &ds.SiteWork.Rules[i]
+		if r.WhenAny == nil {
+			r.WhenAny = [][]string{}
+		}
+		if r.UnlessFacts == nil {
+			r.UnlessFacts = []string{}
+		}
+		if r.UnlessRules == nil {
+			r.UnlessRules = []string{}
 		}
 	}
 	for i := range ds.Taxonomy {

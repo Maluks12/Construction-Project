@@ -117,6 +117,16 @@
       "cr2014_reg4_notification",
       "cr2014_reg3_permit_application"
     ],
+    "site_work_facts": [
+      "excavation",
+      "work_at_height_fall_risk",
+      "demolition",
+      "explosives",
+      "single_storey_dwelling_for_resident_client",
+      "exceeds_365_days",
+      "exceeds_3600_person_days",
+      "cidb_grade_7_8_or_9"
+    ],
     "taxonomy": [
       "fatality",
       "unconsciousness",

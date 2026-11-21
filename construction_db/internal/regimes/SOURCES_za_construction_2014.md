@@ -42,6 +42,18 @@ Added for the deadline engine (M8), read on **15 Nov 2026**:
   Fund v Masindi* (586/2017) [2018] ZASCA 94, para [8]:
   https://www.supremecourtofappeal.org.za/index.php/judgements/send/3-judgments-2018/331-road-accident-fund-v-masindi-586-2017-2018-zasca-94-1-june-2018
 
+Added for site work (REG4), read on **21 Nov 2026**:
+
+- **CR 2014** again (the same ECR copy): regs 1, 2(2), 3, 4, 5(5)–(6) and
+  Annexures 1 and 2, quoted below with their pages.
+- **GN 850**: Notice 850 of 2018, GG 41839, 17 August 2018, Department of
+  Labour, "Application for Construction Work Permit of Construction Work in
+  terms of the Construction Regulations, 2014". Acts Online:
+  https://www.acts.co.za/occupational-health-/n850_notice_no__850_of_2018. The
+  site allows only short quotes, so the pieces are joined in order. The
+  Gazette copy (https://www.gov.za/sites/default/files/gcis_document/201808/41839gon850.pdf)
+  couldn't be read as text, and lawlibrary.org.za refuses automated reads.
+
 ## Deadlines (`deadlines.json`)
 
 | key | rests on |
@@ -51,8 +63,67 @@ Added for the deadline engine (M8), read on **15 Nov 2026**:
 | `ohsa_gar8_2_death_after_notice` | GAR 8(2): "If an injured person dies after notice of the incident in which he or she was injured was given in terms of subregulation (1), the employer or user, as the case may be, shall forthwith notify the provincial director of his or her death." |
 | `ohsa_gar9_2_investigation` | GAR 9(2): "An employer or user shall cause every incident, which must be recorded in terms of subregulation (1), to be investigated by the employer, a person appointed by him or her, by a health and safety representative or a member of a health and safety committee within 7 days from the date of the incident and finalised as soon as is reasonably practicable, or within the contracted period in the case of contracted workers." |
 | `coida_s39_employer_report` | COIDA s39(1): "Subject to the provisions of this section an employer shall within seven days after having received notice of an accident or having learned in some other way that an employee has met with an accident, report the accident to the commissioner in the prescribed manner." No amendment note on (1). |
-| `cr2014_reg4_notification` | CR 2014 reg 4(1): "must at least 7 days before that work is to be carried out notify the provincial director in writing in a form similar to Annexure 2 if the intended construction work will - (a) include excavation work; (b) include working at a height where there is risk of falling; (c) include the demolition of a structure; or (d) include the use of explosives to perform construction work." Reg 4(2) adds a single-storey dwelling for a client who will live in it. |
-| `cr2014_reg3_permit_application` | CR 2014 reg 3(1): "A client who intends to have construction work carried out, must at least 30 days before that work is to be carried out apply to the provincial director in writing for a construction work permit". The triggers are (a) more than 180 days, (b) more than 1800 person-days, or (c) a works contract of R13m or more or CIDB grade 6. Rev 4 §3.2 says the R13m was raised by exemption notice to above R40m from 7 Feb 2017. That isn't modelled here; it belongs to the Reg 3/4 module. |
+| `cr2014_reg4_notification` | CR 2014 reg 4(1) (pp 7–8): "A contractor who intends to carry out any construction work other than work contemplated in regulation 3(1), must at least 7 days before that work is to be carried out notify the provincial director in writing in a form similar to Annexure 2 if the intended construction work will - (a) include excavation work; (b) include working at a height where there is risk of falling; (c) include the demolition of a structure; or (d) include the use of explosives to perform construction work." Reg 4(2) (p 8): "A contractor who intends to carry out construction work that involves construction of a single storey dwelling for a client who is going to reside in such dwelling upon completion, must at least 7 days before that work is to be carried out notify the provincial director in writing in a form similar to Annexure 2" |
+| `cr2014_reg3_permit_application` | CR 2014 reg 3(1) (p 6): "A client who intends to have construction work carried out, must at least 30 days before that work is to be carried out apply to the provincial director in writing for a construction work permit to perform construction work if the intended construction work will - (a) exceed 180 days; (b) will involve more than 1800 person days of construction work; or (c) the works contract is of a value equal to or exceeding thirteen million rand or Construction Industry Development Board (CIDB) grading level 6." Reg 3(2): "An application contemplated in subregulation (1) must be done in a form similar to Annexure 1." "(Commencement date of Regulation 3: 7 August 2015)". **The thresholds modelled are GN 850's, not these** (below). |
+
+**Correction (21 Nov 2026).** The reg 4 row used to quote from "must", which
+dropped two things: the duty is a **contractor's** ("an employer who performs
+construction work", reg 1), not only the principal contractor's; and reg 4(1)
+excludes "work contemplated in regulation 3(1)". The reg 3 row's thresholds
+are exempted by GN 850.
+
+**Who is bound** (reg 1): "'contractor' means an employer who performs
+construction work"; "'principal contractor' means an employer appointed by the
+client to perform construction work"; "'client' means any person for whom
+construction work is being performed". Annexure 2 is headed "NOTIFICATION OF
+CONSTRUCTION WORK" and starts "1. (a) Name and postal address of principal
+contractor"; it is signed by the "Principal Contractor", the "Client's Agent
+(where applicable)" and the "Client", and ends "THIS DOCUMENT IS TO BE
+FORWARDED TO THE OFFICE OF THE DEPARTMENT OF LABOUR PRIOR TO COMMENCEMENT OF
+WORK ON SITE." Its other fields: the principal contractor's compensation
+registration number; client and agent; designer(s); the construction
+supervisor (reg 8(1)) and subordinate supervisors (reg 8(2)); the site's
+physical address; "Nature of the construction work"; "Expected commencement
+date"; "Expected completion date"; the estimated maximum persons on site
+(total, male, female); planned contractors; contractors already selected.
+
+**Agents** (reg 5(5)): "Where a construction work permit is required as
+contemplated in regulation 3(1), the client must ... appoint a competent person
+in writing as an agent to act as his or her representative". Reg 5(6): "Where
+notification of construction work is required as contemplated in regulation
+4(1), the client may ... appoint a competent person in writing as an agent".
+
+**Reg 2(2):** "Regulations 3 and 5 are not applicable where the construction
+work carried out is in relation to a single storey dwelling for a client who
+intends to reside in such dwelling upon completion thereof."
+
+**GN 850 of 2018** (Chief Inspector, OHSA s40(3)(b); short quotes joined in
+order): "hereby grant the following temporary exemption of Construction
+Regulations 3(1) in terms of section 40 of the said Act" ... "must at least 30
+days before that work is to be carried out apply to the provincial director in
+writing" ... "for a construction work permit to perform construction work" ...
+"if the intended construction work starts from the 7th August 2018" ... "will—"
+... "exceed 365 days and will involve more than 3600 person days of
+construction work; or" ... "the tender value limit is grade 7, 8 or 9 of the
+Construction Industry Development Board (CIDB) grading." ... "Government
+Notice 641 of 24 July 2015 is hereby repealed." It has no rand value, no
+expiry and no review date. **Status:** Acts Online shows no later notice and a
+web search found none (21 Nov 2026); neither the Gazette nor lawlibrary.org.za
+could be read to confirm it is still current, so the reg 3 rule's caveat says
+so. GN 641 of 2015 (GG 39025) itself wasn't read. lawlibrary.org.za
+("Construction Regulations, 2014: Temporary Exemption Regarding Construction
+Work Permits, 2018") lists only the 17 Aug 2018 version of GN 850, and shows
+GN 641 repealed by it on 2018-08-17 (checked by the user in a browser on
+21 Nov 2026; automated reads are refused). The caveat stays: neither shows
+whether a later notice exists.
+
+**Draft Construction Regulations, 2025** (recorded 21 Nov 2026, from the
+user's review): GN 5983, GG 52267, 12 March 2025
+(https://www.gov.za/sites/default/files/gcis_document/202503/52267gon5983.pdf);
+comments closed 12 June 2025; its draft reg 33(1) repeals CR 2014. No final
+promulgation had been found as of 21 Nov 2026. If it is made final, the
+regime data set changes (a new `za_construction_2025`, BUILD_PLAN "Watch:
+Construction Regulations 2025"); its text has not been read here.
 
 Readings we chose:
 
@@ -79,10 +150,42 @@ Readings we chose:
   themselves.
 - **Reg 3 and reg 4** (`cr2014_reg3_permit_application`,
   `cr2014_reg4_notification`) have `applies_when: site_work`: they run from
-  starting work on a site, not from an incident, so no incident type may list
-  them. M8 creates no deadlines for them; the Reg 4 module will. Whether "at
-  least 7 days before" means 7 clear days is not settled here; that module
-  decides it.
+  the start date of a site work record, not from an incident, so no incident
+  type may list them. Which applies follows from the facts the user ticks
+  (`site_work.json`, REG4 D2), never from a value or dates:
+  - reg 4: excavation, work at height with a fall risk, demolition,
+    explosives (4(1)(a)–(d)), or the single-storey dwelling (4(2));
+  - reg 3 (as exempted by GN 850): more than 365 days **and** more than 3600
+    person-days, or a tender value limit of CIDB grade 7, 8 or 9;
+  - **reg 2(2):** the dwelling excludes reg 3;
+  - **reg 4(1)'s carve-out:** when reg 3 applies, reg 4 doesn't. Work that
+    meets reg 3(1)'s printed thresholds but not GN 850's is read as not
+    "contemplated in regulation 3(1)", so reg 4 applies to it (decided
+    21 Nov 2026; a permit wrongly assumed would otherwise drop the notice).
+- **"At least 7 days before" is counted in clear days** (unit `clear_days`,
+  decided 21 Nov 2026): neither the day of the notice nor the start day
+  counts, so a Monday 30 Nov start is due by the end of Sunday 22 Nov. IA s4
+  ("exclusively of the first and inclusively of the last day") would allow
+  Monday 23 Nov. Clear days is the earlier date, so it never tells anyone
+  they have longer than the law may allow. No judgment on "at least ... days
+  before" was read (*Nedcor Bank v Master* [2001] ZASCA 106 is the one found;
+  SAFLII refuses automated reads), so it is our reading and each rule's
+  caveat says so. There is no `legal_latest` for a before-deadline: s4's
+  extension past a Sunday would shorten the notice. A due day on a Sunday or
+  public holiday is not moved earlier either: nothing quoted says the notice
+  can't be sent on one.
+- **Duty holder** (REG4 D3): reg 4 binds "a contractor", so an overdue reg 4
+  deadline is red for the organisation recording the work. Reg 3 binds the
+  client (or its agent, reg 5(5)), so it is amber with a caveat until the
+  organisation's role on the site is recorded (BUILD_PLAN, PC).
+- **Proof:** a satisfaction may link the H&S file's
+  `notification_of_construction_work` (reg 4) or `construction_work_permit`
+  (reg 3). The permit is issued under reg 3(3), so it shows the application
+  was made.
+- **Not modelled:** reg 3(3)'s 30 days for the director to issue the permit
+  and reg 3(7): "No construction work contemplated in subregulation (1) may be
+  commenced or carried out before the construction work permit and number
+  contemplated in subregulation (3) have been issued and assigned."
 
 ## Incident taxonomy (`taxonomies.json`)
 
@@ -403,7 +506,7 @@ contractor's red and a subcontractor's uncounted.
 | `health_and_safety_plan` | CR 2014 reg 7(1)(a) | "provide and demonstrate to the client a suitable, sufficiently documented and coherent site specific health and safety plan" |
 | `risk_assessment` | CR 2014 reg 9(1) | "have risk assessments performed by a competent person appointed in writing, which risk assessments form part of the health and safety plan" |
 | `construction_work_permit` | CR 2014 reg 3(6) | "A client must ensure that the principal contractor keeps a copy of the construction work permit contemplated in subregulation (1) in the occupational health and safety file" |
-| `notification_of_construction_work` | CR 2014 reg 4(1) | "must at least 7 days before that work is to be carried out notify the provincial director in writing in a form similar to Annexure 2" |
+| `notification_of_construction_work` | CR 2014 reg 4(1) | "A contractor who intends to carry out any construction work other than work contemplated in regulation 3(1), must at least 7 days before that work is to be carried out notify the provincial director in writing in a form similar to Annexure 2" |
 | `fall_protection_plan` | CR 2014 reg 10(1)(a) | "designate a competent person to be responsible for the preparation of a fall protection plan" |
 | `principal_contractor_appointment` | CR 2014 reg 5(1)(k) | "appoint every principal contractor in writing for the project or part thereof on the construction site" |
 | `coida_letter_of_good_standing` | Rev 4 §2.8 | "Issuer-aware: FEM, Compensation Fund or RMA for Letters of Good Standing." The Domain Reference §2.9 says "Letter of Good Standing, valid for 12 months". Not law: see Gaps. |
@@ -433,6 +536,11 @@ These are product defaults (M11 D25), not law:
   7 days before, and on the day. Nothing in the spec sets these.
 - **Incident deadlines:** 2 days before and on the due day, then overdue.
   Forthwith deadlines: at once.
+- **Notification deadlines** (reg 3 and reg 4, `notification_days_before`):
+  7 and 2 days before and on the due day, then overdue (REG4 D9). Longer than
+  for incidents because a permit application needs the documents Annexure 1
+  lists ("1. Health and Safety specification. 2. Health and Safety plan. 3.
+  Baseline risk assessment.").
 - **Actions:** Rev 4 A.4, "Escalation up the role hierarchy P1 To the owner on
   lapse". When overdue:
   - the action's owner and raiser at once;
@@ -493,7 +601,10 @@ Rev 4 is `docs/spec/SiteProof_Rev4_Construction_and_Mining.pdf`.
    (a) include excavation work; (b) include working at a height where there is
    risk of falling; (c) include the demolition of a structure; or (d) include the
    use of explosives to perform construction work". Reg 4(2) adds the
-   single-storey dwelling. Not all other work needs a notification.
+   single-storey dwelling. Not all other work needs a notification. And Rev 4
+   names the principal contractor; reg 4(1) says "A contractor who intends to
+   carry out any construction work other than work contemplated in regulation
+   3(1)".
 
 2. **Rev 4 §3.5:** "OHSA section 24 — death, unconsciousness or disablement
    reportable to the Department of Employment and Labour on Annexure 1
@@ -515,3 +626,12 @@ Rev 4 is `docs/spec/SiteProof_Rev4_Construction_and_Mining.pdf`.
    compensation payable plus interest from the date of the accident."
    Caveat: that no other section still makes this an offence comes from law-firm
    summaries (Bowmans; Cliffe Dekker Hofmeyr citing s99), not the Act's text.
+
+4. **Rev 4 §3.2:** the reg 3 permit threshold was raised by exemption "to
+   above R40m from 7 Feb 2017". That was a phase of GN 641 of 2015, which **GN
+   850 of 2018** repealed: "Government Notice 641 of 24 July 2015 is hereby
+   repealed." For work starting from 7 August 2018 a permit is needed if the
+   work will "exceed 365 days and will involve more than 3600 person days of
+   construction work; or" "the tender value limit is grade 7, 8 or 9 of the
+   Construction Industry Development Board (CIDB) grading". No rand value
+   appears (see Deadlines).

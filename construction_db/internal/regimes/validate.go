@@ -28,9 +28,10 @@ var (
 )
 
 var (
-	units      = set("calendar_days", "working_days", "hours", unitImmediately)
-	directions = set("after", "before")
-	kinds      = set(kindReport, "investigation", "notification")
+	units       = set("calendar_days", "working_days", "hours", unitImmediately, UnitClearDays)
+	directions  = set("after", "before")
+	kinds       = set(kindReport, "investigation", "notification")
+	dutyHolders = set(DutyContractor, DutyClient)
 
 	// Each basis is an event the deadline engine (M8) must supply to start the
 	// clock. A misspelt basis would never be supplied, so the clock would
@@ -58,7 +59,10 @@ const (
 
 const (
 	unitImmediately = "immediately"
+	UnitClearDays   = "clear_days"
 	kindReport      = "report"
+	DutyContractor  = "contractor"
+	DutyClient      = "client"
 )
 
 func set(values ...string) map[string]bool {
@@ -197,7 +201,22 @@ func (ds *DataSet) validate(dir string) error {
 		if d.Unit == unitImmediately && d.Direction != "after" {
 			add(fileDeadlines, "%s: direction must be \"after\" when unit is %q", where, unitImmediately)
 		}
+		if d.Unit == UnitClearDays && d.Direction != "before" {
+			add(fileDeadlines, "%s: direction must be \"before\" when unit is %q", where, UnitClearDays)
+		}
 		oneOf(fileDeadlines, where, "basis", d.Basis, bases)
+		if d.AppliesWhen == AppliesSiteWork {
+			oneOf(fileDeadlines, where, "duty_holder", d.DutyHolder, dutyHolders)
+		} else if d.DutyHolder != "" {
+			add(fileDeadlines, "%s: duty_holder is only for %q rules", where, AppliesSiteWork)
+		}
+		for j, p := range d.ProofDocumentTypes {
+			if !slices.ContainsFunc(ds.DocumentTypes, func(t DocumentType) bool { return t.Key == p && t.Scope == ScopeSite }) {
+				add(fileDeadlines, "%s: proof_document_types entry %q is not a site document type in %s", where, p, fileDocuments)
+			} else if slices.Index(d.ProofDocumentTypes, p) != j {
+				add(fileDeadlines, "%s: proof_document_types lists %q twice", where, p)
+			}
+		}
 		// Rev 4, section 2.3: every deadline shows the rule and its source.
 		need(fileDeadlines, where, "source_ref", d.SourceRef)
 	}
@@ -305,6 +324,7 @@ func (ds *DataSet) validate(dir string) error {
 	days("worker_expiry_days", rem.WorkerExpiryDays)
 	days("company_document_days", rem.CompanyDocumentDays)
 	days("deadline_days_before", rem.DeadlineDaysBefore)
+	days("notification_days_before", rem.NotificationDaysBefore)
 	if e := rem.ActionEscalationDays; len(e) != 3 || e[0] < 0 || e[1] <= e[0] || e[2] <= e[1] || e[2] > 365 {
 		add(fileReminders, "action_escalation_days must be three ascending days (owner and raiser, SHE officers, owners)")
 	}
@@ -316,7 +336,105 @@ func (ds *DataSet) validate(dir string) error {
 	}
 	need(fileReminders, "reminders", "source_ref", rem.SourceRef)
 
+	ds.validateSiteWork(add, need, key, appliesOf)
+
 	return errors.Join(errs...)
+}
+
+// Every site_work deadline needs exactly one rules entry, or it would never
+// start; facts and rules referenced must exist.
+func (ds *DataSet) validateSiteWork(add func(file, format string, args ...any), need func(file, where, field, value string),
+	key func(file, where, k string, seen map[string]bool), appliesOf map[string]string) {
+	sw := ds.SiteWork
+	seenFacts := map[string]bool{}
+	for i, f := range sw.Facts {
+		where := fmt.Sprintf("facts[%d]", i)
+		key(fileSiteWork, where, f.Key, seenFacts)
+		need(fileSiteWork, where, "label", f.Label)
+		need(fileSiteWork, where, "source_ref", f.SourceRef)
+	}
+	listed := map[string]bool{}
+	for i, r := range sw.Rules {
+		where := fmt.Sprintf("rules[%d]", i)
+		switch {
+		case appliesOf[r.RuleKey] != AppliesSiteWork:
+			add(fileSiteWork, "%s: rule_key %q is not a %q rule in %s", where, r.RuleKey, AppliesSiteWork, fileDeadlines)
+		case listed[r.RuleKey]:
+			add(fileSiteWork, "%s: rule_key %q is listed twice", where, r.RuleKey)
+		}
+		listed[r.RuleKey] = true
+		need(fileSiteWork, where, "source_ref", r.SourceRef)
+		if len(r.WhenAny) == 0 {
+			add(fileSiteWork, "%s: when_any needs at least one group", where)
+		}
+		for j, g := range r.WhenAny {
+			if len(g) == 0 {
+				add(fileSiteWork, "%s: when_any[%d] is empty", where, j)
+			}
+			for k, f := range g {
+				if !seenFacts[f] {
+					add(fileSiteWork, "%s: when_any[%d] names unknown fact %q", where, j, f)
+				} else if slices.Index(g, f) != k {
+					add(fileSiteWork, "%s: when_any[%d] lists %q twice", where, j, f)
+				}
+			}
+		}
+		for _, f := range r.UnlessFacts {
+			if !seenFacts[f] {
+				add(fileSiteWork, "%s: unless_facts names unknown fact %q", where, f)
+			}
+		}
+	}
+	for i, r := range sw.Rules {
+		for _, u := range r.UnlessRules {
+			if !listed[u] {
+				add(fileSiteWork, "rules[%d]: unless_rules names %q, which has no rules entry", i, u)
+			}
+		}
+	}
+	for k, a := range appliesOf {
+		if a == AppliesSiteWork && !listed[k] {
+			add(fileSiteWork, "deadline %q has applies_when %q but no rules entry, so it would never start", k, AppliesSiteWork)
+		}
+	}
+	if cyc := unlessCycle(sw.Rules); cyc != "" {
+		add(fileSiteWork, "unless_rules cycle through %q", cyc)
+	}
+}
+
+func unlessCycle(rules []SiteWorkRule) string {
+	next := map[string][]string{}
+	for _, r := range rules {
+		next[r.RuleKey] = r.UnlessRules
+	}
+	const (
+		visiting = 1
+		done     = 2
+	)
+	state := map[string]int{}
+	var visit func(k string) string
+	visit = func(k string) string {
+		switch state[k] {
+		case visiting:
+			return k
+		case done:
+			return ""
+		}
+		state[k] = visiting
+		for _, n := range next[k] {
+			if c := visit(n); c != "" {
+				return c
+			}
+		}
+		state[k] = done
+		return ""
+	}
+	for _, r := range rules {
+		if c := visit(r.RuleKey); c != "" {
+			return c
+		}
+	}
+	return ""
 }
 
 var competencyKinds = set("certificate", "licence", "training", "registration")

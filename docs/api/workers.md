@@ -150,6 +150,7 @@ already on the register. One bad row writes nothing.
 
 ## Across the API
 
+- 400 `"text must not contain NUL characters"`: a NUL character (`\u0000`) anywhere in the JSON body (any value or key, however nested), the query string or the path, on every endpoint, checked before the token (REG4 review). Postgres text can't store one.
 - **503 `"server busy, try again"`** with a `Retry-After` header (seconds):
   the request ran out of time, or waited over 5 seconds for a record another
   request was changing. Retry after that many seconds.
@@ -352,6 +353,7 @@ export interface Reminders {
   worker_expiry_days: number[];
   company_document_days: number[];
   deadline_days_before: number[];
+  notification_days_before: number[];
   action_escalation_days: number[];
   verification_stalled_days: number;
   roster_lapse_days: number;

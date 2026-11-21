@@ -62,21 +62,27 @@
     "label": "Notify the provincial director of the construction work (Annexure 2)",
     "kind": "notification",
     "period": 7,
-    "unit": "calendar_days",
+    "unit": "clear_days",
     "direction": "before",
     "basis": "work_starts_at",
     "applies_when": "site_work",
+    "caveat": "Counted as 7 clear days (neither the day of the notice nor the start day counted): our reading of \"at least 7 days before\"; no court ruling was found. Reg 4 binds the contractor who intends to carry out the work; Annexure 2 is completed by the principal contractor.",
+    "duty_holder": "contractor",
+    "proof_document_types": ["notification_of_construction_work"],
     "source_ref": "Construction Regulations, 2014, reg 4(1) and 4(2)"
   },
   {
     "key": "cr2014_reg3_permit_application",
-    "label": "Client applies to the provincial director for a construction work permit",
+    "label": "Client applies to the provincial director for a construction work permit (Annexure 1)",
     "kind": "notification",
     "period": 30,
-    "unit": "calendar_days",
+    "unit": "clear_days",
     "direction": "before",
     "basis": "work_starts_at",
     "applies_when": "site_work",
-    "source_ref": "Construction Regulations, 2014, reg 3(1)"
+    "caveat": "Counted as 30 clear days: our reading of \"at least 30 days before\"; no court ruling was found. Reg 3 binds the client (or its agent, reg 5(5)); whether that is this organisation depends on its role on the site, which SiteProof does not record yet. Thresholds are GN 850 of 2018's; its current status was not confirmed against the Gazette.",
+    "duty_holder": "client",
+    "proof_document_types": ["construction_work_permit"],
+    "source_ref": "Construction Regulations, 2014, reg 3(1) and 2(2); GN 850 of 2018 (GG 41839)"
   }
 ]

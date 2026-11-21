@@ -23,7 +23,8 @@ func twoZones(t *testing.T) *regimes.Registry {
 		fsys[code+"/workforce.json"] = &fstest.MapFile{Data: []byte(`{"competency_types": [], "appointment_types": [],
 			"medical": {"default_validity_months": 0, "source_ref": "t"}}`)}
 		fsys[code+"/reminders.json"] = &fstest.MapFile{Data: []byte(`{"worker_expiry_days": [0], "company_document_days": [0],
-			"deadline_days_before": [0], "action_escalation_days": [0, 1, 3], "verification_stalled_days": 2, "roster_lapse_days": 14, "source_ref": "t"}`)}
+			"deadline_days_before": [0], "notification_days_before": [0], "action_escalation_days": [0, 1, 3], "verification_stalled_days": 2, "roster_lapse_days": 14, "source_ref": "t"}`)}
+		fsys[code+"/site_work.json"] = &fstest.MapFile{Data: []byte(`{"facts": [], "rules": []}`)}
 	}
 	reg, err := regimes.LoadFS(fsys)
 	if err != nil {

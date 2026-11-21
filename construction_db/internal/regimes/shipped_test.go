@@ -27,6 +27,7 @@ type shippedKeys struct {
 	AppointmentTypes  []string                     `json:"appointment_types"`
 	RequiredAppts     []string                     `json:"required_appointment_types"`
 	DocumentTypes     []string                     `json:"document_types"`
+	SiteWorkFacts     []string                     `json:"site_work_facts"`
 	ChecklistVersions map[string]map[string]string `json:"checklist_versions"`
 }
 
@@ -87,6 +88,11 @@ func missingKeys(reg *Registry, lock map[string]shippedKeys) []string {
 		report("competency type", want.CompetencyTypes, comp)
 		report("appointment type", want.AppointmentTypes, appt)
 		report("document type", want.DocumentTypes, docs)
+		facts := map[string]bool{}
+		for _, f := range ds.SiteWork.Facts {
+			facts[f.Key] = true
+		}
+		report("site work fact", want.SiteWorkFacts, facts)
 	}
 	return missing
 }
@@ -120,6 +126,7 @@ func TestMissingKeysDetected(t *testing.T) {
 			Deadlines:      []string{"test_rule", "gone_rule"},
 			Taxonomy:       []string{"injury", "gone_type"},
 			ToolboxTopics:  []string{"scaffolding", "gone_topic"},
+			SiteWorkFacts:  []string{"dig", "gone_fact"},
 		},
 		"gone_regime": {},
 	}
@@ -132,6 +139,7 @@ func TestMissingKeysDetected(t *testing.T) {
 		`test_regime deadline "gone_rule"`,
 		`test_regime taxonomy "gone_type"`,
 		`test_regime toolbox topic "gone_topic"`,
+		`test_regime site work fact "gone_fact"`,
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("missingKeys =\n%q\nwant\n%q", got, want)

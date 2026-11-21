@@ -1,0 +1,28 @@
+{
+  "facts": [
+    {"key": "excavation", "label": "Includes excavation work", "source_ref": "CR 2014 reg 4(1)(a)"},
+    {"key": "work_at_height_fall_risk", "label": "Includes working at a height where there is a risk of falling", "source_ref": "CR 2014 reg 4(1)(b)"},
+    {"key": "demolition", "label": "Includes the demolition of a structure", "source_ref": "CR 2014 reg 4(1)(c)"},
+    {"key": "explosives", "label": "Includes the use of explosives to perform construction work", "source_ref": "CR 2014 reg 4(1)(d)"},
+    {"key": "single_storey_dwelling_for_resident_client", "label": "Construction of a single storey dwelling for a client who is going to live in it", "source_ref": "CR 2014 reg 4(2) and 2(2)"},
+    {"key": "exceeds_365_days", "label": "Will exceed 365 days", "source_ref": "GN 850 of 2018 (GG 41839)"},
+    {"key": "exceeds_3600_person_days", "label": "Will involve more than 3600 person days of construction work", "source_ref": "GN 850 of 2018 (GG 41839)"},
+    {"key": "cidb_grade_7_8_or_9", "label": "The tender value limit is CIDB grade 7, 8 or 9", "source_ref": "GN 850 of 2018 (GG 41839)"}
+  ],
+  "rules": [
+    {
+      "rule_key": "cr2014_reg3_permit_application",
+      "when_any": [["exceeds_365_days", "exceeds_3600_person_days"], ["cidb_grade_7_8_or_9"]],
+      "unless_facts": ["single_storey_dwelling_for_resident_client"],
+      "unless_rules": [],
+      "source_ref": "GN 850 of 2018 (exempting CR 2014 reg 3(1)); CR 2014 reg 2(2)"
+    },
+    {
+      "rule_key": "cr2014_reg4_notification",
+      "when_any": [["excavation"], ["work_at_height_fall_risk"], ["demolition"], ["explosives"], ["single_storey_dwelling_for_resident_client"]],
+      "unless_facts": [],
+      "unless_rules": ["cr2014_reg3_permit_application"],
+      "source_ref": "CR 2014 reg 4(1) (\"other than work contemplated in regulation 3(1)\") and 4(2)"
+    }
+  ]
+}

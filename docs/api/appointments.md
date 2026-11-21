@@ -11,6 +11,9 @@ isn't quoted here.
 All endpoints need `Authorization: Bearer <access token>`. Errors are
 `{"error": "<message>"}`. The endpoints are under `/v1/construction`; a site
 under another edition's regime is 404 `"site not found"`.
+Any endpoint can answer 503 `"server busy, try again"` with a `Retry-After`
+header (seconds): it ran out of time, or waited over 5 seconds for a record
+another request was changing; retry after that many seconds.
 
 Roles: owners and SHE officers record and retract; supervisors read their own
 sites. Other roles get 403 `"forbidden"`.

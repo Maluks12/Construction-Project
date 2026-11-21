@@ -411,8 +411,9 @@ both errors.
   HTTP integration tests (testcontainers Postgres, migrations applied
   automatically).
 - `migrations/`: golang-migrate files, `00000N_name.up.sql` / `.down.sql`.
-- CI (`.github/workflows/ci.yml`): gofmt, vet, `go test -race`, build, Docker
-  image to GHCR.
+- CI (`.github/workflows/ci.yml`): gofmt, vet, `go test -race -timeout 15m`,
+  build, Docker image to GHCR. Every `go test` names its `-timeout` and every
+  job its `timeout-minutes` (archtest `TestCITimeouts`).
 
 When showing a `routes.go`, always show the full file.
 
@@ -594,8 +595,10 @@ under cmd/.
   calls `httpapi.WriteUnexpected(c, "request failed", err)`, and so does any
   middleware with an unexpected error. Never write a 500 by hand:
   - out of time (`errors.Is(err, context.DeadlineExceeded)`, which includes
-    waiting for a pool connection) is **503** `"server busy, try again"`
-    with `Retry-After: 2`, logged at warn;
+    waiting for a pool connection), or a lock wait past `lock_timeout`
+    (SQLSTATE 55P03), is **503** `"server busy, try again"` with
+    `Retry-After: 2`, logged at warn (a lock timeout with `waited_on`,
+    Postgres's `Where`);
   - the client went away (`context.Canceled`) is 499 with no body, logged
     at info: not a server error, and nobody receives it;
   - anything else is 500 `"internal error"`, logged at error (never send
@@ -608,6 +611,31 @@ under cmd/.
   `NewRouter` right after Recovery. Pass `c.Request.Context()` down; don't
   add your own timeouts. A future long-running endpoint (e.g. the M12 audit
   pack export) needs its own, longer deadline.
+- **Lock waits are bounded per pool** (`database.Bounds`, set as
+  connection parameters, never on the role: the API's role is reached by
+  `SET ROLE`, and migrations must keep the defaults):
+  - API (`APIBounds`): `lock_timeout` 5 s, `idle_in_transaction_session_timeout`
+    60 s, so a leaked transaction can't hold locks for long.
+  - Worker (`WorkerBounds`): `lock_timeout` 1 min, no idle limit (the export
+    builder's snapshot stays open while it streams a pack to S3).
+  - Tests (`dbtest.Bounds`): `lock_timeout` 10 s, so a stuck test fails in
+    seconds naming the lock, not at the package timeout. No idle limit,
+    and no limits at all under libfaketime (`StartAt` with an offset):
+    there Postgres's timers fired early, an idle limit ending pooled
+    connections that weren't in a transaction (25P03) and the 10 s
+    `lock_timeout` firing after about 1 s (55P03; CI on PR #17's first
+    run). **Open:** why libfaketime causes that is unexplained.
+  - `lock_timeout` bounds each wait, not the statement: a request queued
+    behind another waiter on a row waits for its turn, then for the row, so
+    up to 10 s in the API (`TestLockWaitIs503`).
+  - Locks the API waits on: the site chain head (`site_chain_heads FOR
+    UPDATE`, evidence complete), the evidence row; `FOR NO KEY UPDATE` on
+    incident, action and toolbox talk headers; inspections, invitations and
+    site diaries `FOR UPDATE`; and the deadline triggers' `FOR SHARE` on a
+    deadline. There is no advisory lock.
+- **bcrypt cost:** `auth.PasswordCost`, the default in production
+  (`cmd/api` checks it at startup with `auth.CheckPasswordCost`); the app
+  tests set `bcrypt.MinCost` in TestMain. archtest refuses it set under cmd/.
 - **Pool size:** `DB_MAX_CONNS` (default 20) per API instance. Keep the sum
   across instances below Postgres's `max_connections` (100 by default) minus
   headroom for `migrate`, psql and admin tools. `main.go` logs it at
@@ -1887,6 +1915,24 @@ under cmd/.
     made the previous date, as well as that day's sign-ins made before the
     talk ended. The day register, absent list and headcount stay by sign-in
     date. Test: `TestNotSignedNightShift` (23:35, then a 00:35 talk).
+
+- **CI app timeout fix (Sat 21 Nov, branch fix/ci-app-hang).** CI run #90
+  (main after M12) stopped internal/app at 618 s: the race step had no
+  `-timeout`, so Go's default 10 minutes ended the package mid-test (the
+  stack showed whichever test was running, in invite accept).
+  - **Cause:** the package's own length under `-race`, not a deadlock.
+    Locally on main with `-race` it took 1462 s and 1897 s; 130 of 147 tests
+    took over 5 s. bcrypt at its default cost in every fixture's signup and
+    login was most of it. Every request has a 60 s test deadline and pgx
+    honours it, so no single request could wait 10 minutes.
+  - **Fixed:** `auth.PasswordCost` (tests `bcrypt.MinCost`; the API refuses
+    to start below the default); `-timeout` on every `go test` in CI and
+    `timeout-minutes` on both jobs (`TestCITimeouts`).
+  - **Fail fast next time:** lock waits bounded per pool and a lock timeout
+    answered 503 (Conventions). `TestLockWaitIs503` holds a site's chain
+    head while a burst of uploads completes: each 503 with Retry-After in
+    5–10 s, the log naming `site_chain_heads`, and the retries seal one
+    unbroken chain.
 
 - **M12 answers (Thu 19 Nov), for the site compliance summary:**
   - **Expiring** means each record's own state (its reminder window).

@@ -5,14 +5,17 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"construction_db/internal/core/auth"
 )
 
 func TestRefreshRotationAndReuse(t *testing.T) {
+	sfx := uuid.NewString()[:8] // fresh per run, so -count=N works
 	router := newRouter(t)
-	signup(t, router, "Refresh Co", "owner@refresh.test")
+	signup(t, router, "Refresh Co", "owner@refresh-"+sfx+".test")
 
-	first := loginTokens(t, router, "owner@refresh.test")
+	first := loginTokens(t, router, "owner@refresh-"+sfx+".test")
 	second := refresh(t, router, first.RefreshToken, http.StatusOK)
 
 	if rec := get(t, router, "/v1/me", second.AccessToken); rec.Code != http.StatusOK {

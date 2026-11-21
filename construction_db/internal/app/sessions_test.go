@@ -5,16 +5,19 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"construction_db/internal/core/auth"
 )
 
 // Sessions run with tenant {UserID} only, so these exercise the sessions
 // policy's user_id branch in both USING and WITH CHECK.
 func TestSessions(t *testing.T) {
+	sfx := uuid.NewString()[:8] // fresh per run, so -count=N works
 	router := newRouter(t)
 
 	t.Run("logout", func(t *testing.T) {
-		token := signup(t, router, "Logout Co", "owner@logout.test")
+		token := signup(t, router, "Logout Co", "owner@logout-"+sfx+".test")
 		if rec := do(t, router, http.MethodPost, "/v1/auth/logout", token, nil); rec.Code != http.StatusNoContent {
 			t.Fatalf("logout: got %d (body: %s)", rec.Code, rec.Body.String())
 		}
@@ -24,15 +27,15 @@ func TestSessions(t *testing.T) {
 	})
 
 	t.Run("revoke a session in another org", func(t *testing.T) {
-		ownerA := signup(t, router, "Sessions A", "owner@sessions-a.test")
-		ownB := signup(t, router, "Sessions B", "u@sessions-b.test")
+		ownerA := signup(t, router, "Sessions A", "owner@sessions-a-"+sfx+".test")
+		ownB := signup(t, router, "Sessions B", "u@sessions-b-"+sfx+".test")
 		orgA, orgB := me(t, router, ownerA).OrgID, me(t, router, ownB).OrgID
 
-		invite := sendInvite(t, router, ownerA, map[string]any{"full_name": "U", "email": "u@sessions-b.test", "role": auth.RoleSupervisor})
+		invite := sendInvite(t, router, ownerA, map[string]any{"full_name": "U", "email": "u@sessions-b-" + sfx + ".test", "role": auth.RoleSupervisor})
 		acceptInvite(t, router, invite.Token, "correcthorse1", http.StatusOK)
 
-		inA := loginTokensFor(t, router, "u@sessions-b.test", orgA).AccessToken
-		inB := loginTokensFor(t, router, "u@sessions-b.test", orgB).AccessToken
+		inA := loginTokensFor(t, router, "u@sessions-b-"+sfx+".test", orgA).AccessToken
+		inB := loginTokensFor(t, router, "u@sessions-b-"+sfx+".test", orgB).AccessToken
 		sessionB := me(t, router, inB).SessionID
 
 		if !listsSession(t, router, inA, sessionB) {

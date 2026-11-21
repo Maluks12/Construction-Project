@@ -146,7 +146,9 @@ Body: `RemoveRequest`. 200 with the entry, removed; 400 `"reason must be 1-500 c
 
 ## Across the API
 
-- **503 `"server busy, try again"`** with a `Retry-After` header (seconds).
+- **503 `"server busy, try again"`** with a `Retry-After` header (seconds):
+  the request ran out of time, or waited over 5 seconds for a record another
+  request was changing. Retry after that many seconds.
 - 401 `"authorization header required"`, `"invalid authorization header
   format"` or `"unauthorized"`.
 - 400 with the JSON decoder's own text: a body that isn't valid JSON.

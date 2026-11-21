@@ -163,7 +163,9 @@ repeat with the same reason.
 ## Across the API
 
 - **503 `"server busy, try again"`** with a `Retry-After` header (seconds):
-  the request ran out of time. Retry after that many seconds.
+  the request ran out of time, or waited over 5 seconds for a record another
+  request was changing (a burst of uploads to one site, say). Retry after
+  that many seconds.
 - 401 `"authorization header required"`, `"invalid authorization header
   format"` or `"unauthorized"`: missing, malformed, expired or revoked
   token.

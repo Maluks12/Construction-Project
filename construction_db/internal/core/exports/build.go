@@ -221,6 +221,10 @@ func (b *Builder) Run(ctx context.Context, a *Attempt) error {
 		err = b.upload(bctx, a, p)
 	}
 	if err != nil {
+		// A lost lease cancels the build: name it, not just "context canceled".
+		if cause := context.Cause(bctx); cause != nil && !errors.Is(err, cause) {
+			err = fmt.Errorf("%w (%w)", err, cause)
+		}
 		var seal *SealError
 		switch {
 		case errors.As(err, &seal):

@@ -21,8 +21,21 @@ type Claims struct {
 
 var ErrInvalidToken = errors.New("invalid token")
 
+// PasswordCost is bcrypt's cost for new hashes. Tests lower it (TestMain);
+// the API refuses to start below the default (CheckPasswordCost), and
+// archtest refuses it set under cmd/.
+var PasswordCost = bcrypt.DefaultCost
+
+// CheckPasswordCost fails unless new hashes use at least bcrypt's default cost.
+func CheckPasswordCost() error {
+	if PasswordCost < bcrypt.DefaultCost {
+		return fmt.Errorf("password hashing cost %d is below bcrypt's default %d (a test setting)", PasswordCost, bcrypt.DefaultCost)
+	}
+	return nil
+}
+
 func HashPassword(password string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), PasswordCost)
 	if err != nil {
 		return "", fmt.Errorf("hash password: %w", err)
 	}

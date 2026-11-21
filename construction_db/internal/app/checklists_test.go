@@ -8,6 +8,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/google/uuid"
+
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/checklists"
 	"construction_db/internal/regimes"
@@ -86,8 +88,9 @@ func TestChecklistCatalog(t *testing.T) {
 // Templates come from each site's own regime, not the organisation's or a
 // default: two sites of one org on different regimes get different lists.
 func TestChecklistCatalogFollowsTheSiteRegime(t *testing.T) {
+	sfx := uuid.NewString()[:8] // fresh per run, so -count=N works
 	router := newRouter(t)
-	token := signup(t, router, "Two Regimes Co", "owner@two-regimes-catalog.test")
+	token := signup(t, router, "Two Regimes Co", "owner@two-regimes-catalog-"+sfx+".test")
 	owner := me(t, router, token)
 	siteA, siteB := twoRegimeSites(t, owner.OrgID)
 

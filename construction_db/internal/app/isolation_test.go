@@ -13,9 +13,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 
+	"construction_db/internal/core/auth"
 	"construction_db/internal/core/sites"
 	"construction_db/internal/editions/construction"
 	"construction_db/internal/platform/clock"
@@ -49,6 +52,9 @@ var (
 
 func TestMain(m *testing.M) {
 	gin.SetMode(gin.TestMode)
+	// Every fixture signs people up and in: at bcrypt's default cost that was
+	// most of this package's time under -race (CI run #90).
+	auth.PasswordCost = bcrypt.MinCost
 
 	reg, err := regimes.Load()
 	if err != nil {
@@ -129,10 +135,11 @@ func newRouter(t *testing.T) *gin.Engine {
 }
 
 func TestSiteIsolation(t *testing.T) {
+	sfx := uuid.NewString()[:8] // fresh per run, so -count=N works
 	router := newRouter(t)
 
-	tokenA := signup(t, router, "Org A", "owner-a@isolation.test")
-	tokenB := signup(t, router, "Org B", "owner-b@isolation.test")
+	tokenA := signup(t, router, "Org A", "owner-a@isolation-"+sfx+".test")
+	tokenB := signup(t, router, "Org B", "owner-b@isolation-"+sfx+".test")
 
 	sitesB := listSites(t, router, tokenB)
 	if len(sitesB) != 1 {

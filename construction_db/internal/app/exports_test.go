@@ -866,8 +866,10 @@ func TestExportHeartbeat(t *testing.T) {
 	clk, ctx, org := newSASTClock(t), context.Background(), f.ownerMe.OrgID
 	e := queueExport(t, f, f.siteA, exportBody(clk.Today(), clk.Today()))
 
-	b := newBuilder(300 * time.Millisecond)
-	b.Exports, b.OnlyOrgs = slowUploads{Store: testExports, wait: 1500 * time.Millisecond}, []string{org}
+	// Long enough that a busy CI machine renews the lease in time (it lapsed
+	// at 300 ms under load); about 12 renewals in a 4 s build.
+	b := newBuilder(time.Second)
+	b.Exports, b.OnlyOrgs = slowUploads{Store: testExports, wait: 4 * time.Second}, []string{org}
 	b.Heartbeat = func(ctx context.Context) {
 		_ = notifications.RecordRun(ctx, testPool, notifications.JobExports, b.Instance, func(context.Context) (int, error) { return 0, nil })
 	}
@@ -888,9 +890,53 @@ func TestExportHeartbeat(t *testing.T) {
 	n := countRows(t, `SELECT count(*) FROM job_runs h, job_runs r
 		WHERE h.instance = $1 AND r.instance = $1 || '-build' AND h.job = 'exports' AND h.ok AND h.finished_at < r.finished_at`, b.Instance)
 	if n < 3 {
-		t.Errorf("%d heartbeats during a 1.5 s build with a 300 ms lease, want at least 3", n)
+		t.Errorf("%d heartbeats during a 4 s build with a 1 s lease, want at least 3", n)
 	}
 	if n, err := b.RunOne(ctx); err != nil || n != 0 {
 		t.Errorf("nothing left to build: %d, %v", n, err)
+	}
+}
+
+// A build that loses its lease stops and says why, not just "context
+// canceled". Forced: the attempt row is held, so a renewal waits past the
+// lease, and the guard then refuses to extend a lapsed lease.
+func TestExportLostLease(t *testing.T) {
+	f := newEvidenceFixture(t, "exportlostlease")
+	clk, ctx, org := newSASTClock(t), context.Background(), f.ownerMe.OrgID
+	e := queueExport(t, f, f.siteA, exportBody(clk.Today(), clk.Today()))
+	b := newBuilder(time.Second)
+	b.Exports, b.OnlyOrgs = slowUploads{Store: testExports, wait: time.Minute}, []string{org}
+	time.Sleep(10 * time.Millisecond)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := b.RunOne(ctx)
+		done <- err
+	}()
+
+	var attempt string
+	for deadline := time.Now().Add(10 * time.Second); attempt == ""; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("no attempt claimed")
+		}
+		_ = testAdmin.QueryRow(ctx, `SELECT id FROM audit_export_attempts WHERE export_id = $1`, e.ID).Scan(&attempt)
+	}
+	hold := holdOpen(t, f)
+	if _, err := hold.Exec(ctx, `SELECT 1 FROM audit_export_attempts WHERE id = $1 FOR UPDATE`, attempt); err != nil {
+		t.Fatal(err)
+	}
+	waitForLock(t, "UPDATE audit_export_attempts")
+	time.Sleep(1200 * time.Millisecond) // the lease lapses while the renewal waits
+	if err := hold.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "lost the lease") || !strings.Contains(err.Error(), "only while it is live") {
+			t.Errorf("run: %v; want it to name the lost lease", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the build didn't stop after losing its lease")
 	}
 }

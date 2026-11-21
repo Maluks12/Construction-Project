@@ -150,7 +150,9 @@ already on the register. One bad row writes nothing.
 
 ## Across the API
 
-- **503 `"server busy, try again"`** with a `Retry-After` header (seconds).
+- **503 `"server busy, try again"`** with a `Retry-After` header (seconds):
+  the request ran out of time, or waited over 5 seconds for a record another
+  request was changing. Retry after that many seconds.
 - 401 `"authorization header required"`, `"invalid authorization header
   format"` or `"unauthorized"`.
 - 400 with the JSON decoder's own text: a body that isn't valid JSON.

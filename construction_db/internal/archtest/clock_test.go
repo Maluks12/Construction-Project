@@ -35,6 +35,8 @@ var testOnlyFields = map[string]string{
 	"Lease":    "the export lease is the default in production",
 	"Backoff":  "the export backoff is the database default in production",
 	"OnlyOrgs": "the worker serves every organisation",
+	// CI run #90: tests lower it; the API refuses to start below the default.
+	"PasswordCost": "passwords are hashed at bcrypt's default cost in production",
 }
 
 func clockViolations(files map[string]string) []string {
@@ -107,6 +109,68 @@ func TestProductionUsesTheRealClock(t *testing.T) {
 	}
 }
 
+// The API checks the bcrypt cost before anything else at startup.
+func TestAPIChecksPasswordCost(t *testing.T) {
+	src, ok := moduleSources(t)["cmd/api/main.go"]
+	if !ok {
+		t.Fatal("cmd/api/main.go is gone; update the guard")
+	}
+	if !callsSelector(t, src, "auth", "CheckPasswordCost") {
+		t.Error("cmd/api/main.go must call auth.CheckPasswordCost at startup")
+	}
+}
+
+// Each binary connects with its own lock limits: the worker never takes the
+// API's 5s (the export builder waits longer).
+func TestBinariesUseTheirBounds(t *testing.T) {
+	files := moduleSources(t)
+	for path, want := range map[string]string{"cmd/api/main.go": "APIBounds", "cmd/worker/main.go": "WorkerBounds"} {
+		src, ok := files[path]
+		if !ok {
+			t.Fatalf("%s is gone; update the guard", path)
+		}
+		for _, b := range []string{"APIBounds", "WorkerBounds"} {
+			if got := usesSelector(t, src, "database", b); got != (b == want) {
+				t.Errorf("%s uses database.%s: %v; want only %s", path, b, got, want)
+			}
+		}
+	}
+}
+
+func callsSelector(t *testing.T, src, pkg, name string) bool {
+	t.Helper()
+	return findSelector(t, src, pkg, name, true)
+}
+
+func usesSelector(t *testing.T, src, pkg, name string) bool {
+	t.Helper()
+	return findSelector(t, src, pkg, name, false)
+}
+
+func findSelector(t *testing.T, src, pkg, name string, call bool) bool {
+	t.Helper()
+	f, err := parser.ParseFile(token.NewFileSet(), "main.go", src, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		var s *ast.SelectorExpr
+		if c, ok := n.(*ast.CallExpr); ok && call {
+			s, _ = c.Fun.(*ast.SelectorExpr)
+		} else if !call {
+			s, _ = n.(*ast.SelectorExpr)
+		}
+		if s != nil {
+			if x, ok := s.X.(*ast.Ident); ok && x.Name == pkg && s.Sel.Name == name {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
 func TestClockViolations(t *testing.T) {
 	ok := map[string]string{
 		"cmd/api/main.go":                  "package main\nfunc main() { _ = app.HTTPOptions{RequestTimeout: 1} }",
@@ -128,6 +192,7 @@ func TestClockViolations(t *testing.T) {
 		"cmd assigns Lease":  {"cmd/worker/main.go": "package main\nfunc main() { b.Lease = time.Second }"},
 		"cmd sets Backoff":   {"cmd/worker/main.go": "package main\nvar _ = exports.Builder{Backoff: time.Second}"},
 		"cmd sets OnlyOrgs":  {"cmd/worker/main.go": "package main\nvar _ = exports.Builder{OnlyOrgs: nil}"},
+		"cmd lowers cost":    {"cmd/api/main.go": "package main\nfunc main() { auth.PasswordCost = 4 }"},
 		"testcontainers":     {"internal/core/sites/x.go": "package sites\nimport _ \"github.com/testcontainers/testcontainers-go/modules/postgres\""},
 	} {
 		if v := clockViolations(bad); len(v) == 0 {

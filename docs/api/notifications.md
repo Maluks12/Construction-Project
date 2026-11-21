@@ -9,6 +9,9 @@ here.
 
 All endpoints need `Authorization: Bearer <access token>`. Every role reads
 its own inbox. Errors are `{"error": "<message>"}`.
+Any endpoint can answer 503 `"server busy, try again"` with a `Retry-After`
+header (seconds): it ran out of time, or waited over 5 seconds for a record
+another request was changing; retry after that many seconds.
 
 ## What is reminded, to whom, when (M11 D23, D25)
 

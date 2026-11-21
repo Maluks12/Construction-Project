@@ -11,6 +11,9 @@ All endpoints need `Authorization: Bearer <access token>`. **Owners and SHE
 officers only** (M12 D9; Rev 4 §2.12 gives packs to the SHE officer role);
 supervisors and every other role get 403 `"forbidden"`. Errors are
 `{"error": "<message>"}`.
+Any endpoint can answer 503 `"server busy, try again"` with a `Retry-After`
+header (seconds): it ran out of time, or waited over 5 seconds for a record
+another request was changing; retry after that many seconds.
 
 ## How it works
 

@@ -20,6 +20,12 @@ import (
 // pool behave the same on every machine.
 const MaxConns = 10
 
+// Bounds make a lock wait fail in seconds, Postgres naming the lock, instead
+// of hanging until the package timeout. No idle limit: under libfaketime
+// (StartAt) Postgres ended pooled connections that weren't idle in a
+// transaction (25P03), failing the date tests.
+var Bounds = database.Bounds{LockTimeout: 10 * time.Second}
+
 // Start runs Postgres with every migration applied. app connects like the API
 // (as siteproof_app, under RLS); admin is the superuser, for fixtures the app
 // may not write.
@@ -82,7 +88,7 @@ func StartAt(ctx context.Context, offset time.Duration) (app, admin *pgxpool.Poo
 		return nil, nil, nil, fmt.Errorf("connection string: %w", err)
 	}
 
-	app, err = database.Connect(ctx, url, MaxConns)
+	app, err = database.Connect(ctx, url, MaxConns, Bounds)
 	if err != nil {
 		_ = testcontainers.TerminateContainer(ctr)
 		return nil, nil, nil, fmt.Errorf("connect: %w", err)

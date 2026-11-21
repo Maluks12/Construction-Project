@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"construction_db/internal/app"
+	"construction_db/internal/core/auth"
 	"construction_db/internal/editions/construction"
 	"construction_db/internal/platform/config"
 	"construction_db/internal/platform/database"
@@ -28,6 +29,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// A test's cheap bcrypt cost must never reach production.
+	if err := auth.CheckPasswordCost(); err != nil {
+		slog.Error("password hashing", "error", err)
+		os.Exit(1)
+	}
+
 	// Before connecting, so broken regime data fails fast even without a database.
 	reg, err := regimes.Load()
 	if err != nil {
@@ -38,14 +45,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := database.Connect(ctx, cfg.DatabaseURL, cfg.DBMaxConns)
+	pool, err := database.Connect(ctx, cfg.DatabaseURL, cfg.DBMaxConns, database.APIBounds)
 	if err != nil {
 		slog.Error("connect database", "error", err)
 		os.Exit(1)
 	}
 	defer pool.Close()
 	slog.Info("database pool", "max_conns", cfg.DBMaxConns, "request_timeout", cfg.RequestTimeout.String(),
-		"trusted_proxies", cfg.TrustedProxies)
+		"trusted_proxies", cfg.TrustedProxies, "lock_timeout", database.APIBounds.LockTimeout.String(),
+		"idle_in_transaction_timeout", database.APIBounds.IdleInTransaction.String())
 
 	if err := regimes.CheckDatabase(ctx, pool, reg); err != nil {
 		slog.Error("check regimes", "error", err)

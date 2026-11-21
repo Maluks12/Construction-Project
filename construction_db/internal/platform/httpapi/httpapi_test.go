@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestDeadline(t *testing.T) {
@@ -55,10 +56,15 @@ func TestWriteUnexpected(t *testing.T) {
 		body       string
 		retryAfter string
 		level      string
+		waitedOn   string
 	}{
-		{"internal error", errors.New("boom"), 500, `{"error":"internal error"}`, "", "ERROR"},
-		{"deadline passed", fmt.Errorf("with tenant: %w", context.DeadlineExceeded), 503, `{"error":"server busy, try again"}`, "2", "WARN"},
-		{"client went away", fmt.Errorf("with tenant: %w", context.Canceled), StatusClientClosedRequest, "", "", "INFO"},
+		{"internal error", errors.New("boom"), 500, `{"error":"internal error"}`, "", "ERROR", ""},
+		{"deadline passed", fmt.Errorf("with tenant: %w", context.DeadlineExceeded), 503, `{"error":"server busy, try again"}`, "2", "WARN", ""},
+		{"client went away", fmt.Errorf("with tenant: %w", context.Canceled), StatusClientClosedRequest, "", "", "INFO", ""},
+		{"lock wait past lock_timeout", fmt.Errorf("append to chain: %w", &pgconn.PgError{Code: LockNotAvailable,
+			Message: "canceling statement due to lock timeout", Where: `while locking tuple (0,1) in relation "site_chain_heads"`}),
+			503, `{"error":"server busy, try again"}`, "2", "WARN", `while locking tuple (0,1) in relation "site_chain_heads"`},
+		{"another Postgres error", fmt.Errorf("x: %w", &pgconn.PgError{Code: "23505"}), 500, `{"error":"internal error"}`, "", "ERROR", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -76,9 +82,15 @@ func TestWriteUnexpected(t *testing.T) {
 			if !c.IsAborted() {
 				t.Error("want the chain aborted, so middleware stops too")
 			}
-			var entry struct{ Level, Msg string }
+			var entry struct {
+				Level, Msg string
+				WaitedOn   string `json:"waited_on"`
+			}
 			if err := json.Unmarshal(logs.Bytes(), &entry); err != nil || entry.Level != tt.level || entry.Msg != "request failed" {
 				t.Errorf("log %q (err %v), want one %s entry", logs.String(), err, tt.level)
+			}
+			if entry.WaitedOn != tt.waitedOn {
+				t.Errorf("log waited_on %q, want %q", entry.WaitedOn, tt.waitedOn)
 			}
 		})
 	}

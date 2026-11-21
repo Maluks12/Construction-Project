@@ -10,6 +10,9 @@ All endpoints need `Authorization: Bearer <access token>`. Owners and SHE
 officers on any site; supervisors on their own sites (another site is 404
 `"site not found"`); other roles 403 `"forbidden"`. Errors are
 `{"error": "<message>"}`. Read-only: nothing here changes a record.
+Any endpoint can answer 503 `"server busy, try again"` with a `Retry-After`
+header (seconds): it ran out of time, or waited over 5 seconds for a record
+another request was changing; retry after that many seconds.
 
 ## The rule (M12 D1–D4)
 

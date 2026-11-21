@@ -7,6 +7,9 @@ types below stop matching the Go code, and `TestCapabilitiesMatchRoutes`
 fails if a capability stops matching the route it describes.
 
 Needs `Authorization: Bearer <access token>`. Every role may call it.
+It can answer 503 `"server busy, try again"` with a `Retry-After` header
+(seconds): it ran out of time, or waited over 5 seconds for a record another
+request was changing; retry after that many seconds.
 
 ## `GET /v1/me`
 

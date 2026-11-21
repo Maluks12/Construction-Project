@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const (
@@ -17,6 +18,9 @@ const (
 	// StatusClientClosedRequest is nginx's 499: the client left before the
 	// answer. Nobody receives it; it keeps logs and metrics from counting a 500.
 	StatusClientClosedRequest = 499
+
+	// LockNotAvailable is Postgres's SQLSTATE when lock_timeout ends a wait.
+	LockNotAvailable = "55P03"
 )
 
 // Deadline gives every request one deadline. Handlers pass c.Request.Context()
@@ -37,8 +41,16 @@ func Deadline(d time.Duration) gin.HandlerFunc {
 func WriteUnexpected(c *gin.Context, msg string, err error) {
 	// pgxpool returns ctx.Err() and pgconn's timeout error wraps it, so this
 	// one check covers both (pgx v5 pgconn/errors.go normalizeTimeoutError).
-	if errors.Is(err, context.DeadlineExceeded) {
-		slog.Warn(msg, "path", c.Request.URL.Path, "err", err)
+	// A lock wait past the pool's lock_timeout (database.Bounds) is the same:
+	// busy, retry.
+	var pgErr *pgconn.PgError
+	if lock := errors.As(err, &pgErr) && pgErr.Code == LockNotAvailable; lock || errors.Is(err, context.DeadlineExceeded) {
+		if lock {
+			// Where says what it waited on ("while locking tuple (0,1) in relation ...").
+			slog.Warn(msg, "path", c.Request.URL.Path, "err", err, "waited_on", pgErr.Where)
+		} else {
+			slog.Warn(msg, "path", c.Request.URL.Path, "err", err)
+		}
 		c.Header("Retry-After", RetryAfterSeconds)
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "server busy, try again"})
 		return

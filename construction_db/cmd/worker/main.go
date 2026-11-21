@@ -50,7 +50,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	pool, err := database.Connect(ctx, cfg.DatabaseURL, cfg.DBMaxConns)
+	pool, err := database.Connect(ctx, cfg.DatabaseURL, cfg.DBMaxConns, database.WorkerBounds)
 	if err != nil {
 		slog.Error("connect database", "error", err)
 		os.Exit(1)

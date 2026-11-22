@@ -59,21 +59,40 @@ Run lint, tsc and build after each change and report the results.
   "Viewing" picker chooses the site (cookie `sp_site`, see `lib/site.ts`),
   because the safety endpoints are all per site.
 - **Wired to the API** (reads in `lib/data.ts`, writes in `app/actions/`):
-  overview; inspections list and detail (abandon); findings & actions
-  (raise, waive, reassign, move due, verify, reject, cancel, reopen);
-  incidents (register, detail, report, amend, witness statement, raise an
-  action); deadlines (record as met, retract); evidence (list, view a
-  photo, chain check). Built against `docs/api/*.md` and a stand-in server,
-  **not yet run against the real API**: check each write once with it.
+  overview (the M12 rollup, `GET /v1/compliance`) and site compliance;
+  notifications (inbox, mark read, the sidebar count); inspections list and
+  detail (abandon, which inspection corrects it); findings & actions (raise,
+  waive, retract a waiver, reassign, move due, verify, reject, cancel,
+  reopen); incidents (register, detail, report, amend, witness statement,
+  raise an action); deadlines (record as met with an H&S file proof for site
+  work, retract); notifications & permits (site work, REG4); toolbox talks
+  (read, link or unlink a signature, withdraw one) and the site diary (read,
+  with conflicts and addenda); people & documents (worker register,
+  competencies, medicals, sign-ins and roster, appointments, the H&S file);
+  the statutory vault on Organisation; audit packs (queue, follow, download);
+  reminders (the regime's lead times and your own reminders); adding someone
+  to a site; evidence (list, view a photo, chain check). Built against
+  `docs/api/*.md`, **not yet run against the real API**: check each write
+  once with it.
+- **Roles** come from `GET /v1/me` (`lib/site.ts`: `capabilities()`, `can()`),
+  not from 403s. They only hide controls; the API enforces every rule.
+- **Uploads** (certificates, letters, H&S file and vault versions) go through
+  a Server Action to `lib/upload.ts`, which hashes, declares, PUTs the bytes
+  to the signed link and completes the file on the Next.js server.
+  `next.config.ts` raises the Server Action and proxy body limits to 21 MB
+  for it.
 - **Sample data only** (`lib/sample.ts`, each page shows a banner): injury
-  on duty, delay claims, notifications & permits, toolbox & diary, people &
-  documents, subcontractors, audit pack, sync conflicts, reminders; the
-  company details card on Organisation and the subscription card on Team.
-- **Not on the dashboard:** answering an inspection, close-outs and taking
-  photos (phone only); the evidence access log (no read endpoint yet).
+  on duty, delay claims, subcontractors, sync conflicts; the company details
+  card on Organisation (except the trading name) and the subscription card
+  on Team.
+- **Not on the dashboard:** answering an inspection, close-outs, taking
+  photos, signing toolbox talks and signing people in (phone only); the
+  evidence access log (no read endpoint yet).
 - `lib/regime.ts` copies the incident types table from
   `docs/api/incidents.md`; there is no endpoint for them. Ask the backend
   for one, or keep the two in step by hand.
 - **Blocked on the backend** (see "Requested by the frontend" in
-  `../construction_db/CLAUDE.md`): role and names in `/v1/me`; listing org
-  members to add people to sites; sending invites by SMS or email.
+  `../construction_db/CLAUDE.md`): listing every org member (ONBOARD's
+  `GET /v1/members`; adding to a site offers people on other sites and
+  pending invitees until then); organisation details; reading the evidence
+  access log; sending invites by SMS or email.

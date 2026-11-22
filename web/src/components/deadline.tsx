@@ -55,6 +55,16 @@ export function DeadlineBody({ d }: { d: Deadline }) {
           {d.satisfaction.reference && ` · ${d.satisfaction.reference}`}
         </div>
       )}
+      {d.satisfaction?.document_id && (
+        <div className="mt-0.5 text-xs text-muted">Proof: H&amp;S file document, version {d.satisfaction.document_version}</div>
+      )}
+      {d.overdue_when_computed && (
+        <div className="mt-1 text-xs text-warn">
+          {d.subject_type === "site_work"
+            ? "The work was recorded too late for the notice period: it was already due when it was entered, not missed while SiteProof watched."
+            : "Already due when it was worked out: the record arrived after the deadline, not missed while SiteProof watched."}
+        </div>
+      )}
       {d.closed_reason && <div className="mt-1 text-xs text-muted">{label(d.state)}: “{d.closed_reason}”</div>}
       {d.caveat && <div className="mt-2 rounded-md bg-bg px-2 py-1.5 text-xs">{d.caveat}</div>}
     </>

@@ -33,17 +33,20 @@ src/
                         and the type blocks in docs/api/*.md
     site.ts             Which site the sidebar's "Viewing" picker points at
     regime.ts           Incident types per regime (copied from docs/api)
+    compliance.ts       Compliance summary labels, colours and record links
+    upload.ts           Document file upload (hash, declare, PUT, complete)
     sample.ts           Data for the pages that aren't connected yet
   app/
     actions/            Server Actions: every write goes through here
     (auth)/             login, signup, invite (public)
-    (dashboard)/        signed in. Wired: overview, inspections, actions,
-                        incidents, deadlines, evidence, organisation, sites,
-                        team, account. Sample data: injury-on-duty,
-                        delay-claims, permits, toolbox, people,
-                        subcontractors, audit-pack, sync-conflicts, reminders
+    (dashboard)/        signed in. Sample data only: injury-on-duty,
+                        delay-claims, subcontractors, sync-conflicts.
+                        Everything else is wired
   components/           ui.tsx (plain), client.tsx (forms, buttons),
-                        photo.tsx (open a photo), deadline.tsx, states.tsx
+                        photo.tsx (open a photo), open-file.tsx (open a
+                        document or pack), documents.tsx and
+                        document-forms.tsx (H&S file and vault),
+                        deadline.tsx, states.tsx
 ```
 
 The look comes from the SiteProof prototype; the colour tokens are in
@@ -60,10 +63,9 @@ used twice. A browser can easily send the same old token twice (two tabs, or a
 page plus its prefetches), so `lib/refresh.ts` shares one refresh call per
 token and reuses its result for a minute.
 
-**Roles.** `/v1/me` doesn't return the role yet, so the dashboard learns it
-from the API's 403s: if the site members list is forbidden, the person isn't
-an owner or SHE officer and the edit controls are hidden. The API still
-enforces every rule.
+**Roles.** `GET /v1/me` returns the role and its capabilities, read on
+every request (`lib/site.ts`: `can("manage_sites")` and so on). They only
+decide which controls to show; the API still enforces every rule.
 
 ## Checks before pushing
 

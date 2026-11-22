@@ -7,7 +7,7 @@ import { api, sitePath } from "@/lib/api";
 import { formatTime, isToday, label, now } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { message, useLoad } from "@/lib/use-load";
-import type { ChecklistCatalog, ChecklistTemplate, Inspection, InspectionList, Me, StartInspectionRequest } from "@/lib/types";
+import type { ChecklistCatalog, ChecklistTemplate, Inspection, InspectionList, InspectionSummary, Me, StartInspectionRequest } from "@/lib/types";
 
 export default function Inspect() {
   const { site } = useSession();
@@ -32,9 +32,18 @@ export default function Inspect() {
   const checklists = data?.catalog.checklists ?? [];
   const dueNow = checklists.filter((t) => recurring(t) && !doneToday(t.key) && !open.some((i) => i.template_key === t.key));
 
-  async function start(t: ChecklistTemplate) {
+  // Completed inspections that nothing corrects yet (one correction each;
+  // the first one started takes the place). The newest first, a few only.
+  const corrected = new Set((data?.inspections ?? []).map((i) => i.corrects_id).filter(Boolean));
+  const correctable = (data?.inspections ?? [])
+    .filter((i) => i.status === "completed" && !corrected.has(i.id) && checklists.some((t) => t.key === i.template_key))
+    .slice(0, 8);
+
+  // `corrects` starts a correction of a completed inspection: the same
+  // checklist (its current version is fine), linked back to the original.
+  async function start(t: ChecklistTemplate, corrects?: InspectionSummary) {
     if (!site || starting) return;
-    setStarting(t.key);
+    setStarting(corrects ? corrects.id : t.key);
     setError("");
     try {
       // The id is made up here, so sending the start twice is harmless.
@@ -42,7 +51,13 @@ export default function Inspect() {
       await api<Inspection>(sitePath(site.id, `/inspections/${id}`), {
         method: "PUT",
         // The template exactly as it was shown: key, version and hash.
-        body: { template_key: t.key, template_version: t.version, template_sha256: t.sha256, client_started_at: now() } satisfies StartInspectionRequest,
+        body: {
+          template_key: t.key,
+          template_version: t.version,
+          template_sha256: t.sha256,
+          client_started_at: now(),
+          corrects_id: corrects?.id ?? null,
+        } satisfies StartInspectionRequest,
       });
       router.push(`/inspection/${id}`);
     } catch (e) {
@@ -83,9 +98,25 @@ export default function Inspect() {
               return row(t, done?.completed_at ? `done ${formatTime(done.completed_at)}` : undefined);
             })}
           </Card>
+          {correctable.length > 0 && (
+            <Card title="Correct a completed inspection">
+              {correctable.map((i) => {
+                const t = checklists.find((c) => c.key === i.template_key)!;
+                return (
+                  <Row
+                    key={i.id}
+                    title={i.template_title}
+                    sub={`Completed ${i.completed_at ? formatTime(i.completed_at) : ""}${isToday(i.started_at) ? " today" : ""} · ${i.failed_count} failed · starts a new inspection linked to it`}
+                    right={<Pill tone={starting === i.id ? "ok" : "neutral"}>{starting === i.id ? "Starting…" : "Correct"}</Pill>}
+                    onPress={() => void start(t, i)}
+                  />
+                );
+              })}
+            </Card>
+          )}
           <Muted>
-            Correcting a completed inspection? Starting the same checklist again is a new inspection; linking it as a
-            correction arrives with the inspection history screen.
+            A completed inspection never changes. A correction is a new inspection on the same checklist, linked to the
+            one it corrects; each inspection can be corrected once.
           </Muted>
         </>
       )}

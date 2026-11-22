@@ -6,12 +6,12 @@ import Link from "next/link";
 import { DeadlineBody, deadlineDue, deadlineState } from "@/components/deadline";
 import { Forbidden, NoSite } from "@/components/states";
 import { Alert, Badge, Card, EmptyState, PageHeader, Row } from "@/components/ui";
-import { getDeadline, listDeadlines } from "@/lib/data";
-import { formatWhen, isoToSASTInput, label, shortId } from "@/lib/format";
+import { getDeadline, getSafetyFile, getSiteWork, listDeadlines } from "@/lib/data";
+import { formatDay, formatWhen, isoToSASTInput, label, shortId } from "@/lib/format";
 import { currentSite, sitePeople } from "@/lib/site";
-import type { DeadlineState } from "@/lib/types";
+import type { Deadline, DeadlineDetail, DeadlineState } from "@/lib/types";
 
-import { RetractForm, SatisfyForm } from "./forms";
+import { RetractForm, SatisfyForm, type ProofOption } from "./forms";
 
 export const metadata: Metadata = { title: "Deadlines" };
 
@@ -36,6 +36,7 @@ export default async function DeadlinesPage({ searchParams }: PageProps<"/deadli
   if (deadlines === "forbidden") return <Forbidden title="Deadlines" />;
 
   const unmet = selected && ["open", "due_now", "overdue"].includes(selected.state);
+  const { proofs, earlierRows } = selected?.subject_type === "site_work" ? await siteWorkContext(site.id, selected) : { proofs: [], earlierRows: new Map<string, Deadline>() };
 
   return (
     <>
@@ -68,6 +69,9 @@ export default async function DeadlinesPage({ searchParams }: PageProps<"/deadli
                             {d.incident_id && (
                               <> · <Link href={`/incidents/${d.incident_id}`} className="link">INC-{shortId(d.incident_id)}</Link></>
                             )}
+                            {d.site_work_id && (
+                              <> · <Link href={`/permits?work=${d.site_work_id}`} className="link">Site work before {formatDay(d.basis_at)}</Link></>
+                            )}
                           </div>
                           {d.caveat && <div className="mt-1.5 text-xs text-muted">{d.caveat}</div>}
                         </div>
@@ -93,7 +97,13 @@ export default async function DeadlinesPage({ searchParams }: PageProps<"/deadli
                   title="Record the notice"
                   description="Recording it stops the alert. An owner or SHE officer can retract a wrong record with a reason; both stay on file."
                 >
-                  <SatisfyForm id={randomUUID()} siteId={site.id} deadlineId={selected.id} now={isoToSASTInput(new Date().toISOString())} />
+                  <SatisfyForm
+                    id={randomUUID()}
+                    siteId={site.id}
+                    deadlineId={selected.id}
+                    now={isoToSASTInput(new Date().toISOString())}
+                    proofs={selected.subject_type === "site_work" ? proofs : undefined}
+                  />
                 </Card>
               )}
               {selected.satisfactions.length > 0 && (
@@ -104,7 +114,14 @@ export default async function DeadlinesPage({ searchParams }: PageProps<"/deadli
                       <div className="text-[13px] text-muted">
                         Recorded by {people.who(s.recorded_by)}, {formatWhen(s.recorded_at)}
                         {s.reference && ` · ${s.reference}`}
+                        {s.document_id && ` · proof: H&S file document, version ${s.document_version}`}
                       </div>
+                      {noticeGivenFor(s.deadline_id, selected, earlierRows) && (
+                        <div className="text-[13px] text-warn">
+                          Notice given for start {noticeGivenFor(s.deadline_id, selected, earlierRows)}. The start has
+                          moved since; decide whether to tell the provincial director the new date.
+                        </div>
+                      )}
                       {s.note && <div className="text-[13px]">“{s.note}”</div>}
                       {s.retraction && (
                         <div className="text-[13px] text-muted">
@@ -135,4 +152,36 @@ export default async function DeadlinesPage({ searchParams }: PageProps<"/deadli
       </div>
     </>
   );
+}
+
+// For a site work deadline (REG4): the H&S file documents that can prove the
+// notice (types in proof_document_types: the Annexure 2 for reg 4, the
+// permit for reg 3), and the record's earlier deadline rows, to tell when a
+// notice was given for a start date that has since moved.
+async function siteWorkContext(siteId: string, d: DeadlineDetail) {
+  const [file, work] = await Promise.all([
+    getSafetyFile(siteId),
+    d.site_work_id ? getSiteWork(siteId, d.site_work_id) : null,
+  ]);
+  const proofs: ProofOption[] = [];
+  if (file && file !== "forbidden") {
+    const labels = new Map(file.readiness.map((r) => [r.type_key, r.label]));
+    for (const doc of file.documents) {
+      if (doc.retraction || !d.proof_document_types.includes(doc.type_key)) continue;
+      proofs.push({
+        value: `${doc.id}:${doc.current.version}`,
+        label: `${doc.title} (${labels.get(doc.type_key) ?? label(doc.type_key)}), version ${doc.current.version}`,
+      });
+    }
+  }
+  return { proofs, earlierRows: new Map((work?.deadlines ?? []).map((r) => [r.id, r])) };
+}
+
+// "Notice given for start <date>": a satisfaction recorded against a row
+// that has since been replaced, whose start (basis_at) differs from the live
+// row's (deadlines.md, R2). Null otherwise.
+function noticeGivenFor(rowId: string, live: DeadlineDetail, rows: Map<string, Deadline>) {
+  if (live.subject_type !== "site_work" || rowId === live.id) return null;
+  const row = rows.get(rowId);
+  return row && row.basis_at !== live.basis_at ? formatDay(row.basis_at) : null;
 }

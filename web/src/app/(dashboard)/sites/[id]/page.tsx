@@ -5,10 +5,12 @@ import { notFound } from "next/navigation";
 import { archiveSite, removeSiteMember } from "@/app/actions/sites";
 import { InlineAction } from "@/components/client";
 import { Alert, Badge, Card, EmptyState, PageHeader } from "@/components/ui";
-import { getSite, listLocations, listSiteMembers } from "@/lib/data";
+import { getSite, listLocations, listPendingInvites, listSiteMembers, listSites } from "@/lib/data";
 import { ROLE_LABELS, formatDate } from "@/lib/format";
-import type { Location } from "@/lib/types";
+import { can } from "@/lib/site";
+import type { Location, SiteMember } from "@/lib/types";
 
+import { AddMemberForm, type PersonOption } from "./add-member-form";
 import { EditSiteForm } from "./edit-site-form";
 import { LocationForm } from "./location-form";
 import { LocationRow } from "./location-row";
@@ -23,10 +25,14 @@ export default async function SitePage({ params }: PageProps<"/sites/[id]">) {
   const site = await getSite(id);
   if (!site) notFound();
 
-  const [locations, members] = await Promise.all([listLocations(id), listSiteMembers(id)]);
-  // The members list is limited to owners and SHE officers, the same roles
-  // that may change a site, so it doubles as the "can manage" check.
-  const canManage = members !== "forbidden";
+  // manage_sites (GET /v1/me): owners and SHE officers. The members list is
+  // limited to them, so others don't ask for it.
+  const canManage = await can("manage_sites");
+  const [locations, members] = await Promise.all([
+    listLocations(id),
+    canManage ? listSiteMembers(id) : ("forbidden" as const),
+  ]);
+  const addable = canManage && members !== "forbidden" ? await peopleToAdd(id, members) : [];
 
   return (
     <>
@@ -97,6 +103,9 @@ export default async function SitePage({ params }: PageProps<"/sites/[id]">) {
 
         {canManage && (
           <div className="space-y-6">
+            <Card title="Add someone to this site" description="Supervisors only see the sites they're added to.">
+              <AddMemberForm siteId={id} people={addable} />
+            </Card>
             <Card title="Site details">
               <EditSiteForm site={site} />
             </Card>
@@ -154,4 +163,36 @@ function LocationTree({
   );
 
   return render(roots, 0);
+}
+
+// Everyone the dashboard can name who isn't on this site yet: members of the
+// organisation's other sites, and people invited who haven't accepted (an
+// invitee already has the membership the API needs). Supervisors first.
+async function peopleToAdd(siteId: string, members: SiteMember[]): Promise<PersonOption[]> {
+  const here = new Set(members.map((m) => m.user_id));
+  const [sites, invites] = await Promise.all([listSites(), listPendingInvites()]);
+  const others = await Promise.all(
+    sites.filter((s) => s.id !== siteId && s.status !== "archived").map((s) => listSiteMembers(s.id)),
+  );
+  const people = new Map<string, PersonOption & { supervisor: boolean }>();
+  for (const list of others) {
+    if (list === "forbidden") continue;
+    for (const m of list) {
+      if (here.has(m.user_id)) continue;
+      people.set(m.user_id, { user_id: m.user_id, label: `${m.full_name} · ${ROLE_LABELS[m.role] ?? m.role}`, supervisor: m.role === "supervisor" });
+    }
+  }
+  if (invites !== "forbidden") {
+    for (const inv of invites) {
+      if (here.has(inv.user_id) || people.has(inv.user_id)) continue;
+      people.set(inv.user_id, {
+        user_id: inv.user_id,
+        label: `${inv.full_name} · ${ROLE_LABELS[inv.role] ?? inv.role} (invited)`,
+        supervisor: inv.role === "supervisor",
+      });
+    }
+  }
+  return [...people.values()]
+    .sort((a, b) => Number(b.supervisor) - Number(a.supervisor) || a.label.localeCompare(b.label))
+    .map(({ user_id, label }) => ({ user_id, label }));
 }

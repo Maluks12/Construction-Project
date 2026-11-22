@@ -9,13 +9,21 @@ import type {
   Action,
   ActionList,
   ActionSummary,
+  AppointmentList,
   ChainVerification,
   ChecklistCatalog,
   Deadline,
   DeadlineDetail,
   DeadlineList,
+  DeadlineSubjectType,
+  Diary,
+  DiaryList,
+  DocumentDetail,
+  DocumentRegister,
   Evidence,
   EvidenceList,
+  Export,
+  ExportList,
   Finding,
   FindingList,
   Incident,
@@ -27,13 +35,30 @@ import type {
   InvitePreview,
   Location,
   Me,
+  NotificationList,
   PendingInvite,
+  RegimeTypes,
+  RevisionList,
+  RosterList,
+  Rollup,
   Session,
+  SignInDay,
   Site,
   SiteMember,
+  SiteSummary,
+  SiteWork,
+  SiteWorkCatalogue,
+  SiteWorkList,
+  Talk,
+  TalkList,
+  ToolboxTopicList,
+  WorkerDetail,
+  WorkerList,
 } from "./types";
 
-export const getMe = () => api<Me>("/v1/me");
+// Who is signed in: role, names and capabilities (M12). The API reads them
+// from the membership on every call, so this is called per request, once.
+export const getMe = cache(() => api<Me>("/v1/me"));
 
 export async function listSites() {
   return (await api<{ sites: Site[] }>("/v1/sites")).sites;
@@ -168,9 +193,10 @@ export const getIncident = (siteId: string, id: string, version?: string) =>
     api<Incident>(sitePath(siteId, `/incidents/${encodeURIComponent(id)}${query({ version })}`)),
   );
 
-export const listDeadlines = (siteId: string, state?: string) =>
+// subject_type (REG4): "incident" or "site_work"; left out, both.
+export const listDeadlines = (siteId: string, state?: string, subjectType?: DeadlineSubjectType) =>
   guard<Deadline[]>(async () =>
-    (await api<DeadlineList>(sitePath(siteId, `/deadlines${query({ state, limit: 200 })}`)))
+    (await api<DeadlineList>(sitePath(siteId, `/deadlines${query({ state, subject_type: subjectType, limit: 200 })}`)))
       .deadlines,
   );
 
@@ -206,3 +232,116 @@ export const listEvidence = (siteId: string, status?: string) =>
 // request rather than on every load.
 export const verifyChain = (siteId: string) =>
   guard(() => api<ChainVerification>(sitePath(siteId, "/chain")));
+
+// ---- M10 to REG4 (docs/api/*.md) ----
+
+// The Construction edition's endpoints: the diary, the H&S file,
+// appointments and site work. A site under another edition's regime answers
+// 404 there, which the reads below turn into null.
+const constructionPath = (siteId: string, rest: string) =>
+  `/v1/construction/sites/${encodeURIComponent(siteId)}${rest}`;
+
+// Compliance summary (M12). The rollup covers every site the caller can
+// open, worst first; a site's summary has every item with its record ids.
+export const getRollup = () => guard(() => api<Rollup>("/v1/compliance"));
+
+export const getSiteCompliance = (siteId: string) =>
+  guard(() => api<SiteSummary>(sitePath(siteId, "/compliance")));
+
+// The caller's own inbox (M11). Every role has one.
+export const listNotifications = async (unread = false, limit = 50) =>
+  (await api<NotificationList>(`/v1/notifications${query({ unread: unread ? "true" : undefined, limit })}`))
+    .notifications;
+
+// The bell's count. Only a badge, so a failure here mustn't take the page down.
+export const unreadCount = cache(async () => {
+  try {
+    return (await listNotifications(true, 200)).length;
+  } catch (e) {
+    if (e instanceof ApiError) return null;
+    throw e;
+  }
+});
+
+// A regime's competency, appointment and document types, medical rule and
+// reminder lead times. The same for every caller, so shared per request.
+export const getRegimeTypes = cache((code: string) =>
+  guard(() => api<RegimeTypes>(`/v1/regimes/${encodeURIComponent(code)}/types`)),
+);
+
+// ---- Toolbox talks (docs/api/toolbox.md) ----
+export const listToolboxTopics = (siteId: string) =>
+  guard(async () => (await api<ToolboxTopicList>(sitePath(siteId, "/toolbox-topics"))).topics);
+
+export const listTalks = (siteId: string, date?: string) =>
+  guard(async () => (await api<TalkList>(sitePath(siteId, `/toolbox-talks${query({ date, limit: 100 })}`))).talks);
+
+export const getTalk = (siteId: string, id: string) =>
+  orNull(() => api<Talk>(sitePath(siteId, `/toolbox-talks/${encodeURIComponent(id)}`)));
+
+// ---- Site diary (docs/api/diary.md) ----
+export const listDiaries = (siteId: string, from?: string, to?: string) =>
+  guard(() =>
+    orNull(async () => (await api<DiaryList>(constructionPath(siteId, `/diary${query({ from, to, limit: 60 })}`))).diaries),
+  );
+
+// null when the day has no diary yet.
+export const getDiary = (siteId: string, date: string) =>
+  orNull(() => api<Diary>(constructionPath(siteId, `/diary/${encodeURIComponent(date)}`)));
+
+export const listRevisions = (siteId: string, date: string) =>
+  orNull(async () =>
+    (await api<RevisionList>(constructionPath(siteId, `/diary/${encodeURIComponent(date)}/revisions`))).revisions,
+  );
+
+// ---- Worker register (docs/api/workers.md) ----
+export const listWorkers = (filters: { active?: string; q?: string } = {}) =>
+  guard(async () => (await api<WorkerList>(`/v1/workers${query({ ...filters, limit: 500 })}`)).workers);
+
+export const getWorker = (id: string) =>
+  orNull(() => api<WorkerDetail>(`/v1/workers/${encodeURIComponent(id)}`));
+
+// ---- Site sign-in and roster (docs/api/attendance.md) ----
+// date is YYYY-MM-DD; left out, today in the site's time zone.
+export const getSignInDay = (siteId: string, date?: string) =>
+  guard(() => api<SignInDay>(sitePath(siteId, `/sign-ins${query({ date })}`)));
+
+export const listRoster = (siteId: string, all = false) =>
+  guard(async () => (await api<RosterList>(sitePath(siteId, `/roster${query({ all: all ? "true" : undefined })}`))).roster);
+
+// ---- H&S file and vault (docs/api/documents.md) ----
+export const getSafetyFile = (siteId: string) =>
+  guard(() => orNull(() => api<DocumentRegister>(constructionPath(siteId, "/safety-file"))));
+
+export const getSafetyFileDocument = (siteId: string, id: string) =>
+  orNull(() => api<DocumentDetail>(constructionPath(siteId, `/safety-file/${encodeURIComponent(id)}`)));
+
+// Owners and SHE officers only; everyone else gets "forbidden".
+export const getVault = (regimeCode?: string) =>
+  guard(() => api<DocumentRegister>(`/v1/vault/documents${query({ regime_code: regimeCode })}`));
+
+export const getVaultDocument = (id: string) =>
+  orNull(() => api<DocumentDetail>(`/v1/vault/documents/${encodeURIComponent(id)}`));
+
+// ---- Appointments (docs/api/appointments.md) ----
+export const listAppointments = (siteId: string) =>
+  guard(() => orNull(async () => (await api<AppointmentList>(constructionPath(siteId, "/appointments"))).appointments));
+
+// ---- Audit packs (docs/api/exports.md): owners and SHE officers ----
+export const listExports = (siteId: string) =>
+  guard(async () => (await api<ExportList>(sitePath(siteId, "/exports"))).exports);
+
+export const getExport = (siteId: string, id: string) =>
+  orNull(() => api<Export>(sitePath(siteId, `/exports/${encodeURIComponent(id)}`)));
+
+// ---- Site work (docs/api/site-work.md, REG4) ----
+export const getSiteWorkFacts = (siteId: string) =>
+  guard(() => orNull(() => api<SiteWorkCatalogue>(constructionPath(siteId, "/site-work-facts"))));
+
+export const listSiteWork = (siteId: string, status?: string) =>
+  guard(() =>
+    orNull(async () => (await api<SiteWorkList>(constructionPath(siteId, `/site-work${query({ status, limit: 200 })}`))).site_work),
+  );
+
+export const getSiteWork = (siteId: string, id: string, version?: string) =>
+  orNull(() => api<SiteWork>(constructionPath(siteId, `/site-work/${encodeURIComponent(id)}${query({ version })}`)));

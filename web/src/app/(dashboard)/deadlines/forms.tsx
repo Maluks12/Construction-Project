@@ -16,7 +16,23 @@ const METHODS = [
   ["other", "Other"],
 ];
 
-export function SatisfyForm({ id, siteId, deadlineId, now }: { id: string; siteId: string; deadlineId: string; now: string }) {
+// A version of an H&S file document that can prove a site work notice.
+export type ProofOption = { value: string; label: string };
+
+export function SatisfyForm({
+  id,
+  siteId,
+  deadlineId,
+  now,
+  proofs,
+}: {
+  id: string;
+  siteId: string;
+  deadlineId: string;
+  now: string;
+  // Site work deadlines only (REG4): the documents that can be its proof.
+  proofs?: ProofOption[];
+}) {
   const [state, action] = useActionState(recordSatisfaction, null);
   if (state?.ok) return <Alert tone="ok">Recorded. The alert for this deadline has stopped.</Alert>;
   const v = state?.values ?? {};
@@ -39,6 +55,21 @@ export function SatisfyForm({ id, siteId, deadlineId, now }: { id: string; siteI
       <Field label="Note (optional)">
         <Textarea name="note" maxLength={2000} defaultValue={v.note} />
       </Field>
+      {proofs && (
+        <Field
+          label="Proof from the H&S file"
+          hint={
+            proofs.length === 0
+              ? "No document of the right type is in this site's H&S file yet. Upload the Annexure 2 (or the permit) under People & documents, then come back; or record the notice now and add proof later."
+              : "The Annexure 2 for a Reg 4 notice, the permit itself for Reg 3."
+          }
+        >
+          <Select name="proof" defaultValue={v.proof ?? ""} disabled={proofs.length === 0}>
+            <option value="">No document</option>
+            {proofs.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </Select>
+        </Field>
+      )}
       <FormError state={state} />
       <SubmitButton pendingText="Saving…">Save record</SubmitButton>
     </form>

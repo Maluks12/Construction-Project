@@ -2,10 +2,10 @@
 
 import * as SecureStore from "expo-secure-store";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 
 import { api, clearTokens, hasSession, saveTokens, setSignedOutHandler } from "./api";
-import type { Site, TokenPair } from "./types";
+import type { Capability, Me, Site, TokenPair } from "./types";
 
 const SITE_KEY = "sp_site";
 
@@ -13,6 +13,12 @@ type Session = {
   status: "loading" | "out" | "in";
   sites: Site[];
   site: Site | null;
+  // GET /v1/me (M12): role, names and capabilities. Null until loaded, or
+  // when the phone was offline at launch.
+  me: Me | null;
+  // Display hints only: hide what the role can't do. The API decides, and
+  // for a supervisor each capability means "on your own sites".
+  can: (capability: Capability) => boolean;
   signIn: (login: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   chooseSite: (id: string) => Promise<void>;
@@ -38,6 +44,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Session["status"]>("loading");
   const [sites, setSites] = useState<Site[]>([]);
   const [siteId, setSiteId] = useState<string | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
 
   // Supervisors only get the sites they've been added to.
   const loadSites = useCallback(async () => {
@@ -46,16 +53,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSiteId((await SecureStore.getItemAsync(SITE_KEY)) ?? null);
   }, []);
 
+  // Read on every call by the API, so a role change shows the next time.
+  // A suspended member gets 401, which signs the phone out (api.ts).
+  const loadMe = useCallback(async () => {
+    setMe(await api<Me>("/v1/me"));
+  }, []);
+
   useEffect(() => {
-    setSignedOutHandler(() => setStatus("out"));
+    setSignedOutHandler(() => {
+      setMe(null);
+      setStatus("out");
+    });
     (async () => {
       if (!(await hasSession())) return setStatus("out");
       setStatus("in");
       // Offline at launch: stay signed in; screens show their own error.
-      await loadSites().catch(() => undefined);
+      await Promise.all([loadSites().catch(() => undefined), loadMe().catch(() => undefined)]);
     })();
     return () => setSignedOutHandler(null);
-  }, [loadSites]);
+  }, [loadSites, loadMe]);
+
+  // Back in the foreground: read the role again (M12 handover).
+  useEffect(() => {
+    if (status !== "in") return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void loadMe().catch(() => undefined);
+    });
+    return () => sub.remove();
+  }, [status, loadMe]);
 
   const value = useMemo<Session>(() => {
     const site = sites.find((s) => s.id === siteId) ?? sites.find((s) => s.status === "active") ?? sites[0] ?? null;
@@ -63,6 +88,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       status,
       sites,
       site,
+      me,
+      can: (capability) => me?.capabilities.includes(capability) ?? false,
       async signIn(login, password) {
         const id = login.trim();
         const pair = await api<TokenPair>("/v1/auth/login", {
@@ -76,7 +103,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         });
         await saveTokens(pair);
         setStatus("in");
-        await loadSites().catch(() => undefined);
+        await Promise.all([loadSites().catch(() => undefined), loadMe().catch(() => undefined)]);
       },
       async signOut() {
         // Tell the API so the session is revoked there too; sign out locally
@@ -84,6 +111,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await api<void>("/v1/auth/logout", { method: "POST" }).catch(() => undefined);
         await clearTokens();
         setSites([]);
+        setMe(null);
         setStatus("out");
       },
       async chooseSite(id) {
@@ -91,7 +119,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await SecureStore.setItemAsync(SITE_KEY, id);
       },
     };
-  }, [status, sites, siteId, loadSites]);
+  }, [status, sites, siteId, me, loadSites, loadMe]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

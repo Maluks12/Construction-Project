@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { ApiError, api } from "@/lib/api";
-import type { Action, ActionRequestKind, EventRequest, RaiseRequest, Waiver, WaiverRequest } from "@/lib/types";
+import type { Action, ActionRequestKind, EventRequest, RaiseRequest, RetractWaiverRequest, Waiver, WaiverRequest } from "@/lib/types";
 
 import type { FormState } from "./state";
 
@@ -95,4 +95,24 @@ export async function waiveFinding(_: FormState, form: FormData): Promise<FormSt
     client_waived_at: new Date().toISOString(),
   };
   return put<Waiver>(site(field(form, "site_id"), `/waivers/${encodeURIComponent(field(form, "id"))}`), body, { reason });
+}
+
+// Takes a waiver back: the finding is unactioned again and the waiver stays
+// on record with who, when and why. Owners and SHE officers only; the same
+// reason again answers 200.
+export async function retractWaiver(_: FormState, form: FormData): Promise<FormState> {
+  const reason = field(form, "reason");
+  const body: RetractWaiverRequest = { reason };
+  try {
+    await api<Waiver>(site(field(form, "site_id"), `/waivers/${encodeURIComponent(field(form, "waiver_id"))}/retract`), {
+      method: "POST",
+      body,
+    });
+  } catch (e) {
+    if (e instanceof ApiError) return { error: e.message, values: { reason } };
+    throw e;
+  }
+  revalidatePath("/actions");
+  revalidatePath("/overview");
+  return { ok: true };
 }

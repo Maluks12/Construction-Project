@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { PhotoButton } from "@/components/photo";
 import { NoSite } from "@/components/states";
 import { Badge, Card, Facts, PageHeader, Row, buttonClass, type Tone } from "@/components/ui";
-import { getChecklists, getInspection } from "@/lib/data";
+import { getChecklists, getInspection, listInspections } from "@/lib/data";
 import { formatWhen, label } from "@/lib/format";
 import { currentSite, sitePeople } from "@/lib/site";
 import type { Result } from "@/lib/types";
@@ -25,13 +25,16 @@ export default async function InspectionPage({ params }: PageProps<"/inspections
   if (!site) return <NoSite title="Inspection" />;
 
   const { id } = await params;
-  const [inspection, catalog, people] = await Promise.all([
+  const [inspection, catalog, people, list] = await Promise.all([
     getInspection(site.id, id),
     getChecklists(site.id),
     sitePeople(site.id),
+    listInspections(site.id),
   ]);
   // Also when the inspection is on another site than the one being viewed.
   if (!inspection) notFound();
+  // The inspection that corrects this one, if any (at most one).
+  const correction = list === "forbidden" ? undefined : list.find((i) => i.corrects_id === inspection.id);
 
   const prompts = new Map(inspection.items.map((it) => [it.key, it.prompt]));
   const severities = catalog === "forbidden" ? [] : [...catalog.severities].reverse();
@@ -121,15 +124,26 @@ export default async function InspectionPage({ params }: PageProps<"/inspections
 
             <Card
               title="Corrections"
-              description="A completed inspection never changes. To correct it, start a new inspection on the same checklist from the phone; it links back here. One correction per inspection."
+              description="A completed inspection never changes. To correct it, the inspector opens Inspect on the phone and chooses it under “Correct a completed inspection”: a new inspection on the same checklist that links back here. One correction per inspection."
             >
-              <p className="text-sm">
-                {inspection.corrects_id ? (
-                  <>This inspection corrects <Link href={`/inspections/${inspection.corrects_id}`} className="link">an earlier one</Link>.</>
-                ) : (
-                  "This inspection doesn't correct another."
+              <div className="space-y-1.5 text-sm">
+                <p>
+                  {inspection.corrects_id ? (
+                    <>This inspection corrects <Link href={`/inspections/${inspection.corrects_id}`} className="link">an earlier one</Link>.</>
+                  ) : (
+                    "This inspection doesn't correct another."
+                  )}
+                </p>
+                {correction && (
+                  <p>
+                    Corrected by{" "}
+                    <Link href={`/inspections/${correction.id}`} className="link">
+                      {correction.template_title}, {formatWhen(correction.started_at)}
+                    </Link>{" "}
+                    ({label(correction.status).toLowerCase()}).
+                  </p>
                 )}
-              </p>
+              </div>
             </Card>
 
             {inspection.status === "in_progress" && (

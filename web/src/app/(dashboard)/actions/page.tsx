@@ -8,10 +8,10 @@ import { Forbidden, NoSite } from "@/components/states";
 import { Alert, Badge, Card, EmptyState, PageHeader, Row, Tabs, type Tone } from "@/components/ui";
 import { getAction, getMe, listActions, listFindings } from "@/lib/data";
 import { formatDateOnly, formatWhen, label, shortId } from "@/lib/format";
-import { currentSite, sitePeople } from "@/lib/site";
+import { can, currentSite, sitePeople } from "@/lib/site";
 import type { ActionRequestKind, ActionState, ActionSummary, Finding, Severity } from "@/lib/types";
 
-import { ChangeForm, RaiseForm, WaiveForm, type OwnerOption } from "./forms";
+import { ChangeForm, RaiseForm, RetractWaiverForm, WaiveForm, type OwnerOption } from "./forms";
 
 export const metadata: Metadata = { title: "Findings & actions" };
 
@@ -31,8 +31,11 @@ const TABS = {
   open: { label: "Open", states: ["open", "awaiting_verification"] },
   overdue: { label: "Overdue", states: ["overdue"] },
   unactioned: { label: "No action yet", states: [] },
+  waived: { label: "Waived", states: [] },
   closed: { label: "Closed", states: ["closed", "closed_late", "cancelled"] },
 } satisfies Record<string, { label: string; states: ActionState[] }>;
+// Tabs that list findings rather than actions.
+const FINDING_TABS: string[] = ["unactioned", "waived"];
 type TabKey = keyof typeof TABS;
 
 const findingKey = (inspectionId: string, itemKey: string) => `${inspectionId}:${itemKey}`;
@@ -65,8 +68,10 @@ export default async function ActionsPage({ searchParams }: PageProps<"/actions"
 
   const byKey = new Map(findings.map((f) => [findingKey(f.inspection_id, f.item_key), f]));
   const unactioned = findings.filter((f) => f.coverage === "unactioned");
+  const waived = findings.filter((f) => f.coverage === "waived" && f.waiver_id);
+  const canWaive = await can("waive_findings");
   const inTab = (key: TabKey) => actions.filter((a) => (TABS[key].states as ActionState[]).includes(a.state));
-  const rows = tab === "unactioned" ? [] : inTab(tab);
+  const rows = FINDING_TABS.includes(tab) ? [] : inTab(tab);
   const selectedFinding = findingParam ? byKey.get(findingParam) : undefined;
 
   // People an action can be given to. A supervisor can't list the site's
@@ -97,7 +102,7 @@ export default async function ActionsPage({ searchParams }: PageProps<"/actions"
             tabs={(Object.keys(TABS) as TabKey[]).map((key) => ({
               href: `/actions?tab=${key}`,
               label: TABS[key].label,
-              count: key === "unactioned" ? unactioned.length : inTab(key).length,
+              count: key === "unactioned" ? unactioned.length : key === "waived" ? waived.length : inTab(key).length,
               active: tab === key,
             }))}
           />
@@ -123,6 +128,40 @@ export default async function ActionsPage({ searchParams }: PageProps<"/actions"
                           <Link href={`/actions?tab=unactioned&finding=${encodeURIComponent(findingKey(f.inspection_id, f.item_key))}`} className="link">
                             Raise action
                           </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          ) : tab === "waived" ? (
+            waived.length === 0 ? (
+              <div className="p-4"><EmptyState title="No findings waived" /></div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="tbl">
+                  <thead><tr><th>Finding</th><th>Severity</th><th>Raised</th><th /></tr></thead>
+                  <tbody>
+                    {waived.map((f) => (
+                      <tr key={findingKey(f.inspection_id, f.item_key)}>
+                        <td>
+                          <strong className="font-semibold">{f.prompt}</strong>
+                          <div className="text-xs text-muted">
+                            <Link href={`/inspections/${f.inspection_id}`} className="link">{f.template_title}</Link>
+                          </div>
+                        </td>
+                        <td><Badge tone={f.severity}>{f.severity}</Badge></td>
+                        <td>{formatWhen(f.raised_at)}</td>
+                        <td className="min-w-[220px]">
+                          {canWaive ? (
+                            <details>
+                              <summary className="link cursor-pointer text-sm">Take the waiver back</summary>
+                              <RetractWaiverForm siteId={site.id} waiverId={f.waiver_id!} />
+                            </details>
+                          ) : (
+                            <Badge>No action needed</Badge>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -248,7 +287,7 @@ export default async function ActionsPage({ searchParams }: PageProps<"/actions"
                   defaultDays={DEFAULT_DAYS[selectedFinding.severity]}
                 />
               </Card>
-              {(selectedFinding.severity === "low" || selectedFinding.severity === "medium") && people.canManage && (
+              {(selectedFinding.severity === "low" || selectedFinding.severity === "medium") && canWaive && (
                 <Card title="Or: no action needed" description="Only low and medium findings can be waived, by an owner or SHE officer.">
                   <WaiveForm id={randomUUID()} siteId={site.id} inspectionId={selectedFinding.inspection_id} itemKey={selectedFinding.item_key} />
                 </Card>

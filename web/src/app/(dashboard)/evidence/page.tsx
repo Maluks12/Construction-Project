@@ -107,7 +107,8 @@ export default async function EvidencePage({ searchParams }: PageProps<"/evidenc
           </Card>
           <Card title="Access log" description="Append-only: who viewed, listed or exported which evidence, when and from where.">
             <p className="text-sm text-muted">
-              The API records every view but can&apos;t be read back yet. Reading the log arrives with the audit pack (M12).
+              The API records every view, list and export, but has no endpoint to read the log back yet, and audit
+              packs don&apos;t include it. That needs a backend change.
             </p>
           </Card>
         </div>

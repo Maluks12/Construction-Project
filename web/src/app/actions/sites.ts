@@ -145,3 +145,23 @@ export async function removeSiteMember(
   if (result?.ok) revalidatePath(`/sites/${siteId}`);
   return result;
 }
+
+// Puts someone on a site so a supervisor can see it (owners and SHE officers
+// see every site anyway). The person is anyone in the organisation: an
+// invitee who hasn't accepted yet already has the membership the API needs.
+export async function addSiteMember(
+  _: FormState,
+  form: FormData,
+): Promise<FormState> {
+  const siteId = field(form, "site_id");
+  const userId = field(form, "user_id");
+  if (!userId) return { error: "Choose who to add." };
+
+  const result = await attempt(() =>
+    api<void>(`${sitePath(siteId)}/members/${encodeURIComponent(userId)}`, {
+      method: "PUT",
+    }),
+  );
+  if (result?.ok) revalidatePath(`/sites/${siteId}`);
+  return result;
+}

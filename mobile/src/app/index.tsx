@@ -4,11 +4,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Button, Card, HeaderButton, Icon, Loading, Muted, Pill, Row, Screen } from "@/components/ui";
 import { api, sitePath } from "@/lib/api";
-import { formatDateOnly, formatDay, formatTime, isToday, label, now } from "@/lib/format";
+import { formatDateOnly, formatDay, formatTime, isToday, label, now, sastDay } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import { useLoad } from "@/lib/use-load";
-import type { ActionList, ChecklistCatalog, DeadlineList, InspectionList } from "@/lib/types";
+import type { ActionList, ChecklistCatalog, DeadlineList, Diary, InspectionList, NotificationList, SignInDay, TalkList } from "@/lib/types";
 import { C, F } from "@/theme";
+
+// Extras on the Today screen: a failure here shouldn't hide the rest.
+const quiet = <T,>(p: Promise<T>) => p.catch(() => null);
 
 export default function Today() {
   const { site, sites, chooseSite, signOut } = useSession();
@@ -17,13 +20,28 @@ export default function Today() {
 
   const { data, error, loading, reload } = useLoad(async () => {
     if (!site) return null;
-    const [catalog, inspections, actions, deadlines] = await Promise.all([
+    const today = sastDay(now());
+    const [catalog, inspections, actions, deadlines, talks, signIns, diary, unread] = await Promise.all([
       api<ChecklistCatalog>(sitePath(site.id, "/checklists")),
       api<InspectionList>(sitePath(site.id, "/inspections?limit=100")),
       api<ActionList>(sitePath(site.id, "/actions?owner=me")),
       api<DeadlineList>(sitePath(site.id, "/deadlines?state=due_now")),
+      quiet(api<TalkList>(sitePath(site.id, `/toolbox-talks?date=${today}`))),
+      quiet(api<SignInDay>(sitePath(site.id, `/sign-ins?date=${today}`))),
+      // 404 is "no diary yet today".
+      quiet(api<Diary>(`/v1/construction/sites/${encodeURIComponent(site.id)}/diary/${today}`)),
+      quiet(api<NotificationList>("/v1/notifications?unread=true&limit=200")),
     ]);
-    return { catalog, inspections: inspections.inspections, actions: actions.actions, callNow: deadlines.deadlines };
+    return {
+      catalog,
+      inspections: inspections.inspections,
+      actions: actions.actions,
+      callNow: deadlines.deadlines,
+      talks: talks?.talks ?? null,
+      headcount: signIns?.headcount ?? null,
+      diary,
+      unread: unread?.notifications.length ?? 0,
+    };
   }, [site?.id]);
 
   const today = (data?.inspections ?? []).filter((i) => isToday(i.started_at) && i.status !== "abandoned");
@@ -38,7 +56,7 @@ export default function Today() {
       title={site?.name ?? "No site"}
       headerRight={
         <>
-          <HeaderButton icon="bell" label="Notifications" onPress={() => router.push("/alerts")} dot={(data?.callNow.length ?? 0) > 0} />
+          <HeaderButton icon="bell" label="Notifications" onPress={() => router.push("/alerts")} dot={(data?.callNow.length ?? 0) > 0 || (data?.unread ?? 0) > 0} />
           {sites.length > 1 && <HeaderButton icon="swap" label="Change site" onPress={() => setPicking(!picking)} />}
         </>
       }
@@ -97,8 +115,24 @@ export default function Today() {
           </Card>
 
           <Card>
-            <Row title="Toolbox talk" sub="Sign the team in on this phone" right={<Pill>Sample</Pill>} href="/toolbox" />
-            <Row title="Site diary for today" sub="Headcount, weather, work done · closes at midnight" right={<Pill>Sample</Pill>} href="/diary" />
+            <Row
+              title="Site sign-in"
+              sub="Sign people in and out at the gate"
+              right={data.headcount !== null ? <Pill>{data.headcount} today</Pill> : undefined}
+              href="/sign-ins"
+            />
+            <Row
+              title="Toolbox talk"
+              sub="Sign the team in on this phone"
+              right={data.talks ? <Pill tone={data.talks.length ? "ok" : "warn"}>{data.talks.length ? `${data.talks.length} today` : "None yet"}</Pill> : undefined}
+              href="/toolbox"
+            />
+            <Row
+              title="Site diary for today"
+              sub="Headcount, weather, work done · closes at midnight"
+              right={<Pill tone={data.diary ? "ok" : "warn"}>{data.diary ? `Saved ${formatTime(data.diary.current.client_saved_at)}` : "Not written"}</Pill>}
+              href="/diary"
+            />
             <Row title="Outbox" sub="What's waiting to send" right={<Icon name="outbox" color={C.muted} />} href="/outbox" />
           </Card>
           {loading && <Muted>Refreshing…</Muted>}

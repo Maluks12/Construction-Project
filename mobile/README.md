@@ -35,7 +35,7 @@ src/
   components/ui.tsx     Screen, Card, Row, Pill, Button, Field, tab bar...
   lib/
     api.ts              The only code that calls the Go API; tokens, refresh
-    session.tsx         Who is signed in, which site the phone is on
+    session.tsx         Who is signed in (GET /v1/me: role, capabilities), which site
     evidence.ts         Photo: shrink, hash, declare, upload, complete
     types.ts            Copied from ../web/src/lib/types.ts (keep identical)
     regime.ts           Incident types per regime (copied from ../web)
@@ -49,8 +49,12 @@ src/
     call/[deadlineId]   Log that a legal deadline was met
     witness/[incidentId] Take a witness statement
     action/[id]         Close out a corrective action with a photo
-    alerts              Open deadlines and my overdue actions
-    toolbox, diary, outbox   Sample data only (see below)
+    alerts              Live deadlines and the notifications inbox
+    sign-ins            The gate: sign people in and out of the site
+    toolbox             Today's toolbox talks; start one
+    talk/[id]           A talk: tap to sign, photos, close it
+    diary               Today's site diary; addenda after midnight
+    outbox              Sample data only (see below)
 ```
 
 **Tokens** live in the device's secure storage (Keychain / Keystore) via
@@ -68,10 +72,14 @@ twice is harmless.
 - **Offline.** The spec is offline-first (SQLite queue, sync). This version
   needs signal to save and says so when it can't reach the server. The
   Outbox screen shows the planned design with sample data. Waits on SYNC.
-- **Toolbox talks and the site diary** show sample data. Waits on M10.
-- **Push notifications.** The Notifications screen lists what is open now.
-- **Starting a correction** of a completed inspection, and amending an
-  incident, are done on the dashboard for now.
+- **Push notifications.** The Notifications screen shows the inbox the
+  server keeps (the same reminders go by email); nothing is pushed yet.
+- **Paper registers** for toolbox talks and sign-ins (photo of the signed
+  sheet, then `method: "paper"`) aren't on the phone yet.
+- **The diary's other sections** (weather times, plant, instructions,
+  delays, visitors, deliveries) are kept as saved; only labour by firm is
+  edited on the phone.
+- **Amending an incident** is done on the dashboard.
 - **Accepting an invite** in the app: the invite link opens the dashboard.
 - Checked with `npx tsc --noEmit` and a Metro bundle, **not yet run on a
   device**. The photo flow in particular needs a run against the real API

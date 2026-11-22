@@ -10,8 +10,8 @@ import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
 
-import { getChecklists, listSiteMembers, listSites } from "./data";
-import type { Site } from "./types";
+import { getChecklists, getMe, listSiteMembers, listSites } from "./data";
+import type { Capability, Site } from "./types";
 
 export const SITE_COOKIE = "sp_site";
 
@@ -24,17 +24,29 @@ export const currentSite = cache(async (): Promise<{ sites: Site[]; site: Site |
   return { sites, site };
 });
 
+// What the signed-in person's role lets them do (GET /v1/me, M12). Only for
+// showing or hiding controls: the API still enforces every rule, and for a
+// supervisor each capability means "on your own sites".
+export const capabilities = cache(async () => new Set<Capability>((await getMe()).capabilities));
+
+export async function can(capability: Capability) {
+  return (await capabilities()).has(capability);
+}
+
 // Names for the user ids the API returns (started_by, owner_id...). Only
-// owners and SHE officers may list a site's members, and the list holds the
-// people added to the site, so an id can be missing: `who` then shows a
-// short form of the id rather than guessing.
+// owners and SHE officers may list a site's members (manage_sites), and the
+// list holds the people added to the site, so an id can be missing: `who`
+// then shows a short form of the id rather than guessing. The signed-in
+// person is always known by name.
 export const sitePeople = cache(async (siteId: string) => {
-  const members = await listSiteMembers(siteId);
-  const names = new Map<string, string>();
-  if (members !== "forbidden") for (const m of members) names.set(m.user_id, m.full_name);
+  const [me, canManage] = await Promise.all([getMe(), can("manage_sites")]);
+  const members = canManage ? await listSiteMembers(siteId) : [];
+  const list = members === "forbidden" ? [] : members;
+  const names = new Map<string, string>(list.map((m) => [m.user_id, m.full_name]));
+  names.set(me.user_id, me.full_name);
   return {
-    members: members === "forbidden" ? [] : members,
-    canManage: members !== "forbidden",
+    members: list,
+    canManage: canManage && members !== "forbidden",
     who: (id: string | null | undefined) =>
       id ? (names.get(id) ?? `User ${id.slice(0, 8)}`) : "—",
   };

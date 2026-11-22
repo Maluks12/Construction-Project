@@ -96,13 +96,17 @@ export async function recordStatement(_: FormState, form: FormData): Promise<For
 
 // Record that a legal deadline was met: the call made, the form sent.
 // `satisfied_at` is when that happened, not when it's being typed in.
+// A site work notice (REG4) can name its proof: a version of an H&S file
+// document, sent as "documentId:version" from the form's picker.
 export async function recordSatisfaction(_: FormState, form: FormData): Promise<FormState> {
-  const values = Object.fromEntries(["method", "satisfied_at", "reference", "note"].map((k) => [k, field(form, k)]));
+  const values = Object.fromEntries(["method", "satisfied_at", "reference", "note", "proof"].map((k) => [k, field(form, k)]));
+  const [documentId, documentVersion] = values.proof ? values.proof.split(":") : [];
   const body: SatisfactionRequest = {
     satisfied_at: sastToISO(values.satisfied_at),
     method: values.method as SatisfactionRequest["method"],
     reference: orNull(values.reference),
     note: orNull(values.note),
+    ...(documentId && documentVersion ? { document_id: documentId, document_version: Number(documentVersion) } : {}),
   };
   try {
     await api<DeadlineDetail>(
@@ -113,6 +117,7 @@ export async function recordSatisfaction(_: FormState, form: FormData): Promise<
     return fail(e, values);
   }
   revalidatePath("/deadlines");
+  revalidatePath("/permits");
   revalidatePath("/overview");
   return { ok: true };
 }

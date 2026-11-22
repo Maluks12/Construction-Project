@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 
-import { changeAction, raiseAction, waiveFinding } from "@/app/actions/corrective";
+import { changeAction, raiseAction, retractWaiver, waiveFinding } from "@/app/actions/corrective";
 import { FormError, SubmitButton } from "@/components/client";
 import { Alert, Field, Input, Select, Textarea } from "@/components/ui";
 import type { ActionRequestKind, Severity } from "@/lib/types";
@@ -101,6 +101,23 @@ export function WaiveForm({ id, siteId, inspectionId, itemKey }: { id: string; s
       </Field>
       <FormError state={state} />
       <SubmitButton variant="secondary" pendingText="Saving…">No action needed</SubmitButton>
+    </form>
+  );
+}
+
+// Takes a waiver back: the finding shows under "No action yet" again.
+export function RetractWaiverForm({ siteId, waiverId }: { siteId: string; waiverId: string }) {
+  const [state, action] = useActionState(retractWaiver, null);
+  if (state?.ok) return <Alert tone="ok">Waiver taken back. The finding needs an action again.</Alert>;
+  return (
+    <form action={action} className="mt-2 space-y-2">
+      <input type="hidden" name="site_id" value={siteId} />
+      <input type="hidden" name="waiver_id" value={waiverId} />
+      <Field label="Why it needs an action after all">
+        <Textarea name="reason" required maxLength={500} rows={2} defaultValue={state?.values?.reason} />
+      </Field>
+      <FormError state={state} />
+      <SubmitButton variant="secondary" size="sm" pendingText="Saving…">Take it back</SubmitButton>
     </form>
   );
 }

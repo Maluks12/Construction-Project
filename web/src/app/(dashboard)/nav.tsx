@@ -9,6 +9,7 @@ import { cx } from "@/components/ui";
 // The prototype's order. `match` lists other paths that light the link up.
 const LINKS: { href: string; label: string; match?: string[] }[] = [
   { href: "/overview", label: "Overview" },
+  { href: "/compliance", label: "Site compliance" },
   { href: "/inspections", label: "Inspections" },
   { href: "/actions", label: "Findings & actions" },
   { href: "/incidents", label: "Incidents" },

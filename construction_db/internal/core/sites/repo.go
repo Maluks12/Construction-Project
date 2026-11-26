@@ -81,6 +81,25 @@ func GetSiteRegime(ctx context.Context, db DBTX, orgID, siteID string) (id, code
 	return id, code, nil
 }
 
+// ListVisibleSites is every site the caller can open, archived ones too,
+// with its regime code. all is false for a supervisor: only their sites.
+func ListVisibleSites(ctx context.Context, db DBTX, orgID, userID string, all bool) ([]VisibleSite, error) {
+	rows, err := db.Query(ctx, `
+		SELECT s.id::text, r.code
+		FROM sites s
+		JOIN regulatory_regimes r ON r.id = s.regime_id
+		WHERE s.org_id = $1 AND ($3 OR EXISTS (SELECT 1 FROM site_members m WHERE m.site_id = s.id AND m.user_id = $2))
+		ORDER BY s.created_at, s.id`, orgID, userID, all)
+	if err != nil {
+		return nil, fmt.Errorf("list visible sites: %w", err)
+	}
+	out, err := pgx.CollectRows(rows, pgx.RowToStructByPos[VisibleSite])
+	if err != nil {
+		return nil, fmt.Errorf("list visible sites: %w", err)
+	}
+	return out, nil
+}
+
 func CreateSite(ctx context.Context, db DBTX, orgID, regimeCode, name string, address *string) (*Site, error) {
 	query := `
 		INSERT INTO sites (org_id, regime_id, name, address)

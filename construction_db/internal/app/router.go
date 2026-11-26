@@ -13,6 +13,7 @@ import (
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/checklists"
 	"construction_db/internal/core/deadlines"
+	"construction_db/internal/core/devicesync"
 	"construction_db/internal/core/documents"
 	"construction_db/internal/core/edition"
 	"construction_db/internal/core/evidence"
@@ -65,7 +66,8 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	// Recovery outermost, so a panic is still a 500; then one deadline for
 	// everything after it, auth included.
 	// No NUL reaches a handler (REG4 review R4); before auth, so it holds for every route.
-	router.Use(gin.Recovery(), httpapi.Deadline(opts.RequestTimeout), httpapi.RejectNUL())
+	// A sync sub-request reaches only the route it was checked against (SYNC D6).
+	router.Use(gin.Recovery(), httpapi.Deadline(opts.RequestTimeout), httpapi.RejectNUL(), devicesync.GuardSubRequests())
 
 	router.GET("/healthz", health.Handler(pool))
 	router.GET("/healthz/jobs", notifications.JobsHealth(pool, opts.Clock))
@@ -135,7 +137,20 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	editionRoutes.Use(auth.RequireAuth(authSvc))
 	ed.RegisterRoutes(editionRoutes, deps)
 
+	syncSvc := devicesync.NewService(pool, sitesSvc, reg)
+	syncSvc.Clock = opts.Clock
+	if se, ok := ed.(syncEdition); ok {
+		syncSvc.Add(se.SyncSources())
+	}
+	devicesync.Register(router, syncSvc, authSvc)
+	syncSvc.Router = router
+
 	return router, nil
+}
+
+// syncEdition is an edition with records of its own to pull and push (SYNC).
+type syncEdition interface {
+	SyncSources() devicesync.Sources
 }
 
 // reportingEdition is an edition that adds categories to the compliance

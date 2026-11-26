@@ -36,6 +36,11 @@ type Site struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type VisibleSite struct {
+	ID         string
+	RegimeCode string
+}
+
 type CreateSiteRequest struct {
 	Name    string  `json:"name" binding:"required,max=200"`
 	Address *string `json:"address" binding:"omitempty,max=500"`

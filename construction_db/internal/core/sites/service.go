@@ -144,6 +144,21 @@ func isUniqueViolation(err error, constraint string) bool {
 		pgErr.ConstraintName == constraint
 }
 
+// Visible lists the sites the caller may open (GET /v1/sites/:id), archived
+// ones included, unlike List: an archived site is still readable (SYNC D5).
+func (s *Service) Visible(ctx context.Context, orgID, userID, role string) ([]VisibleSite, error) {
+	var out []VisibleSite
+	err := s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
+		var err error
+		out, err = ListVisibleSites(ctx, tx, orgID, userID, role != auth.RoleSupervisor)
+		return err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("visible sites: %w", err)
+	}
+	return out, nil
+}
+
 func (s *Service) Create(ctx context.Context, orgID string, req CreateSiteRequest) (*Site, error) {
 	var site *Site
 	err := s.inTenant(ctx, orgID, "", func(tx pgx.Tx) error {

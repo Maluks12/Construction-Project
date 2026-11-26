@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -146,13 +147,33 @@ func Register(r *gin.Engine, svc *Service, authSvc *auth.Service) {
 func JobsHealth(pool *pgxpool.Pool, clk clock.Clock) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		stale, err := Stale(c.Request.Context(), pool, clk.Now())
-		switch {
-		case err != nil:
+		if err != nil {
 			httpapi.WriteUnexpected(c, "request failed", err)
-		case len(stale) > 0:
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "stale", "stale": stale})
-		default:
-			c.JSON(http.StatusOK, gin.H{"status": "ok", "stale": []string{}})
+			return
 		}
+		// A pull never passes a write still open anywhere on the server
+		// (SYNC D1), so one left open holds every phone's pull back.
+		var oldest float64
+		if err := pool.QueryRow(c.Request.Context(), `SELECT sync_oldest_write_age()`).Scan(&oldest); err != nil {
+			httpapi.WriteUnexpected(c, "request failed", err)
+			return
+		}
+		if oldest > PullLagLimit.Seconds() {
+			stale = append(stale, StaleSyncPull)
+		}
+		if len(stale) > 0 {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "stale", "stale": stale, "oldest_write_seconds": oldest})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "stale": []string{}, "oldest_write_seconds": oldest})
 	}
 }
+
+// StaleSyncPull is /healthz/jobs' entry when a write transaction has been open
+// longer than PullLagLimit: phones' pulls are held back behind it.
+const StaleSyncPull = "sync_pull"
+
+// PullLagLimit: no API transaction lasts beyond the request deadline (10 s)
+// and the idle limit (60 s), and the worker's writes are short; a write open
+// longer than this is someone's session or a migration. Tests shorten it.
+var PullLagLimit = 5 * time.Minute

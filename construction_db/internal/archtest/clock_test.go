@@ -35,6 +35,10 @@ var testOnlyFields = map[string]string{
 	"Lease":    "the export lease is the default in production",
 	"Backoff":  "the export backoff is the database default in production",
 	"OnlyOrgs": "the worker serves every organisation",
+	// SYNC: tests shorten them.
+	"PullLagLimit": "the pull lag limit is the default in production",
+	"PullBudget":   "a pull page's time budget is the default in production",
+	"PushReserve":  "a push's reserve before the deadline is the default in production",
 	// CI run #90: tests lower it; the API refuses to start below the default.
 	"PasswordCost": "passwords are hashed at bcrypt's default cost in production",
 }

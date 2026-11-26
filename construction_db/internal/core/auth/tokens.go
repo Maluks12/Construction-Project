@@ -1,10 +1,14 @@
 package auth
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -105,4 +109,64 @@ func NewRefreshToken() (plain string, hash string, err error) {
 func HashRefreshToken(plain string) string {
 	sum := sha256.Sum256([]byte(plain))
 	return hex.EncodeToString(sum[:])
+}
+
+// replayKey is derived from a refresh token's plaintext, which only its
+// holder has (the database keeps its hash), so a sealed replay can be
+// opened only by someone presenting that token again.
+func replayKey(plain string) ([]byte, error) {
+	return hkdf.Key(sha256.New, []byte(plain), []byte("siteproof refresh replay"), "v1", 32)
+}
+
+// sealReplay encrypts the pair a rotation answered (AES-256-GCM, a random
+// nonce first).
+func sealReplay(oldPlain string, pair *TokenPair) ([]byte, error) {
+	key, err := replayKey(oldPlain)
+	if err != nil {
+		return nil, fmt.Errorf("seal replay: %w", err)
+	}
+	gcm, err := newGCM(key)
+	if err != nil {
+		return nil, fmt.Errorf("seal replay: %w", err)
+	}
+	msg, err := json.Marshal(pair)
+	if err != nil {
+		return nil, fmt.Errorf("seal replay: %w", err)
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, fmt.Errorf("seal replay: %w", err)
+	}
+	return gcm.Seal(nonce, nonce, msg, nil), nil
+}
+
+func openReplay(oldPlain string, box []byte) (*TokenPair, error) {
+	key, err := replayKey(oldPlain)
+	if err != nil {
+		return nil, fmt.Errorf("open replay: %w", err)
+	}
+	gcm, err := newGCM(key)
+	if err != nil {
+		return nil, fmt.Errorf("open replay: %w", err)
+	}
+	if len(box) < gcm.NonceSize() {
+		return nil, errors.New("open replay: too short")
+	}
+	msg, err := gcm.Open(nil, box[:gcm.NonceSize()], box[gcm.NonceSize():], nil)
+	if err != nil {
+		return nil, fmt.Errorf("open replay: %w", err)
+	}
+	var pair TokenPair
+	if err := json.Unmarshal(msg, &pair); err != nil {
+		return nil, fmt.Errorf("open replay: %w", err)
+	}
+	return &pair, nil
+}
+
+func newGCM(key []byte) (cipher.AEAD, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCM(block)
 }

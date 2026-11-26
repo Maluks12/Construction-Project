@@ -16,6 +16,9 @@ import (
 const (
 	accessTokenTTL  = 15 * time.Minute
 	refreshTokenTTL = 30 * 24 * time.Hour
+	// RefreshGrace: how long after a rotation an exact retry with the old
+	// token gets the same pair back (SYNC, A.3), while the new token is unused.
+	RefreshGrace = 5 * time.Minute
 )
 
 type Service struct {
@@ -45,7 +48,7 @@ func (s *Service) IssueTokens(ctx context.Context, db DBTX, userID, orgID, devic
 		return nil, fmt.Errorf("issue tokens: %w", err)
 	}
 
-	if err := InsertRefreshToken(ctx, db, sessionID, hash, expiresAt); err != nil {
+	if _, err := InsertRefreshToken(ctx, db, sessionID, hash, expiresAt); err != nil {
 		return nil, fmt.Errorf("issue tokens: %w", err)
 	}
 
@@ -55,10 +58,11 @@ func (s *Service) IssueTokens(ctx context.Context, db DBTX, userID, orgID, devic
 	}
 
 	return &TokenPair{
-		AccessToken:  accessToken,
-		RefreshToken: plain,
-		ExpiresIn:    int(accessTokenTTL.Seconds()),
-		TokenType:    "Bearer",
+		AccessToken:      accessToken,
+		RefreshToken:     plain,
+		ExpiresIn:        int(accessTokenTTL.Seconds()),
+		TokenType:        "Bearer",
+		RefreshExpiresAt: expiresAt.UTC().Truncate(time.Microsecond),
 	}, nil
 }
 
@@ -238,10 +242,24 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*TokenPair,
 			}
 		}
 		if !marked {
+			// Used already, or by a refresh that won the race and has now
+			// committed (the mark waited for it). An exact retry soon after
+			// gets that refresh's pair; any other reuse revokes the session.
+			ok, err := ReplayAllowed(ctx, tx, rt.ID, RefreshGrace)
+			if err != nil {
+				return fmt.Errorf("refresh: %w", err)
+			}
+			if ok {
+				if fresh, err := FindRefreshToken(ctx, tx, hash); err == nil {
+					if tokens, err = openReplay(refreshToken, fresh.Replay); err == nil {
+						return nil
+					}
+				}
+			}
 			if _, err := RevokeSession(ctx, tx, session.UserID, session.ID); err != nil {
 				return fmt.Errorf("refresh: revoke after reuse: %w", err)
 			}
-			reused = true
+			tokens, reused = nil, true
 			return nil
 		}
 
@@ -249,7 +267,8 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*TokenPair,
 		if err != nil {
 			return fmt.Errorf("refresh: %w", err)
 		}
-		if err := InsertRefreshToken(ctx, tx, session.ID, newHash, session.ExpiresAt); err != nil {
+		newID, err := InsertRefreshToken(ctx, tx, session.ID, newHash, session.ExpiresAt)
+		if err != nil {
 			return fmt.Errorf("refresh: %w", err)
 		}
 
@@ -259,12 +278,17 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*TokenPair,
 		}
 
 		tokens = &TokenPair{
-			AccessToken:  accessToken,
-			RefreshToken: plain,
-			ExpiresIn:    int(accessTokenTTL.Seconds()),
-			TokenType:    "Bearer",
+			AccessToken:      accessToken,
+			RefreshToken:     plain,
+			ExpiresIn:        int(accessTokenTTL.Seconds()),
+			TokenType:        "Bearer",
+			RefreshExpiresAt: session.ExpiresAt.UTC(),
 		}
-		return nil
+		box, err := sealReplay(refreshToken, tokens)
+		if err != nil {
+			return fmt.Errorf("refresh: %w", err)
+		}
+		return SetReplay(ctx, tx, rt.ID, newID, box)
 	})
 	if err != nil {
 		return nil, err

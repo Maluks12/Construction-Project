@@ -74,3 +74,36 @@ func TestRefreshToken(t *testing.T) {
 		t.Error("HashRefreshToken should reproduce the returned hash")
 	}
 }
+
+// The replay box opens only with the refresh token that sealed it, and a
+// tampered box doesn't open at all.
+func TestReplaySeal(t *testing.T) {
+	old, _, err := NewRefreshToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _, _ := NewRefreshToken()
+	pair := &TokenPair{AccessToken: "a", RefreshToken: "r", ExpiresIn: 900, TokenType: "Bearer", RefreshExpiresAt: time.Now().UTC().Truncate(time.Microsecond)}
+	box, err := sealReplay(old, pair)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := openReplay(old, box)
+	if err != nil || *got != *pair {
+		t.Fatalf("open: %+v, %v", got, err)
+	}
+	if _, err := openReplay(other, box); err == nil {
+		t.Error("another token opened the box")
+	}
+	box[len(box)-1] ^= 1
+	if _, err := openReplay(old, box); err == nil {
+		t.Error("a tampered box opened")
+	}
+	if _, err := openReplay(old, box[:5]); err == nil {
+		t.Error("a short box opened")
+	}
+	again, _ := sealReplay(old, pair)
+	if string(again) == string(box) {
+		t.Error("two seals share a nonce")
+	}
+}

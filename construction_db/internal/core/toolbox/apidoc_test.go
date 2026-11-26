@@ -26,6 +26,7 @@ func TestAPIDoc(t *testing.T) {
 	doc.CheckFields(t, "ToolboxTopicList", []string{"topics"})
 	doc.CheckFields(t, "TalkList", []string{"talks"})
 	doc.CheckFields(t, "AlreadySigned", []string{"error", "hint"})
+	doc.CheckFields(t, "TalkChanged", []string{"error", "current"})
 	if quoted := `"` + AlreadySignedHint + `"`; !strings.Contains(doc.Text, quoted) {
 		t.Errorf("the reference doesn't quote the hint %s", quoted)
 	}

@@ -409,7 +409,7 @@ func ListInspectionFindings(ctx context.Context, db DBTX, orgID, inspectionID st
 
 // ListSiteFindings returns a site's findings, newest first, then by
 // inspection and template order. severity "" means any.
-func ListSiteFindings(ctx context.Context, db DBTX, orgID, siteID, severity, coverage string, limit int) ([]Finding, error) {
+func ListSiteFindings(ctx context.Context, db DBTX, orgID, siteID, severity, coverage, inspectionID string, limit int) ([]Finding, error) {
 	rows, err := db.Query(ctx, `
 		SELECT f.inspection_id, f.site_id, f.item_key, f.severity, f.raised_at,
 		       i.template_key, i.template_version, i.template_title, r.prompt, c.id,
@@ -422,9 +422,10 @@ func ListSiteFindings(ctx context.Context, db DBTX, orgID, siteID, severity, cov
 		-- isn't abandoned, and only a completed one supersedes.
 		LEFT JOIN inspections c ON c.corrects_id = f.inspection_id AND c.status = 'completed'
 		WHERE f.org_id = $1 AND f.site_id = $2 AND ($3 = '' OR f.severity = $3) AND ($5 = '' OR cov.coverage = $5)
+		  AND ($6 = '' OR f.inspection_id::text = $6)
 		ORDER BY f.raised_at DESC, f.inspection_id, r.position
 		LIMIT $4
-	`, orgID, siteID, severity, limit, coverage)
+	`, orgID, siteID, severity, limit, coverage, inspectionID)
 	if err != nil {
 		return nil, fmt.Errorf("list site findings: %w", err)
 	}

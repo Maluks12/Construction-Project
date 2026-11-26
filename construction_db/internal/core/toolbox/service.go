@@ -105,6 +105,19 @@ func (s *Service) putTalkOnce(ctx context.Context, orgID, userID, role, siteID, 
 		existing, err := lockTalk(ctx, tx, orgID, sr.Site.ID, id)
 		switch {
 		case err == nil:
+			h := existing.TalkHeader
+			stamp := h.CreatedAt
+			if h.UpdatedAt != nil {
+				stamp = *h.UpdatedAt
+			}
+			have := talkRow{h.TopicKey, h.Topic, h.PresenterName, h.Notes, h.StartedAt, h.EndedAt}
+			if req.BaseUpdatedAt != nil && !sameRow(have, row) && !req.BaseUpdatedAt.Truncate(time.Microsecond).Equal(stamp) {
+				current, err := view(ctx, tx, orgID, sr.Site.ID, id)
+				if err != nil {
+					return err
+				}
+				return &Changed{Current: current}
+			}
 			if err := s.edit(ctx, tx, orgID, &existing.TalkHeader, row); err != nil {
 				return err
 			}
@@ -607,7 +620,7 @@ var sentinels = []error{
 	ErrTalkNotFound, ErrAttendanceNotFound,
 	ErrBadTalkID, ErrTalkIDReused, ErrUnknownTopic, ErrTopicRequired, ErrBadTopic, ErrBadPresenter, ErrBadNotes,
 	ErrNoStartedAt, ErrStartedInFuture, ErrEndedInFuture, ErrEndsBeforeStart, ErrEndsTooLate, ErrEndsBeforeSigned, ErrBadDeviceID, ErrTalkSigned, ErrStartedAfterClose,
-	ErrBadEvidenceID, ErrBadKind, ErrEvidenceNotFound, ErrEvidenceRejected, ErrEvidenceNotVerified, ErrPhotoKindDiffers,
+	ErrBadEvidenceID, ErrBadKind, ErrEvidenceNotFound, ErrEvidenceRejected, ErrEvidenceNotVerified, ErrPhotoKindDiffers, ErrChanged,
 	ErrBadAttendanceID, ErrAttendanceIDReused, ErrBadName, ErrBadFirm, ErrBadClockNumber, ErrBadMethod, ErrNoSignedAt,
 	ErrSignedInFuture, ErrSignedBeforeStart, ErrSignedAfterEnd, ErrSignedTooLate, ErrAlreadySigned, ErrNeedsRegisterPhoto, ErrBadReason,
 	ErrNoRetractedAt, ErrRetractedInFuture, ErrCantRetract, ErrAlreadyRetracted, ErrBadDate, ErrBadLimit,

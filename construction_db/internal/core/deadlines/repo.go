@@ -95,6 +95,7 @@ type Satisfaction struct {
 	DocumentVersion *int      `json:"document_version"`
 	RecordedBy      string    `json:"recorded_by"`
 	RecordedAt      time.Time `json:"recorded_at"`
+	DeviceID        *string   `json:"device_id"`
 	// Met in time but recorded after the due time (satisfied_at < due_at <=
 	// recorded_at), e.g. a phone that synced late: an alert may have shown
 	// meanwhile. Judged against the deadline it is shown with.
@@ -117,7 +118,7 @@ const deadlineColumns = `
 	d.caveat, d.proof_document_types, d.basis_at, d.time_zone, d.due_at, d.due_on::text, d.excluded_days::text[], d.legal_latest_on::text,
 	d.legal_latest_at, d.legal_latest_source_ref, d.computed_in_version, d.computed_at, d.added_by_satisfaction_id, d.closed_as, d.superseded_by,
 	d.closed_in_version, d.closed_by, d.closed_at, d.closed_reason,
-	s.id, s.deadline_id, s.satisfied_at, s.method, s.reference, s.note, s.evidence_id, s.document_id, s.document_version, s.recorded_by, s.recorded_at`
+	s.id, s.deadline_id, s.satisfied_at, s.method, s.reference, s.note, s.evidence_id, s.document_id, s.document_version, s.recorded_by, s.recorded_at, s.device_id`
 
 // selectDeadlines joins each row to its duty's current satisfaction.
 const selectDeadlines = `SELECT` + deadlineColumns + `
@@ -131,6 +132,7 @@ func scanDeadline(row pgx.Row, now time.Time) (Deadline, error) {
 		d                                    Deadline
 		satID, satDeadline, satMethod, satBy *string
 		satRef, satNote, satEvidence, satDoc *string
+		satDevice                            *string
 		satDocVersion                        *int
 		satAt, satRecorded                   *time.Time
 	)
@@ -138,7 +140,7 @@ func scanDeadline(row pgx.Row, now time.Time) (Deadline, error) {
 		&d.SourceRef, &d.Caveat, &d.ProofDocumentTypes, &d.BasisAt, &d.TimeZone, &d.DueAt, &d.DueOn, &d.ExcludedDays, &d.LegalLatestOn,
 		&d.LegalLatestAt, &d.LegalLatestSourceRef, &d.ComputedInVersion, &d.ComputedAt, &d.AddedBySatisfactionID, &d.ClosedAs, &d.SupersededBy,
 		&d.ClosedInVersion, &d.ClosedBy, &d.ClosedAt, &d.ClosedReason,
-		&satID, &satDeadline, &satAt, &satMethod, &satRef, &satNote, &satEvidence, &satDoc, &satDocVersion, &satBy, &satRecorded)
+		&satID, &satDeadline, &satAt, &satMethod, &satRef, &satNote, &satEvidence, &satDoc, &satDocVersion, &satBy, &satRecorded, &satDevice)
 	if err != nil {
 		return Deadline{}, err
 	}
@@ -157,7 +159,7 @@ func scanDeadline(row pgx.Row, now time.Time) (Deadline, error) {
 	if satID != nil {
 		d.Satisfaction = &Satisfaction{ID: *satID, DeadlineID: *satDeadline, SatisfiedAt: satAt.UTC(), Method: *satMethod,
 			Reference: satRef, Note: satNote, EvidenceID: satEvidence, DocumentID: satDoc, DocumentVersion: satDocVersion,
-			RecordedBy: *satBy, RecordedAt: satRecorded.UTC()}
+			RecordedBy: *satBy, RecordedAt: satRecorded.UTC(), DeviceID: satDevice}
 		d.Satisfaction.RecordedAfterDue = RecordedAfterDue(d.Unit, d.DueAt, *d.Satisfaction)
 	}
 	d.OverdueWhenComputed = d.Unit != "immediately" && !d.ComputedAt.Before(d.DueAt)
@@ -267,7 +269,7 @@ func GetLiveForDuty(ctx context.Context, db DBTX, orgID, dutyID string, now time
 func ListSatisfactions(ctx context.Context, db DBTX, orgID, dutyID string) ([]Satisfaction, error) {
 	rows, err := db.Query(ctx, `
 		SELECT s.id, s.deadline_id, s.satisfied_at, s.method, s.reference, s.note, s.evidence_id, s.document_id, s.document_version,
-		       s.recorded_by, s.recorded_at, r.retracted_by, r.retracted_at, r.reason
+		       s.recorded_by, s.recorded_at, s.device_id, r.retracted_by, r.retracted_at, r.reason
 		FROM deadline_satisfactions s
 		LEFT JOIN deadline_satisfaction_retractions r ON r.satisfaction_id = s.id
 		WHERE s.org_id = $1 AND s.duty_id = $2
@@ -284,7 +286,7 @@ func ListSatisfactions(ctx context.Context, db DBTX, orgID, dutyID string) ([]Sa
 			at         *time.Time
 		)
 		if err := rows.Scan(&s.ID, &s.DeadlineID, &s.SatisfiedAt, &s.Method, &s.Reference, &s.Note, &s.EvidenceID, &s.DocumentID,
-			&s.DocumentVersion, &s.RecordedBy, &s.RecordedAt, &by, &at, &reason); err != nil {
+			&s.DocumentVersion, &s.RecordedBy, &s.RecordedAt, &s.DeviceID, &by, &at, &reason); err != nil {
 			return nil, fmt.Errorf("scan satisfaction: %w", err)
 		}
 		s.SatisfiedAt, s.RecordedAt = s.SatisfiedAt.UTC(), s.RecordedAt.UTC()
@@ -309,12 +311,12 @@ func GetSatisfaction(ctx context.Context, db DBTX, orgID, id string) (*Satisfact
 	)
 	err := db.QueryRow(ctx, `
 		SELECT s.id, s.deadline_id, s.satisfied_at, s.method, s.reference, s.note, s.evidence_id, s.document_id, s.document_version,
-		       s.recorded_by, s.recorded_at, r.retracted_by, r.retracted_at, r.reason, s.duty_id
+		       s.recorded_by, s.recorded_at, s.device_id, r.retracted_by, r.retracted_at, r.reason, s.duty_id
 		FROM deadline_satisfactions s
 		LEFT JOIN deadline_satisfaction_retractions r ON r.satisfaction_id = s.id
 		WHERE s.org_id = $1 AND s.id = $2`, orgID, id).
 		Scan(&s.ID, &s.DeadlineID, &s.SatisfiedAt, &s.Method, &s.Reference, &s.Note, &s.EvidenceID, &s.DocumentID, &s.DocumentVersion,
-			&s.RecordedBy, &s.RecordedAt, &by, &at, &reason, &dutyID)
+			&s.RecordedBy, &s.RecordedAt, &s.DeviceID, &by, &at, &reason, &dutyID)
 	if err != nil {
 		return nil, "", fmt.Errorf("get satisfaction: %w", err)
 	}
@@ -472,16 +474,17 @@ type NewSatisfaction struct {
 	Document                  *string
 	DocumentVersion           *int
 	RecordedBy                string
+	DeviceID                  *string
 }
 
 // InsertSatisfaction records a satisfaction against the duty's live row.
 func InsertSatisfaction(ctx context.Context, db DBTX, orgID, siteID string, s NewSatisfaction) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO deadline_satisfactions (id, org_id, site_id, duty_id, deadline_id, satisfied_at, method, reference, note,
-		                                    evidence_id, document_id, document_version, recorded_by)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+		                                    evidence_id, document_id, document_version, recorded_by, device_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
 		s.ID, orgID, siteID, s.DutyID, s.DeadlineID, s.SatisfiedAt, s.Method, s.Reference, s.Note, s.Evidence,
-		s.Document, s.DocumentVersion, s.RecordedBy)
+		s.Document, s.DocumentVersion, s.RecordedBy, s.DeviceID)
 	if err != nil {
 		return fmt.Errorf("insert satisfaction: %w", err)
 	}

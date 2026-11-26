@@ -182,4 +182,5 @@ var (
 	ErrEvidenceRejected    = errors.New("evidence was rejected")
 	ErrEvidenceNotVerified = errors.New("evidence not verified yet")
 	ErrNotOnRoster         = errors.New("worker is not on this site's roster")
+	ErrAlreadyRemoved      = errors.New("worker already removed from the roster with another reason")
 )

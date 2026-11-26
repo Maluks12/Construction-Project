@@ -473,7 +473,21 @@ func (s *Service) RemoveFromRoster(ctx context.Context, orgID, userID, role, sit
 		site, ds := sr.Site, sr.Data
 		e, err := liveRosterEntry(ctx, tx, orgID, site.ID, workerID)
 		if isNotFound(err) {
-			return ErrNotOnRoster
+			// A repeat of a removal already made (a phone resending, SYNC D7)
+			// gets that removal back.
+			last, err := lastRemoval(ctx, tx, orgID, site.ID, workerID)
+			if isNotFound(err) {
+				return ErrNotOnRoster
+			}
+			if err != nil {
+				return err
+			}
+			if last.RemoveReason == nil || *last.RemoveReason != req.Reason {
+				return ErrAlreadyRemoved
+			}
+			last.Expected = expectedNow(*last, ds, s.Clock.Now())
+			out = last
+			return nil
 		}
 		if err != nil {
 			return err
@@ -519,6 +533,7 @@ var Sentinels = []error{
 	ErrSignedOutFuture, ErrSignOutBeforeIn, ErrSignOutTooLate, ErrSignOutAfterNext, ErrBadDeviceID, ErrBadReason, ErrBadDate,
 	ErrBadEvidenceID, ErrIDReused, ErrAlreadySignedIn, ErrAlreadySignedOut, ErrAlreadyRetracted, ErrRetracted, ErrNeedsSheet,
 	ErrSiteArchived, ErrCantRetract, ErrEvidenceNotFound, ErrEvidenceRejected, ErrEvidenceNotVerified, ErrNotOnRoster,
+	ErrAlreadyRemoved,
 }
 
 func micro(t time.Time) time.Time { return t.Truncate(time.Microsecond).UTC() }

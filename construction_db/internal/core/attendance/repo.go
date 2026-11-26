@@ -200,6 +200,17 @@ func liveRosterEntry(ctx context.Context, db DBTX, orgID, siteID, workerID strin
 	return &e, err
 }
 
+// lastRemoval is the worker's most recent removal from the site's roster.
+func lastRemoval(ctx context.Context, db DBTX, orgID, siteID, workerID string) (*RosterEntry, error) {
+	rows, err := db.Query(ctx, rosterSQL+` WHERE r.org_id = $1 AND r.site_id = $2 AND r.worker_id = $3 AND r.removed_at IS NOT NULL
+		ORDER BY r.removed_at DESC, r.id LIMIT 1`, orgID, siteID, workerID)
+	if err != nil {
+		return nil, err
+	}
+	e, err := pgx.CollectExactlyOneRow(rows, scanRoster)
+	return &e, err
+}
+
 func addToRoster(ctx context.Context, db DBTX, orgID, siteID, workerID, by string) error {
 	_, err := db.Exec(ctx, `
 		INSERT INTO site_roster (org_id, site_id, worker_id, added_via, added_by) VALUES ($1, $2, $3, 'manual', $4)

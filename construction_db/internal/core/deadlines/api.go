@@ -14,6 +14,7 @@ type SatisfactionRequest struct {
 	EvidenceID      *string   `json:"evidence_id"`
 	DocumentID      *string   `json:"document_id"`
 	DocumentVersion *int      `json:"document_version"`
+	DeviceID        *string   `json:"device_id"`
 }
 
 // RetractRequest takes a satisfaction back.
@@ -43,6 +44,7 @@ var (
 	ErrBadMethod            = errors.New("method must be phone, email, fax, in_person, online, post or other")
 	ErrBadReference         = errors.New("reference must be 1-200 characters")
 	ErrBadNote              = errors.New("note must be 1-2000 characters")
+	ErrBadDeviceID          = errors.New("device_id must be 1-200 bytes")
 	ErrBadEvidenceID        = errors.New("evidence_id must be a UUID")
 	ErrCantRetract          = errors.New("only an owner or a SHE officer can retract a satisfaction")
 	ErrBadReason            = errors.New("reason must be 1-500 characters")
@@ -74,7 +76,7 @@ func (e *EvidenceError) Unwrap() error { return e.Err }
 var sentinels = []error{
 	ErrDeadlineNotFound, ErrBadSatisfactionID, ErrSatisfactionNotFound, ErrSatisfactionIDReused, ErrAlreadySatisfied,
 	ErrDeadlineWithdrawn, ErrNoSatisfiedAt, ErrSatisfiedInFuture, ErrSatisfiedBeforeBasis, ErrBadMethod, ErrBadReference,
-	ErrBadNote, ErrBadEvidenceID, ErrCantRetract, ErrBadReason, ErrRetractionDiffers, ErrBadState, ErrBadLimit,
+	ErrBadNote, ErrBadDeviceID, ErrBadEvidenceID, ErrCantRetract, ErrBadReason, ErrRetractionDiffers, ErrBadState, ErrBadLimit,
 	ErrBadSubjectType, ErrBeforeCalendar, ErrEvidenceNotFound, ErrEvidenceRejected, ErrEvidenceNotVerified,
 	ErrBadDocumentID, ErrDocumentPair, ErrDocumentNotFound, ErrNotProof, ErrDocumentRetracted,
 }

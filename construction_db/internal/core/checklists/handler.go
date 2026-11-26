@@ -46,7 +46,8 @@ func writeError(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrSeverityRequired), errors.Is(err, ErrSeverityNotAllowed), errors.Is(err, ErrBadSeverity),
 		errors.Is(err, ErrCommentTooLong), errors.Is(err, ErrBadEvidenceIDs), errors.Is(err, ErrRepeatedEvidence),
-		errors.Is(err, ErrTooManyPhotos), errors.Is(err, ErrBadReason), errors.Is(err, ErrAnswerInFuture):
+		errors.Is(err, ErrTooManyPhotos), errors.Is(err, ErrBadReason), errors.Is(err, ErrAnswerInFuture),
+		errors.Is(err, ErrStartedInFuture), errors.Is(err, ErrCompletedInFuture):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, sites.ErrSiteNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": "site not found"})
@@ -168,7 +169,7 @@ func (h *Handler) Findings(c *gin.Context) {
 		limit = n
 	}
 	out, err := h.svc.Findings(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c),
-		c.Param("id"), c.Query("severity"), c.Query("coverage"), limit)
+		c.Param("id"), c.Query("severity"), c.Query("coverage"), c.Query("inspection_id"), limit)
 	if err != nil {
 		writeError(c, err)
 		return

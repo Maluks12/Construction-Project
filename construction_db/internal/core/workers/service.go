@@ -101,6 +101,10 @@ func (s *Service) Put(ctx context.Context, orgID, userID, role, workerID string,
 	err = once(func() error {
 		created = false
 		return s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
+			// Edits queue on the row, so a base check sees the edit before it.
+			if _, err := tx.Exec(ctx, `SELECT 1 FROM workers WHERE org_id = $1 AND id = $2 FOR UPDATE`, orgID, id.String()); err != nil {
+				return err
+			}
 			existing, err := GetWorker(ctx, tx, orgID, id.String())
 			switch {
 			case err == nil:
@@ -114,6 +118,13 @@ func (s *Service) Put(ctx context.Context, orgID, userID, role, workerID string,
 				}
 				if !isLead(role) {
 					return ErrCantEdit
+				}
+				stamp := existing.CreatedAt
+				if existing.UpdatedAt != nil {
+					stamp = *existing.UpdatedAt
+				}
+				if req.BaseUpdatedAt != nil && !req.BaseUpdatedAt.Truncate(time.Microsecond).Equal(stamp) {
+					return &Changed{Current: existing}
 				}
 				if err := updateWorker(ctx, tx, orgID, existing.ID, userID, req, active); err != nil {
 					return clashOr(err)
@@ -730,7 +741,7 @@ var Sentinels = []error{
 	sites.ErrSiteNotFound,
 	ErrWorkerNotFound, ErrRecordNotFound, ErrRegimeNotFound, ErrAttendanceNotFound, ErrBadWorkerID, ErrBadRecordID, ErrBadActive,
 	ErrBadLimit, ErrBadReason, ErrCantEdit, ErrCantRetract, ErrCantLink, ErrIdentityTaken, ErrIDReused, ErrSupersedeTarget,
-	ErrAlreadyRenewed, ErrAlreadyRetracted, ErrAlreadyLinked, ErrNotLinked, ErrFileUsed,
+	ErrAlreadyRenewed, ErrAlreadyRetracted, ErrAlreadyLinked, ErrNotLinked, ErrFileUsed, ErrChanged,
 }
 
 func micro(t time.Time) time.Time { return t.Truncate(time.Microsecond).UTC() }

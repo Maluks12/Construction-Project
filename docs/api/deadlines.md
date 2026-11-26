@@ -80,6 +80,9 @@ the notice needs its own notice (GAR 8(2)). That row has
   notification for reg 4, the construction work permit for reg 3. Neither
   the document nor the version may be retracted. Both fields or neither.
 
+`device_id` (optional, SYNC D7) names the phone, as on every other capture;
+an identical repeat compares it.
+
 A phone that was offline may record a call days after it was made. When
 `satisfied_at` is before `due_at` but it was recorded at or after `due_at`,
 the satisfaction has `recorded_after_due: true`. It still counts as met in
@@ -90,7 +93,7 @@ meantime. A forthwith deadline never sets it.
 |---|---|
 | 201 | Recorded. `DeadlineDetail` of the live row |
 | 200 | The same satisfaction again (every field identical, same person): `DeadlineDetail` of the duty's live row now (the row it was recorded against, if the duty has been withdrawn since) |
-| 400 | `"satisfaction id must be a UUID"`, `"satisfied_at is required"`, `"satisfied_at is in the future; check the device clock"`, `"satisfied_at must not be before the deadline's basis_at"`, `"method must be phone, email, fax, in_person, online, post or other"`, `"reference must be 1-200 characters"`, `"note must be 1-2000 characters"`, `"evidence_id must be a UUID"`, `"document_id must be a UUID"`, `"document_id and document_version are given together"`, `"document version not found in this site's health and safety file"`, `"that document type is not proof of this deadline"`, `"that document version is retracted"`, `"deadlines can't be computed for this incident: the holiday calendar starts on 2024-01-01"`; photo: `"evidence not found on this site"`, `"evidence was rejected"` (as `EvidenceProblem`) |
+| 400 | `"satisfaction id must be a UUID"`, `"satisfied_at is required"`, `"satisfied_at is in the future; check the device clock"`, `"satisfied_at must not be before the deadline's basis_at"`, `"method must be phone, email, fax, in_person, online, post or other"`, `"reference must be 1-200 characters"`, `"note must be 1-2000 characters"`, `"device_id must be 1-200 bytes"`, `"evidence_id must be a UUID"`, `"document_id must be a UUID"`, `"document_id and document_version are given together"`, `"document version not found in this site's health and safety file"`, `"that document type is not proof of this deadline"`, `"that document version is retracted"`, `"deadlines can't be computed for this incident: the holiday calendar starts on 2024-01-01"`; photo: `"evidence not found on this site"`, `"evidence was rejected"` (as `EvidenceProblem`) |
 | 404 | `"site not found"`, `"deadline not found"` |
 | 409 | `"satisfaction id already used with different details"`, `"deadline is already satisfied; retract that satisfaction first"`, `"deadline is withdrawn; its rule no longer applies"`, `"evidence not verified yet"` (as `EvidenceProblem`) |
 
@@ -241,6 +244,7 @@ export interface Satisfaction {
   document_version: number | null;
   recorded_by: string;
   recorded_at: string;
+  device_id: string | null;
   recorded_after_due: boolean;
   retraction: Retraction | null;
 }
@@ -302,6 +306,7 @@ export interface SatisfactionRequest {
   evidence_id?: string | null;
   document_id?: string | null;
   document_version?: number | null;
+  device_id?: string | null;
 }
 
 export interface RetractRequest {

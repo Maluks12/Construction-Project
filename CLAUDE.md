@@ -54,7 +54,7 @@ Endpoint references for the frontend live in `docs/api/` (so far:
 `evidence.md`, `inspections.md`, `incidents.md`, `actions.md`, `toolbox.md`,
 `diary.md`, `files.md`, `workers.md`, `attendance.md`, `documents.md`,
 `appointments.md`, `notifications.md`, `me.md`, `compliance.md`,
-`exports.md`, `deadlines.md` and `site-work.md`, with the types to mirror; each milestone's `mN-handover.md` lists what changed). A backend
+`exports.md`, `deadlines.md`, `site-work.md` and `sync.md`, with the types to mirror; each milestone's `mN-handover.md` lists what changed). A backend
 change to an endpoint listed there updates the reference in the same
 commit; `TestAPIDoc` fails if its types drift from the Go code.
 
@@ -65,7 +65,7 @@ Shape rules both sides rely on:
   `TokenPair`.
 - Errors are `{"error": "<message>"}`. 400 validation, 401 bad or expired
   token, 403 wrong role, 404 not found (including someone else's or a
-  malformed id), 409 conflict, 500 `"internal error"`, 503 `"server busy,
+  malformed id), 409 conflict, 413 a body over 1 MiB (every route), 500 `"internal error"`, 503 `"server busy,
   try again"` with a `Retry-After` header (seconds): the request ran out of
   time; retry after that many seconds.
 - Phone numbers are E.164 (`+27820000001`).

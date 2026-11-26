@@ -88,9 +88,15 @@ completing (Rev 4 §2.3). The jobs are `reminders` (15 minutes), `emails`
 builder; 1 minute: each build is a run, an idle pass is one, and a long
 build records a heartbeat each time it renews its lease).
 
+Since SYNC (review 4) the body also has `oldest_write_seconds`: how long the
+oldest write transaction still open anywhere on the database has run (0 when
+none). Phones' pulls wait behind it (`docs/api/sync.md`), so past 5 minutes it
+is 503 with `"sync_pull"` among `stale`. A read-only transaction doesn't count.
+
 ## Across the API
 
-- 400 `"text must not contain NUL characters"`: a NUL character (`\u0000`) anywhere in the JSON body (any value or key, however nested), the query string or the path, on every endpoint, checked before the token (REG4 review). Postgres text can't store one.
+- 400 `"text must not contain NUL characters"`: a NUL character (`\u0000`) anywhere in the JSON body (any value or key, however nested), the query string or the path, on every endpoint, checked before the token (REG4 review). Postgres text can't store one. The sync push checks each record's body as its own request instead (SYNC review).
+- 413 `"request body too large; at most 1 MiB"`: on every endpoint, checked before the token (SYNC review). No endpoint takes more; files go straight to storage.
 
 ## Types for `web/src/lib/types.ts`
 

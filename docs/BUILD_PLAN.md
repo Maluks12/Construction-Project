@@ -6,13 +6,17 @@ Copied from the tickable plan page on claude.ai (https://claude.ai/artifact/XCsD
 
 **Checkpoint, Sun 22 Nov: a review point, not a cut.** The original rule (cut JBCC, then the principal-contractor tier, then IOD form assembly) was withdrawn on Sun 15 Nov: no cuts, below.
 
-**Decided Sun 15 Nov: no cuts.** The full scope stays. The forecast below (seventh revision, Fri 20 Nov, at the checkpoint) puts v1.0.0 on **Tue 22 Dec** with every gap the checkpoint found, or **Wed 9 Dec** without them. The due date stays Sat 5 Dec.
+**Decided Sun 15 Nov: no cuts.** The full scope stays. The forecast below (tenth revision, Thu 26 Nov) puts v1.0.0 on **Thu 24 Dec** with every gap the checkpoint found, or **Fri 11 Dec** without them. The due date stays Sat 5 Dec.
 
 **Decided Tue 17 Nov (the pricing, Enterprise and onboarding documents):**
 - **Pricing is per active site, never per user.** Users are unlimited on every plan; plans limit active sites.
 - **CHSO partners get a once-off referral payout**, not a recurring share. It's paid after the referred client has paid its first 3 months, or on its first annual prepay.
 
-## Forecast (Fri 20 Nov, seventh revision: the checkpoint; eighth, Sat 21 Nov: REG4)
+## Forecast (Fri 20 Nov, seventh revision: the checkpoint; eighth, Sat 21 Nov: REG4; ninth and tenth, Thu 26 Nov: SYNC)
+
+**Tenth revision (Thu 26 Nov, SYNC done).** SYNC was built, reviewed and its review fixes done on Thu 26 Nov: one day against its 3, so everything after it comes forward 2 days from the ninth revision: ONBOARD Sat 28 Nov, BILL Wed 2 Dec, DEPLOY Sat 5 Dec, IOD Mon 7 Dec, JBCC Tue 8 Dec, PC Thu 10 Dec, GAPS-A Mon 14 Dec, GAPS-B Thu 17 Dec, GAPS-C Wed 23 Dec. **v1 is Thu 24 Dec**, or **Fri 11 Dec** without the gap milestones. The Stitch sandbox is needed when BILL starts (Sun 29 Nov, at the latest Wed 2 Dec), the AWS account and the Object Lock call when DEPLOY starts (Thu 3 Dec). The estimates are unchanged: one fast milestone isn't a pace.
+
+**Ninth revision (Thu 26 Nov, SYNC).** SYNC started on Thu 26 Nov, not Sun 22 Nov: the four days after REG4 went to review, which isn't modelled. It keeps its 3 days, so it finishes Sat 28 Nov (was Tue 24 Nov), and **everything after it moves 4 days**: ONBOARD Mon 30 Nov, BILL Fri 4 Dec, DEPLOY Mon 7 Dec, IOD Wed 9 Dec, JBCC Thu 10 Dec, PC Sat 12 Dec, GAPS-A Wed 16 Dec, GAPS-B Sat 19 Dec, GAPS-C Fri 25 Dec. **v1 moves from Tue 22 Dec to Sat 26 Dec**, or from Wed 9 Dec to **Sun 13 Dec** without the gap milestones. The external dates move with it: the Stitch sandbox is needed when BILL starts (Tue 1 Dec, at the latest Fri 4 Dec), the AWS account and the Object Lock call when DEPLOY starts (Sat 5 Dec). SYNC's code was in fact finished on Thu 26 Nov, awaiting review: if it is approved without more work, a tenth revision brings everything after it forward 2 days (v1 Thu 24 Dec; Fri 11 Dec without the gap milestones).
 
 **Eighth revision (Sat 21 Nov, REG4).** REG4 was re-estimated at 2 days when planned that morning (D14: a second deadline subject across five consumers, the deadline endpoints moved to core), and built the same day, so it took its original 1 day. Review is still not modelled. No later date moves: SYNC still finishes Tue 24 Nov, v1 **Tue 22 Dec** (Wed 9 Dec without the gap milestones). SYNC must settle one pull cursor for every table first (`construction_db/CLAUDE.md`, SYNC answers).
 
@@ -50,22 +54,22 @@ How the forecast is built (fifth revision; unchanged since):
 | M12 Reports & audit pack | full | – | **done Fri 20 Nov** | Sun 22 Nov | Re-estimated at 4 days that morning (the rollup, the extra summary items, a rebuildable pack); built in one day; reviewed Fri 20 Nov, approved with fixes |
 | FIX CI app timeout & lock waits | full for the lock bounds | – | **done Sat 21 Nov** (#17) | – | Unplanned: CI run #90. Taken before REG4, which is rebased on it |
 | REG4 Regulation 4 notification | full | – | **done Sat 21 Nov** | – | Dated at the checkpoint (D13): before SYNC, so sync covers its record. Re-estimated at 2 days when planned (D14); built in one |
-| SYNC Offline sync API | full | 3 | Tue 24 Nov | Wed 25 Nov | Set by hand (the task count gives 1): pull and push with conflict rules across every record type built so far |
-| ONBOARD Onboarding | light; full for team management; the CSV import's all-or-nothing tested | 2 | Thu 26 Nov | Thu 26 Nov | 5 tasks (team management added Fri 20 Nov); added Tue 17 Nov |
-| BILL Billing | light; full for invoicing, price versions, metering and webhooks | 4 | Mon 30 Nov | Mon 30 Nov | 9 tasks (3 days, was 2 tasks), plus 1 for the Stitch sandbox (external) |
-| DEPLOY | – | 3 | Thu 3 Dec | Mon 30 Nov | Configuration, not code, plus G37 (shipping the logs off-instance, 1 day of code); needs an AWS account and a practitioner's call on the Object Lock mode (external) |
-| IOD Injury on duty | full | 2 | Sat 5 Dec | Tue 1 Dec | 4 tasks (G35, the doctor handout, added at the checkpoint) |
-| JBCC Delay claims | full | 1 | Sun 6 Dec | Wed 2 Dec | 1 task |
-| PC Principal contractor tier | full | 2 | Tue 8 Dec | Fri 4 Dec | 4 tasks (required appointments by role, M12 D4) |
-| GAPS-A Safety records | full | 4 | Sat 12 Dec | – | 11 tasks from the checkpoint |
-| GAPS-B Construction pack | full for s37(2) | 3 | Tue 15 Dec | – | 8 tasks from the checkpoint |
-| GAPS-C Platform, evidence and reports | light; full for evidence | 6 | Mon 21 Dec | – | 16 tasks from the checkpoint |
-| V1 Release | – | 1 | **Tue 22 Dec** | Sat 5 Dec | Wed 9 Dec without GAPS-A to C |
+| SYNC Offline sync API | full | – | **done Thu 26 Nov** (reviewed and fixed the same day) | Wed 25 Nov | Set by hand (the task count gives 1): pull and push with conflict rules across every record type built so far. Started Thu 26 Nov, four days after REG4 (review isn't modelled) |
+| ONBOARD Onboarding | light; full for team management; the CSV import's all-or-nothing tested | 2 | Sat 28 Nov | Thu 26 Nov | 5 tasks (team management added Fri 20 Nov); added Tue 17 Nov |
+| BILL Billing | light; full for invoicing, price versions, metering and webhooks | 4 | Wed 2 Dec | Mon 30 Nov | 9 tasks (3 days, was 2 tasks), plus 1 for the Stitch sandbox (external) |
+| DEPLOY | – | 3 | Sat 5 Dec | Mon 30 Nov | Configuration, not code, plus G37 (shipping the logs off-instance, 1 day of code); needs an AWS account and a practitioner's call on the Object Lock mode (external) |
+| IOD Injury on duty | full | 2 | Mon 7 Dec | Tue 1 Dec | 4 tasks (G35, the doctor handout, added at the checkpoint) |
+| JBCC Delay claims | full | 1 | Tue 8 Dec | Wed 2 Dec | 1 task |
+| PC Principal contractor tier | full | 2 | Thu 10 Dec | Fri 4 Dec | 4 tasks (required appointments by role, M12 D4) |
+| GAPS-A Safety records | full | 4 | Mon 14 Dec | – | 11 tasks from the checkpoint |
+| GAPS-B Construction pack | full for s37(2) | 3 | Thu 17 Dec | – | 8 tasks from the checkpoint |
+| GAPS-C Platform, evidence and reports | light; full for evidence | 6 | Wed 23 Dec | – | 16 tasks from the checkpoint |
+| V1 Release | – | 1 | **Thu 24 Dec** | Sat 5 Dec | Fri 11 Dec without GAPS-A to C |
 
-**Critical path:** every milestone follows the last, so all of them are on it, and there is no slack: the forecast is 17 days past Sat 5 Dec (4 without the gap milestones). The external dependencies fall due on it as follows:
-- **Stitch sandbox credentials:** needed when BILL starts, Fri 27 Nov, and at the latest for the Stitch task, Mon 30 Nov.
-- **AWS account:** needed when DEPLOY starts, Tue 1 Dec.
-- **The Object Lock call (mode and retention, with a practitioner):** needed by Tue 1 Dec, before the bucket is created.
+**Critical path:** every milestone follows the last, so all of them are on it, and there is no slack: the forecast is 19 days past Sat 5 Dec (6 without the gap milestones; tenth revision). The external dependencies fall due on it as follows:
+- **Stitch sandbox credentials:** needed when BILL starts, Sun 29 Nov, and at the latest for the Stitch task, Wed 2 Dec.
+- **AWS account:** needed when DEPLOY starts, Thu 3 Dec.
+- **The Object Lock call (mode and retention, with a practitioner):** needed by Thu 3 Dec, before the bucket is created.
 
 Any one of them arriving late moves the release later still, day for day.
 
@@ -79,7 +83,7 @@ Any one of them arriving late moves the release later still, day for day.
 **Risks to the forecast:**
 - **External waits:** the three above, plus a practitioner reviewing the severity wording and the corrective-action default due days that follow it (low 14, medium 7, high 1, critical 0 days after the day raised; M9, product defaults, not law), which doesn't block a milestone.
 - **The pace:** three milestones at about 3.5 tasks a day is the evidence. M6 and M7 ran slower than planned, and review time isn't modelled: if every milestone from M11 to the release took one day more, the release would be Wed 16 Dec.
-- **Mobile sync:** the mobile app can't sync offline until SYNC lands (Tue 24 Nov, due Wed 25 Nov).
+- **Mobile sync:** the sync API's code is done (Thu 26 Nov, awaiting review); the app's side (queue, storage budget, per-record status) follows `docs/api/sync-handover.md`.
 - **The gap milestones** are estimated from the checkpoint's one-line descriptions; each needs its own plan, and several (hazards, PPE, s37(2), branding) are new record types with their own decisions.
 - **No contingency.** Anything that grows the way M7 did moves every date after it.
 
@@ -258,7 +262,7 @@ Plan approved Fri 20 Nov (decisions D1–D16 in `construction_db/CLAUDE.md`, Sta
 | Incidents with the reporting clock | **built** (M8; reminders M11) |
 | Worker register with attendance and clearance | **partly**: register and attendance built (M11); site clearance and inductions not built (G5) |
 | The statutory vault | **built** (M11); annual filing reminders not built (G27) |
-| Offline capture | **partly**: device ids, late arrivals and the records-before-photos rule everywhere; the sync API is SYNC (next); the queue, storage budget and Wi-Fi preference are the mobile app's |
+| Offline capture | **partly**: device ids, late arrivals and the records-before-photos rule everywhere; the sync API is built (SYNC, Thu 26 Nov); the queue, storage budget and Wi-Fi preference are the mobile app's |
 | The safety file | **partly**: the H&S file with readiness (M11) and the audit pack in inspector order (M12); a generated safety-file pack from versioned templates is G18 |
 | Defer: housekeeping trends, appointment gap detection, s37(2) | **not built**; kept as G16, G14, G15 (no cuts) |
 
@@ -289,14 +293,14 @@ Plan approved Fri 20 Nov (decisions D1–D16 in `construction_db/CLAUDE.md`, Sta
 | A.2 | Tagging and galleries | not built (a site's evidence list only) | G24 |
 | A.2 | Access log | built (views M7, exports M12; no share feature yet) | |
 | A.2 | Paper-to-photo capture | partly: paper talk registers and sign-in sheets; other completed forms not | G25 |
-| A.3 | Full offline capture | partly: every write takes a device id and accepts late arrival | SYNC |
-| A.3 | Full-shift offline tolerance | partly: as above; delta pull and batch push are SYNC | SYNC |
+| A.3 | Full offline capture | built (SYNC, Thu 26 Nov): every capture under a device id, late arrival accepted, batch push | |
+| A.3 | Full-shift offline tolerance | built (SYNC): delta pull, batch push, the refresh grace and `refresh_expires_at` for a 12-hour shift | |
 | A.3 | Client-generated UUIDs | built (PUT under device ids everywhere) | |
 | A.3 | Separate metadata and media queues | built server-side (records before photos; completion waits) | |
 | A.3 | Resumable multipart uploads | not built (one presigned PUT, 10–20 MiB caps) | G26 |
 | A.3 | WiFi-preferred with data override | the mobile app's | mobile |
 | A.3 | Local storage budget and warnings | the mobile app's | mobile |
-| A.3 | Per-record sync status | partly: each record's server state; the app shows it | SYNC |
+| A.3 | Per-record sync status | built server-side (SYNC): each pushed record's own status and body; the app shows it | mobile |
 | A.4 | Calendar and working-day rules | built (M8) | |
 | A.4 | SA public holiday calendar as data | built (`public_holidays`, M8; recompute M11) | |
 | A.4 | Site shutdown periods | not built | G28 |
@@ -426,26 +430,26 @@ Plan approved Fri 20 Nov (decisions D1–D16 in `construction_db/CLAUDE.md`, Sta
 
 ## Sync, onboarding, billing & deploy (due Mon 30 Nov)
 
-### SYNC: Offline sync API (due Wed 25 Nov; forecast Tue 24 Nov)
+### SYNC: Offline sync API (due Wed 25 Nov; done Thu 26 Nov; reviewed and fixed Thu 26 Nov)
 
 Answers decided Fri 20 Nov (`construction_db/CLAUDE.md`, Status): REG4 records are in pull and push; capabilities may be cached offline (refresh on reconnect and after a 403, sign out on a 401); batch push carries declarations and returns fresh upload URLs for pending ones, while upload and complete stay per file; history tables and exports are server-only.
 
 - [x] Request deadlines and pool limits: replace RequireAuth's own 2s timeout with one request-level deadline set in middleware; a request that hits it or can't get a pool connection gets 503 with Retry-After, never 500; pool size (pgxpool MaxConns) set from config and documented. Found in M6: a burst larger than the pool (default max(4, CPUs)) made auth answer 500 after 2s (due Mon 23 Nov)
-- [ ] Client-generated UUIDs and idempotency keys on every create (due Mon 23 Nov)
-- [ ] Delta pull per site from a cursor (GET /v1/sync?since=) (due Tue 24 Nov)
-- [ ] Batch push with per-record results and conflict rules; evidence is never overwritten (due Wed 25 Nov)
+- [x] Client-generated UUIDs and idempotency keys on every create (due Mon 23 Nov). **Done Thu 26 Nov** (D7): every capture was already a PUT under a client id; a roster removal's repeat is now 200, satisfactions take a `device_id`, worker links stay online-only. Every write route is pushable or online-only with a reason (`TestPushRoutes`)
+- [x] Delta pull per site from a cursor (due Tue 24 Nov). **Done Thu 26 Nov** (D1–D5): `GET /v1/sync`, `GET /v1/sync/sites/:id` and the reference bundle; the cursor is the writing transaction's id read up to the snapshot's xmin, so a slow commit is never passed (000049); a server epoch resets after a restore
+- [x] Batch push with per-record results and conflict rules; evidence is never overwritten (due Wed 25 Nov). **Done Thu 26 Nov** (D6, batch 2): `POST /v1/sync/push` replays each record through its own endpoint; workers and talks take `base_updated_at`; the refresh grace for a lost response (000051). Handover: `docs/api/sync-handover.md`. Reviewed Thu 26 Nov: approved with fixes (the org cursor, NUL in a batch, delta completeness, pull lag; `construction_db/CLAUDE.md`, Status); batch 2 approved as built
 
-### ONBOARD: Onboarding (due Thu 26 Nov; forecast Thu 26 Nov; added Tue 17 Nov)
+### ONBOARD: Onboarding (due Thu 26 Nov; forecast Sat 28 Nov; added Tue 17 Nov)
 
 **Rigour:** light, except that team management is full rigour and the CSV import needs a test proving that one bad row writes nothing.
 
 - [ ] Site zones and floors: check whether `site_locations` already covers them; extend it only if not (due Wed 25 Nov)
-- [ ] CSV import for the worker register: validate every row, report errors per row, all or nothing. Test: one bad row writes nothing (due Wed 25 Nov)
+- [ ] CSV import for the worker register: validate every row, report errors per row, all or nothing. Test: one bad row writes nothing. Every request body is at most 1 MiB since SYNC (413 above, `httpapi.MaxBody`): if the import takes more, name its route in `RejectNUL(ownBody...)` in `app.NewRouter` and bound and NUL-check its body itself, as the sync push does (`construction_db/CLAUDE.md`, Conventions) (due Wed 25 Nov)
 - [ ] Bulk document upload with expiry dates: worker certificates, medicals and company documents (due Thu 26 Nov)
 - [ ] First-run setup progress endpoint for the wizard: sites added, team invited, company documents loaded, workers added (due Thu 26 Nov)
 - [ ] Team management (due Thu 26 Nov). **Full rigour.** GET /v1/members (members with role and status) and PATCH /v1/members/:userId (role or status). An organisation always has at least one active owner, enforced in the database, with a forced-race test (two owners demoting each other). Suspending or removing a member revokes their sessions and refresh tokens immediately. A role change into or out of supervisor handles site scoping explicitly. Every change is recorded append-only: who, when, from, to, why. Owners and SHE officers may change roles, but only an owner may grant or change the owner role, matching invites. Follows the role matrix in the platform guide once approved
 
-### BILL: Billing (due Mon 30 Nov; forecast Mon 30 Nov)
+### BILL: Billing (due Mon 30 Nov; forecast Wed 2 Dec)
 
 **Rigour:** full for invoicing, price versions (escalation, cap, rounding, prepay lock), metering and the webhooks; light for the rest.
 
@@ -459,14 +463,15 @@ Answers decided Fri 20 Nov (`construction_db/CLAUDE.md`, Status): REG4 records a
 - [ ] SMS/WhatsApp metering per organisation, billed at cost plus a margin. **Full rigour** (due Mon 30 Nov)
 - [ ] Stitch DebiCheck provider (sandbox) and verified webhooks. Declare the yearly increase on the mandate at signup, and set the maximum collection amount with headroom above the current invoice. Check Stitch's current documentation for both. **Full rigour** for the webhooks (due Mon 30 Nov)
 
-### DEPLOY: Deploy (due Mon 30 Nov; forecast Thu 3 Dec)
+### DEPLOY: Deploy (due Mon 30 Nov; forecast Sat 5 Dec)
 
 - [ ] RLS on users: visible if it's you or shares an org with the tenant; login and invite lookups by email/mobile via SECURITY DEFINER functions (before the production deploy)
 - [ ] Create a LOGIN role for siteproof_app with its own password; the production API connects with it, never superuser credentials. The migration owner must be a superuser or have BYPASSRLS (the token lookups are SECURITY DEFINER) (before the production deploy)
 - [ ] Evidence bucket retention: choose the Object Lock mode (governance or compliance) and default retention with a practitioner. Compliance can be extended per object but never shortened, and blocks POPIA deletion requests. The same locked bucket holds document files (M11), medical certificates of fitness among them, so this retention decision covers POPIA for health data too: a certificate under compliance retention can't be erased before it ends. Set it as the bucket default and EVIDENCE_LOCK_MODE to match; the API refuses to start otherwise (before the production deploy)
 - [ ] Evidence bucket in af-south-1: Object Lock and versioning on, SSE-KMS with its own evidence key (Rev 4 §2.13), all public access blocked (before the production deploy)
 - [ ] API IAM role on the evidence bucket only: s3:PutObject, GetObject, GetObjectVersion, GetObjectRetention, GetBucketObjectLockConfiguration. No Delete* and no BypassGovernanceRetention (before the production deploy)
-- [ ] Rate limiting on auth and evidence endpoints (Rev 3 security list, P1) (before the production deploy)
+- [ ] Rate limiting on auth and evidence endpoints (Rev 3 security list, P1). A sync push (`POST /v1/sync/push`) counts each record it carries, not the batch: a batch of 100 is 100 requests (SYNC review) (before the production deploy)
+- [ ] No long write transactions in production (SYNC review): every phone's pull waits behind the oldest open write on the server. Run migrations in short transactions, never leave a psql session open in a write, and alert on `/healthz/jobs` reporting `sync_pull` (an open write past 5 minutes; `oldest_write_seconds`). Its `sync_oldest_write_age()` and the epoch's `sync_epoch()` run as the migration owner: on a managed database where that role isn't a superuser, grant it `pg_monitor` (for `pg_read_all_stats`, which shows other sessions' open writes, and `pg_control_*`), or the lag check silently always passes (before the production deploy)
 - [ ] Evidence downloads logged by S3: server access logging or CloudTrail data events on the evidence bucket, to a separate bucket. The API's access log records that a 60-second view link was issued, not that it was used; this records the actual GETs (before the production deploy)
 - [ ] Set TRUSTED_PROXIES to the load balancer's addresses. Empty (the default) trusts no proxy, so behind a load balancer every access-log row would record the load balancer's IP; listing a range clients can reach lets them choose the logged IP (before the production deploy)
 - [ ] Decide who may see injury and treatment details in `incident_people` (POPIA special personal information: health). Today every owner, SHE officer and supervisor on the site can (added Sun 15 Nov) (before launch)
@@ -481,18 +486,18 @@ Answers decided Fri 20 Nov (`construction_db/CLAUDE.md`, Status): REG4 records a
 
 ## Claims & contractor tier (due Sat 5 Dec)
 
-### IOD: Injury on duty (COIDA) (due Tue 1 Dec; forecast Sat 5 Dec)
+### IOD: Injury on duty (COIDA) (due Tue 1 Dec; forecast Mon 7 Dec)
 
 - [ ] IOD case linked to an incident, with the W.Cl.2–6 lifecycle (per Rev 3) (due Tue 1 Dec)
 - [ ] IOD deadlines and reminders from regime rules. The 7-day W.Cl.2 clock already exists: M8 computes `coida_s39_employer_report` on the incident when an employee is injured. The IOD case reuses that deadline (its satisfaction is the W.Cl.2 being filed); it must not start a second one (decided Sun 15 Nov) (due Tue 1 Dec)
 - [ ] Assemble form data for each stage (structured data first, PDF later) (due Tue 1 Dec)
 - [ ] G35 (M12 checkpoint, Rev 4 A.9 P1): the doctor handout, shareable by WhatsApp or print, from the incident and worker
 
-### JBCC: Delay claims (due Wed 2 Dec; forecast Sun 6 Dec)
+### JBCC: Delay claims (due Wed 2 Dec; forecast Tue 8 Dec)
 
 - [ ] Delay event log, notice deadlines from regime data, evidence links (due Wed 2 Dec)
 
-### PC: Principal contractor tier (due Fri 4 Dec; forecast Tue 8 Dec)
+### PC: Principal contractor tier (due Fri 4 Dec; forecast Thu 10 Dec)
 
 - [ ] Link subcontractor orgs to a site; the principal contractor sees their compliance (due Thu 3 Dec)
 - [ ] Tests for cross-org visibility under RLS (due Fri 4 Dec)
@@ -514,11 +519,11 @@ Rev 4's construction pack has "Regulation 4 notification, P1, 7-day deadline and
   - decide how existing sites move: `sites.regime_id` is per site, so either a migration moves every construction site on the commencement date, or sites move one by one. Records keep the regime they were made under (deadlines copy their rule; inspections their template);
   - reg 3/4 (permits and notifications) may change: re-check the site work facts and the clear-day reading.
 
-### GAPS-A, GAPS-B, GAPS-C: the §6.D gaps (added Fri 20 Nov at the checkpoint; forecast Sat 12, Tue 15 and Mon 21 Dec)
+### GAPS-A, GAPS-B, GAPS-C: the §6.D gaps (added Fri 20 Nov at the checkpoint; forecast Mon 14, Thu 17 and Wed 23 Dec)
 
 The 34 tasks are listed, with their sources and estimates, under M12's checkpoint (G1–G34). Each milestone gets its own plan and decisions before code, like every milestone so far; a new record type includes its sync adapter (D14).
 
-### V1: Release (due Sat 5 Dec; forecast Tue 22 Dec, or Wed 9 Dec without the gap milestones)
+### V1: Release (due Sat 5 Dec; forecast Thu 24 Dec, or Fri 11 Dec without the gap milestones)
 
 - [ ] Full regression, CI green, tag v1.0.0, deploy (due Sat 5 Dec)
 

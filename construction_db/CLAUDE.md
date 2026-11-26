@@ -283,6 +283,16 @@ both errors.
     settings with `S3_EXPORT_BUCKET` (M12: photos and files are read from
     `S3_BUCKET`, packs written to the export bucket).
   - **Deployment:** the same Docker image with entrypoint `/worker`.
+- SYNC package: **`internal/core/devicesync`** (not `sync`: the stdlib
+  name). A transport over the API: a pulled item is its GET's body and a
+  pushed record its endpoint's answer, because both are served by the router
+  itself as sub-requests carrying the caller's headers (`dispatch.go`;
+  `GuardSubRequests` lets a sub-request reach only the route it was checked
+  against). `kinds.go` holds each kind's GET pattern and its deps: SQL
+  selecting the roots whose rows changed in the window. The edition adds its
+  kinds, reference parts and push routes through `SyncSources()` (a type
+  assertion in `app.NewRouter`, like `DeadlineSubjects`). `docs/api/sync.md`;
+  `TestSyncAPIDoc` is in `internal/app` (the kinds union names the edition's).
 - M12 packages:
   - **`internal/core/reports`:** the compliance summary and rollup. Core
     categories by SQL in one tenant transaction; the vault through
@@ -692,6 +702,52 @@ under cmd/.
   default trusts every proxy).
 - Emails compare with `lower()`.
 - `.gitattributes` forces LF for Go files; gofmt in CI depends on it.
+- **Sync (SYNC):** every tenant table is either watched by a sync kind or
+  server-only, with a reason (`TestSyncCoverage`, `syncServerOnly`). A
+  watched table has `sync_xid xid8 NOT NULL DEFAULT pg_current_xact_id()`,
+  the `zz_sync_stamp` trigger (`sync_stamp()`, named to fire after every
+  guard) and an index on (scope, `sync_xid`), all added in its migration; a
+  watched table the code deletes from needs `sync_deleted` (000049). A new
+  record type adds a kind whose deps cover every table its GET reads (M12
+  D14). A new write route is pushable (`CorePushRoutes` or the edition's) or
+  online-only with a reason (`TestPushRoutes`, `syncOnlineOnly`). Never
+  compare a pull cursor with a time: `sync_xid` against the snapshot's xmin
+  is the only bound that can't pass a slow commit.
+- **Edited-in-place records** (workers, talks) take `base_updated_at`; an
+  edit locks the row before comparing it.
+- **Sync kinds list what their GET reads** (SYNC review 3): every table is a
+  dep, a context read (`syncContextReads`) or in the kind's `AsOf` with a
+  reason; `TestSyncDepsCoverWhatGETsRead` measures the GET's reads
+  (`pg_stat_force_next_flush` on a one-connection pool) and fails
+  otherwise. A GET that starts reading a new table needs one of the three.
+- **Request bodies** are read by `httpapi.RejectNUL`, at most 1 MiB (413
+  above), before auth. Only the sync push reads its own: its records each
+  pass the guard as sub-requests, so one bad record gets its own 400. **The
+  per-route override** is that same list (`RejectNUL(ownBody...)` in
+  `app.NewRouter`): a route that needs more than 1 MiB is named there and
+  must then bound its body and refuse NUL itself, as the push does
+  (`MaxBytesReader`; each record's sub-request). ONBOARD's CSV import is the
+  likely one: decide its limit there.
+- **Known flake (until R2's own PR):** `TestSiteWorkPackSpans` failed once
+  in a full local run and passed alone. Suspected cause: Docker Desktop's
+  VM clock drifting from the host. The pack reads as of the test's clock,
+  while the cancelling version is stamped by Postgres's `now()`, so the
+  cancellation can land just after `as_of`. The fix is to take `as_of` from
+  the database's clock in that test. Not seen on CI.
+- **Refresh grace, the accepted risk** (SYNC review 5): a stolen refresh token
+  presented within `auth.RefreshGrace` (5 minutes), before the phone uses its
+  successor, gets the same pair and can shadow the session in lockstep until
+  one side refreshes and the other replays; reuse outside the grace still
+  revokes at once. The same trade-off as Auth0's refresh token reuse
+  interval, taken so a lost response doesn't sign a supervisor out mid-shift.
+  Don't lengthen the grace without revisiting this.
+- **No long write transactions** (SYNC review 4): every pull waits behind the
+  oldest open write on the server. `/healthz/jobs` reports it
+  (`sync_oldest_write_age()`, 000052) and is 503 `sync_pull` past
+  `notifications.PullLagLimit` (5 minutes). The function reads
+  `pg_stat_activity` as the migration owner: without a superuser owner it
+  needs `pg_read_all_stats` (`pg_monitor`), or it sees no other session's
+  write and always passes (DEPLOY, beside `sync_epoch()`'s `pg_control_*`).
 
 ## Status
 
@@ -2192,14 +2248,168 @@ under cmd/.
     `complete` stay one request per file.
   - **Server-only:** the history tables (000032, 000037) and exports are
     never pulled or pushed.
-  - **Open for SYNC (REG4 review, Sat 21 Nov): one cursor design for every
-    table, decided before any pull is built.** A row's server time
-    (`submitted_at`, `recorded_at`, `now()`) is taken before its transaction
-    commits, so a slow transaction can commit after a phone has pulled past
-    that time, and the row is never pulled. Options: a commit-ordered change
-    log or sequence, or a settle window behind the cursor as exports use
-    (`exports.Builder.Settle`). Site work deliberately has no cursor column
-    of its own.
+  - **Settled in SYNC D1 (Thu 26 Nov):** the REG4 review's open cursor
+    question. A row's server time is taken before commit, so the cursor is
+    the writing transaction's id (`sync_xid`), read up to the snapshot's
+    xmin (below).
+
+- **SYNC, offline sync API** (Thu 26 Nov; full rigour). Plan approved Thu
+  26 Nov with decision batch 1 (D1–D7). Batch 2 was taken on the
+  recommendations made with batch 1, without an answer, because the user
+  asked for the milestone to be finished in one go: **review batch 2
+  first** (marked below).
+  - **D1 Cursor:** every synced table has `sync_xid xid8`, stamped by
+    `zz_sync_stamp` (last among BEFORE triggers; a no-op update keeps it). A
+    pull page reads, in one REPEATABLE READ snapshot, the roots whose rows
+    have `lo <= sync_xid < hi`, `hi` being the snapshot's xmin: every
+    transaction below it has finished, so a slow writer delays a pull and is
+    never passed (`TestSyncWindowWaitsForSlowCommit`,
+    `TestSyncPullsASlowCommit`). `pg_current_snapshot()` in that transaction
+    is its own snapshot (`TestSyncSnapshotIsTheTransactions`). Read-only
+    transactions take no xid, so the export builder doesn't hold pulls
+    back. Deletions go to `sync_deletions` (only
+    `inspection_response_evidence` deletes).
+  - **D2 Restore:** `sync_epoch()` hashes `system_identifier`,
+    `timeline_id` and `sync_generation`; a cursor from another epoch, or
+    from the future, is `reset: true` (a full pass). The restore runbook
+    (G38) runs `sync_new_generation()`. Full passes have no upper bound.
+  - **D3 Items:** an item is its GET's body for the caller's role, rendered
+    by a sub-request (`TestPullMatchesGet`); re-sent when any table its GET
+    reads changes (`TestSyncDeltaFollowsEveryChange`). Clock-derived fields
+    are as of `server_time`. Narrowed while building: `absent` and
+    `not_signed` (roster-derived) are as of `server_time` too, not
+    re-sent on a roster change.
+  - **D4 Endpoints:** `GET /v1/sync`, `GET /v1/sync/sites/:id`,
+    `GET /v1/sync/sites/:id/reference`; 1–500 items, 1 MiB, 5 s a page.
+    Added while building: the reference bundle carries the incident
+    taxonomy and vocabulary, which no endpoint served; findings gained an
+    `inspection_id` filter (the `finding_list` item).
+  - **D5 Access loss:** the org pull lists every site the caller can open,
+    archived ones too (`sites.Service.Visible`); a lost site is 404; the
+    cursor carries the role and user, a change resets.
+  - **D6 Push:** `POST /v1/sync/push`, an in-process replay through the
+    router; allow-listed routes only; in order; stops with less than 2 s
+    left (`processed`); 100 records, 1 MiB.
+  - **D7:** roster removal repeat 200 (409 with another reason); a
+    satisfaction's `device_id` (000050); worker links online-only.
+  - **Batch 2, on the recommendations (to review):**
+    - **Evidence and files are not pulled** (changed from the lean of
+      "the caller's own uploads, status only"): `complete` is idempotent and
+      answers the status, so the phone's queue is the record and the
+      access-log convention is untouched.
+    - **Conflicts:** workers and talks take `base_updated_at`; stale is 409
+      `WorkerChanged`/`TalkChanged` with `current`; worker edits now lock
+      the row.
+    - **Refresh grace (A.3, 000051):** an exact retry within
+      `auth.RefreshGrace` (5 min), while the successor is unused and the
+      session active, returns the same pair, sealed (AES-GCM) under a key
+      derived from the old token by HKDF. Real reuse still revokes.
+      `TokenPair.refresh_expires_at`. Lifetimes unchanged (15 min, 30 days
+      absolute).
+    - **Clocks:** inspection start and completion get the 5-minute check;
+      `server_time` in pulls and pushes; evidence capture times unchecked.
+  - **`include_health`** (REG4 R3): not built; not in this branch.
+  - **Migrations:** 000049 the cursor, tombstones and epoch; 000050
+    `deadline_satisfactions.device_id`; 000051 `refresh_tokens.replaced_by`
+    and `replay`.
+  - **Contract changes:** `docs/api/sync-handover.md`.
+  - **Tests:** the forced races (a slow commit against a pull at SQL and
+    HTTP level; two batches pushing one incident; two worker edits from one
+    base; a concurrent double refresh; records pushed between pages of a
+    pull), `TestSyncCoverage` (with probes) and `TestPushRoutes`, the
+    pull-equals-GET check for owner and supervisor, a delta per dependency,
+    and the auth grace inside, at and after the window. Date-sensitive ones
+    are in `DATE_TESTS` and pass as if at 00:30 and 23:30 SAST.
+  - **Mutation checks: 41 of 45 caught** (the scratch runner, as in M12).
+    Four were first caught for the wrong reason (a build failure, an
+    untyped parameter, a hang) and were redone; one survived for real
+    (another person's cursor: the test used another role, so the role
+    check masked it) and the test now uses a second supervisor. The four
+    survivors are masked by a second guard, by design:
+    - the lead-only kind filter (the GET answers 403, which a pull skips);
+    - the supervisor's visible-sites query (each site's GET answers 404);
+    - the sub-request route guard (the batch's allowlist runs first);
+    - the lock on the refresh successor (a nicety; the mark already
+      serialises the race).
+  - **Verification (Thu 26 Nov):** `go test -p 4 ./...` passes; gofmt and
+    vet clean; migrations up, down 3 and up again with identical schema
+    dumps.
+  - **End-to-end walk** on the real API, worker, Postgres, MinIO, Redis and
+    Mailpit (`-p siteproof-syncwalk`, removed afterwards; `.env` needs
+    `S3_EXPORT_BUCKET`, passed by an override): **25 of 25 checks**. A
+    supervisor pushes a shift in one batch (a new worker signing in, a talk
+    and a signature, two photo declarations, an incident naming them, site
+    work, the diary):
+    1. everything lands except the incident, 409 "evidence not verified
+       yet";
+    2. the batch is re-sent as if its response were lost: identical
+       repeats, with fresh upload URLs;
+    3. the photos are uploaded and sealed, then the incident lands;
+    4. a refresh retried after a lost response gets the same pair;
+    5. a delta pull carries the shift, the incident item equal to its GET;
+    6. a psql transaction holding an older xid holds back a later API
+       commit until it commits, then both are pulled;
+    7. `/healthz/jobs` answers 200;
+    8. after removal from the site, the site leaves the list, its pull is
+       404, and a queued record answers 404;
+    9. a real refresh reuse revokes the session.
+
+    No error lines in the API or worker logs. The script (Node) is not in
+    the repo.
+  - **Review (Thu 26 Nov): approved with fixes; batch 2 approved as built.**
+    The fixes, done the same day:
+    1. **The org cursor names its organisation** (`cursor.Org`, compared
+       like the person and role; a mismatch resets). Before, someone in two
+       organisations could take a delta in one from the other's place and
+       skip everything older (`TestSyncOrgCursorIsTheOrgs`).
+    2. **NUL in a batch:** `RejectNUL` leaves the push's body to its
+       records' sub-requests, so a NUL is that record's 400 and the batch
+       runs; a control character in a record's path is the batch's 400 with
+       its index. `RejectNUL` read bodies unbounded: now at most 1 MiB on
+       every route, 413 above (`TestRequestBodyIsBounded`).
+    3. **Delta completeness:** `TestSyncDepsCoverWhatGETsRead` measures each
+       kind's GET and found the gaps the review named, and more:
+       - deps added: a talk's sign-ins of its day and workers matched by
+         identity key; a sign-in day's talk signatures, workers' records and
+         names, and other sites' sign-ins (index 000052); the roster's
+         sign-ins; the diary's incidents, signatures and workers; every
+         subject a notification is about;
+       - as of `server_time` with a reason (`Kind.AsOf`): `absent` (roster,
+         worker history); a photo's capture time and an item's prompt (never
+         change);
+       - the deadline kind's `incident_versions` dep removed (its GET reads
+         no subject; site work needs none either); the action kind watches
+         `incidents` (`latest_version`) instead.
+    4. **Pull lag:** `/healthz/jobs` reports `oldest_write_seconds` and is
+       503 `sync_pull` past 5 minutes (`TestPullLagHealth`).
+    5. **Refresh grace risk** recorded (Conventions, `sync.md`).
+    6. **Small:**
+       - the comment names `SyncSources`;
+       - the org pull renders its sites inside the page's time budget, 50
+         sites in under half a second (`TestOrgPullFiftySites`);
+       - `sync.md` sends an oversized record to its own endpoint;
+       - `zz_sync_stamp` is the last BEFORE trigger on every synced table
+         (`TestSyncCoverage`, with a probe);
+       - BUILD_PLAN DEPLOY: rate limits count pushed records.
+
+    **Mutation checks: 11 of 11** on the fixes. One, the body read bound,
+    survived at first (a 413 still came, after reading everything): the test
+    now counts the bytes read. Four reasons the runner printed were a log
+    line; rerun, each failed on its own message.
+
+    **Verification:**
+    - `go test -p 4 ./...` passes, as do gofmt and vet.
+      - One full run had two failures that passed alone: evidence's
+        container start (the Windows flake above) and
+        `TestSiteWorkPackSpans`. The latter is suspected to be Docker
+        Desktop's VM clock: the pack reads as of the test's clock, while
+        the cancelling version is stamped by Postgres's. Not seen on CI.
+    - The date tests pass at 00:30 and 23:30 SAST.
+    - Migrations up, down 4 and up again give identical schemas.
+    - The walk passes **27 of 27**: the 25 above, plus a NUL record answering
+      400 alone in a batch, and one person's org cursor carried to their
+      other organisation resetting with its full set. No error lines in the
+      logs.
 
 - **REG4, Regulation 4 notification** (Sat 21 Nov, forecast 1 day, now 2;
   full rigour). Plan and decisions D1–D14 approved Sat 21 Nov

@@ -144,6 +144,11 @@ entries.
 
 Body: `RemoveRequest`. 200 with the entry, removed; 400 `"reason must be 1-500 characters"`; 404 `"worker is not on this site's roster"`.
 
+A repeat (SYNC D7: a phone resending a removal it already made) is 200 with
+that removal, when the worker isn't back on the roster and the reason is the
+same; with another reason it is 409 `"worker already removed from the roster with another reason"`.
+Changed in SYNC: a repeat used to be 404.
+
 ## Across the API
 
 - 400 `"text must not contain NUL characters"`: a NUL character (`\u0000`) anywhere in the JSON body (any value or key, however nested), the query string or the path, on every endpoint, checked before the token (REG4 review). Postgres text can't store one.

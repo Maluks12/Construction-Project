@@ -56,7 +56,7 @@ same forever, whatever is published later.
 |---|---|
 | 201 | Started. `Inspection` with `status: "in_progress"` and one unanswered item per template item, in order |
 | 200 | The same start again (every field identical, same person and site): the stored `Inspection`, unchanged |
-| 400 | `"inspection id must be a UUID"`, `"unknown checklist template version"` (no such key or version in the site's regime), `"checklist template does not match"` (the hash isn't that version's), `"corrects_id must be a completed inspection on this site"`, `"a correction must use the same checklist as the inspection it corrects"`, `"inspection already has a correction"`, `"device_id must be 1-200 bytes"` (bytes, not characters), or a validator message for a missing field (`template_key`, `template_version` ≥ 1, `template_sha256`, `client_started_at`) |
+| 400 | `"inspection id must be a UUID"`, `"unknown checklist template version"` (no such key or version in the site's regime), `"checklist template does not match"` (the hash isn't that version's), `"corrects_id must be a completed inspection on this site"`, `"a correction must use the same checklist as the inspection it corrects"`, `"inspection already has a correction"`, `"device_id must be 1-200 bytes"` (bytes, not characters), `"client_started_at is in the future; check the device clock"` (more than 5 minutes ahead of the server; SYNC), or a validator message for a missing field (`template_key`, `template_version` ≥ 1, `template_sha256`, `client_started_at`) |
 | 404 | `"site not found"` |
 | 409 | `"inspection id already used with different details"` (any field differs, or another person, site or organisation used it) or `"site is archived"` |
 
@@ -139,8 +139,8 @@ about the inspection changes: to correct it, start a new one with
 | Status | When |
 |---|---|
 | 201 | Completed. `Inspection` with `status: "completed"` and its `findings`, one per failed item |
-| 200 | Already completed (a retry is safe): the stored `Inspection`, unchanged |
-| 400 | A validator message (`client_completed_at` is required) |
+| 200 | Already completed (a retry is safe): the stored `Inspection`, unchanged. The repeat's `client_completed_at` isn't compared: the stored one stands |
+| 400 | `"client_completed_at is in the future; check the device clock"` (more than 5 minutes ahead; SYNC), or a validator message (`client_completed_at` is required) |
 | 403 | `"only the inspector who started this inspection can change it"` |
 | 404 | `"site not found"` or `"inspection not found"` |
 | 409 | An `IncompleteInspection`: `"items not answered"` or `"a failed item needs a photo"`, with the `item_keys` to fix in template order; or `"inspection is abandoned"` |
@@ -184,7 +184,7 @@ Abandoning is final, like completing:
 Answering or completing an abandoned inspection is 409
 `"inspection is abandoned"`. Archived sites still accept abandoning.
 
-### `GET /v1/sites/:siteId/findings?severity=&coverage=&limit=` — a site's findings
+### `GET /v1/sites/:siteId/findings?severity=&coverage=&inspection_id=&limit=` — a site's findings
 
 Owner, SHE officer, supervisor. Newest first, then by inspection and
 template order, as `FindingList` (`{"findings": []}` when empty, never
@@ -193,7 +193,11 @@ prompt, so it can be shown without fetching the inspection. Works on
 archived sites.
 
 - `severity` is optional and must be on the scale above. `limit` is
-  1–200, default 50. There is no paging yet.
+  1–200, default 50. There is no paging; a phone syncs instead
+  (`docs/api/sync.md`).
+- `inspection_id` (SYNC) keeps one inspection's findings: the sync pull's
+  `finding_list` item is this list for each inspection. An id that isn't
+  an inspection of the site just lists nothing.
 - 400 `"severity must be low, medium, high or critical"`, `"coverage must be unactioned, actioned, waived or superseded"` or `"limit must be 1-200"`;
   404 `"site not found"`.
 - `corrected_by` is the id of the **completed** correction of the

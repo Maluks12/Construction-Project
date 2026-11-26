@@ -89,13 +89,20 @@ name, firm and clock number; `limit` 1–500, default 200. 400 `"active filter m
 
 Body: `WorkerRequest` (`active` defaults to true).
 
+An edit may name the copy it was made from (SYNC conflict rule):
+`base_updated_at` is the worker's `updated_at` as last read, or its
+`created_at` if `updated_at` was null. If the worker changed since, the edit
+is refused with 409 `WorkerChanged` carrying the worker as stored; show both
+and let the person edit again. Without `base_updated_at` the last edit wins,
+as before. The same body again is still 200, whatever `base_updated_at` says.
+
 | Status | When |
 |---|---|
 | 201 | Added. `Worker` |
 | 200 | Edited, or the same again |
 | 400 | `"worker id must be a UUID"`; `FieldProblem` with `"name must be 1-200 characters"`, `"firm must be 1-200 characters"`, `"clock_number must be 1-50 characters"`, `"trade must be 1-100 characters"` |
 | 403 | `"only an owner or SHE officer can edit a worker"` |
-| 409 | `IdentityClash`: `"a worker with this name, firm and clock number is already on the register"` with `worker_id`; `"id already used with different details"` |
+| 409 | `IdentityClash`: `"a worker with this name, firm and clock number is already on the register"` with `worker_id`; `"id already used with different details"`; `WorkerChanged`: `"worker changed since base_updated_at; get it and edit again"` with `current` |
 
 ### `GET /v1/workers/:workerId` — a worker with every record
 
@@ -178,6 +185,12 @@ export interface WorkerRequest {
   clock_number?: string | null;
   trade?: string | null;
   active?: boolean | null;
+  base_updated_at?: string | null;
+}
+
+export interface WorkerChanged {
+  error: string;
+  current: Worker;
 }
 
 export interface Worker {

@@ -67,7 +67,8 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	// everything after it, auth included.
 	// No NUL reaches a handler (REG4 review R4); before auth, so it holds for every route.
 	// A sync sub-request reaches only the route it was checked against (SYNC D6).
-	router.Use(gin.Recovery(), httpapi.Deadline(opts.RequestTimeout), httpapi.RejectNUL(), devicesync.GuardSubRequests())
+	// The push's own body is checked record by record (SYNC review 2).
+	router.Use(gin.Recovery(), httpapi.Deadline(opts.RequestTimeout), httpapi.RejectNUL(devicesync.PushRoute), devicesync.GuardSubRequests())
 
 	router.GET("/healthz", health.Handler(pool))
 	router.GET("/healthz/jobs", notifications.JobsHealth(pool, opts.Clock))

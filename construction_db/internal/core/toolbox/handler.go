@@ -30,7 +30,10 @@ func is(err error, targets ...error) bool {
 }
 
 func writeError(c *gin.Context, err error) {
+	var ch *Changed
 	switch {
+	case errors.As(err, &ch):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "current": ch.Current})
 	case errors.Is(err, ErrAlreadySigned):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "hint": AlreadySignedHint})
 	case errors.Is(err, ErrCantRetract):

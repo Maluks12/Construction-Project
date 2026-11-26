@@ -59,7 +59,7 @@ jobs:
       # (Commands).
       - name: Test dates as if at 00:30 and 23:30 SAST
         env:
-          DATE_TESTS: '^(TestRaise|TestAction|TestIncidentAction|TestCorrectedFindingActions|TestWaivers|TestCloseout|TestRemovedSupervisor|TestSignIn|TestOnTheSpot|TestNotSigned|TestReminders|TestEmail|TestJobRuns|TestWorker|TestSignatureWorkerLinks|TestVault|TestSafetyFile|TestDocumentRetraction|TestAppointments|TestCompliance|TestExport|TestSiteWork|TestIncidentReminders)'
+          DATE_TESTS: '^(TestRaise|TestAction|TestIncidentAction|TestCorrectedFindingActions|TestWaivers|TestCloseout|TestRemovedSupervisor|TestSignIn|TestOnTheSpot|TestNotSigned|TestReminders|TestEmail|TestJobRuns|TestWorker|TestSignatureWorkerLinks|TestVault|TestSafetyFile|TestDocumentRetraction|TestAppointments|TestCompliance|TestExport|TestSiteWork|TestIncidentReminders|TestSyncPushThenPull|TestPullMatchesGet|TestSyncDeltaFollowsEveryChange|TestEditConflicts|TestSatisfactionDeviceID|TestInspectionClockChecks|TestPushOrderAndPerRecordResults)'
         run: |
           set -o pipefail
           for at in 00:30 23:30; do

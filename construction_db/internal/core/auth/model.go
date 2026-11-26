@@ -62,6 +62,9 @@ type TokenPair struct {
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int    `json:"expires_in"` // access token lifetime in seconds
 	TokenType    string `json:"token_type"` // always "Bearer"
+	// When the session ends and a login is needed: refreshing never moves
+	// it. A phone checks it before an offline shift (SYNC).
+	RefreshExpiresAt time.Time `json:"refresh_expires_at"`
 }
 
 type MeResponse struct {
@@ -122,4 +125,8 @@ type RefreshToken struct {
 	TokenHash string
 	ExpiresAt time.Time
 	UsedAt    *time.Time
+	// Set when the token was rotated: its successor, and the pair that
+	// rotation answered, sealed with the token itself (sealReplay).
+	ReplacedBy *string
+	Replay     []byte
 }

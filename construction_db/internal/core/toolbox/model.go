@@ -46,7 +46,19 @@ type TalkRequest struct {
 	StartedAt     time.Time  `json:"started_at"`
 	EndedAt       *time.Time `json:"ended_at"`
 	DeviceID      *string    `json:"device_id"`
+	// The talk's updated_at as the editor last read it (created_at if never
+	// edited). An edit of a talk changed since is 409 with the current talk
+	// (SYNC conflict rule). Optional: without it, the last edit wins.
+	BaseUpdatedAt *time.Time `json:"base_updated_at"`
 }
+
+// Changed is the 409 for an edit based on an older copy.
+type Changed struct {
+	Current *Talk
+}
+
+func (e *Changed) Error() string { return ErrChanged.Error() }
+func (e *Changed) Unwrap() error { return ErrChanged }
 
 // PhotoRequest adds a verified photo of the talk's site to the talk.
 type PhotoRequest struct {
@@ -158,6 +170,7 @@ var (
 	ErrEndsBeforeSigned  = errors.New("ended_at is before a signature already given")
 	ErrBadDeviceID       = errors.New("device_id must be 1-200 bytes")
 	ErrTalkSigned        = errors.New("people have signed this talk; only its end time can be set, once")
+	ErrChanged           = errors.New("talk changed since base_updated_at; get it and edit again")
 	ErrStartedAfterClose = errors.New("the site was archived before this talk started")
 
 	ErrBadEvidenceID       = errors.New("evidence id must be a UUID")

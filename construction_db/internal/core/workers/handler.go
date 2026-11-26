@@ -32,7 +32,10 @@ func is(err error, targets ...error) bool {
 func writeError(c *gin.Context, err error) {
 	var p *Problem
 	var cl *Clash
+	var ch *Changed
 	switch {
+	case errors.As(err, &ch):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "current": ch.Current})
 	case errors.As(err, &p):
 		c.JSON(http.StatusBadRequest, gin.H{"error": p.FieldProblem.Error, "field": p.Field})
 	case errors.As(err, &cl):

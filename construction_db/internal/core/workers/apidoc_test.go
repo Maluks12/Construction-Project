@@ -25,6 +25,7 @@ func TestAPIDoc(t *testing.T) {
 		t.Run(name, func(t *testing.T) { doc.CheckStruct(t, name, v, true) })
 	}
 	doc.CheckFields(t, "WorkerList", []string{"workers"})
+	doc.CheckFields(t, "WorkerChanged", []string{"error", "current"})
 	doc.CheckFields(t, "RegimeList", []string{"regimes"})
 	doc.CheckUnion(t, "RecordState", States)
 	doc.CheckUnion(t, "MedicalOutcome", Outcomes)

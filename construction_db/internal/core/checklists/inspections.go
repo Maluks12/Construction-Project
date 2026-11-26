@@ -44,6 +44,9 @@ func (s *Service) Start(ctx context.Context, orgID, userID, role, siteID, inspec
 	}
 	// Postgres keeps microseconds; truncating here makes a retry compare equal.
 	req.ClientStartedAt = req.ClientStartedAt.Truncate(time.Microsecond)
+	if req.ClientStartedAt.After(s.Clock.Now().Add(maxClockSkew)) {
+		return nil, false, ErrStartedInFuture
+	}
 
 	// The insert can lose a race to an identical start (a client retrying
 	// before its first request finished). The second attempt sees the
@@ -260,7 +263,7 @@ func isSentinel(err error) bool {
 		sites.ErrSiteNotFound, ErrInspectionNotFound, ErrInspectionIDReused, ErrSiteArchived,
 		ErrUnknownTemplateVersion, ErrTemplateMismatch, ErrBadCorrectsID, ErrAlreadyCorrected, ErrCorrectionChecklist,
 		ErrNotInspector, ErrInspectionCompleted, ErrItemNotFound,
-		ErrAnswerInFuture,
+		ErrAnswerInFuture, ErrStartedInFuture, ErrCompletedInFuture,
 		// EvidenceError and StaleAnswerError unwrap to these.
 		ErrEvidenceNotFound, ErrEvidenceRejected, ErrEvidenceNotVerified, ErrNewerAnswer, ErrDifferentAnswer,
 		// IncompleteError unwraps to these.

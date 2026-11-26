@@ -610,6 +610,7 @@ var rlsAllowlist = []string{
 	"public_holidays",           // the holiday calendar (000015): public data, read-only to siteproof_app
 	"holiday_calendar_coverage", // the calendar's date range (000015): same
 	"job_runs",                  // worker job runs (000029): system data, no org_id; written by cmd/worker
+	"sync_generation",           // the sync epoch's generation (000049): one row, no app privileges
 	"schema_migrations",         // golang-migrate's bookkeeping (absent in tests)
 }
 

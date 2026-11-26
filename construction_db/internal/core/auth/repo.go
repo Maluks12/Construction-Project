@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	//"os/user"
 	"time"
@@ -149,22 +150,21 @@ func CreateSession(ctx context.Context, db DBTX, userID, orgID, deviceName, user
 	return sessionID, nil
 }
 
-func InsertRefreshToken(ctx context.Context, db DBTX, sessionID, hash string, expiresAt time.Time) error {
+func InsertRefreshToken(ctx context.Context, db DBTX, sessionID, hash string, expiresAt time.Time) (id string, err error) {
 	query := `
 		INSERT INTO refresh_tokens (session_id, token_hash, expires_at)
 		VALUES ($1, $2, $3)
+		RETURNING id
 	`
-	_, err := db.Exec(ctx, query, sessionID, hash, expiresAt)
-
-	if err != nil {
-		return fmt.Errorf("insert refreshtoken: %w", err)
+	if err := db.QueryRow(ctx, query, sessionID, hash, expiresAt).Scan(&id); err != nil {
+		return "", fmt.Errorf("insert refreshtoken: %w", err)
 	}
-	return nil
+	return id, nil
 }
 
 func FindRefreshToken(ctx context.Context, db DBTX, hash string) (*RefreshToken, error) {
 	query := `
-		SELECT id, session_id, token_hash, expires_at, used_at
+		SELECT id, session_id, token_hash, expires_at, used_at, replaced_by, replay
 		FROM refresh_tokens
 		WHERE token_hash = $1
 	`
@@ -175,6 +175,8 @@ func FindRefreshToken(ctx context.Context, db DBTX, hash string) (*RefreshToken,
 		&r.TokenHash,
 		&r.ExpiresAt,
 		&r.UsedAt,
+		&r.ReplacedBy,
+		&r.Replay,
 	)
 
 	if err != nil {
@@ -196,6 +198,34 @@ func MarkRefreshTokenUsed(ctx context.Context, db DBTX, id string) (bool, error)
 		return false, fmt.Errorf("mark refresh token used: %w", err)
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+// SetReplay records a rotation: the token's successor and the sealed pair.
+func SetReplay(ctx context.Context, db DBTX, id, successor string, box []byte) error {
+	if _, err := db.Exec(ctx, `UPDATE refresh_tokens SET replaced_by = $2, replay = $3 WHERE id = $1`, id, successor, box); err != nil {
+		return fmt.Errorf("set refresh replay: %w", err)
+	}
+	return nil
+}
+
+// ReplayAllowed reports whether a used token may still be answered with its
+// sealed pair: it was used within grace, by the database's clock, and its
+// successor hasn't been used. The successor is locked, so a refresh using it
+// at the same moment waits and then sees this one finished.
+func ReplayAllowed(ctx context.Context, db DBTX, id string, grace time.Duration) (bool, error) {
+	var ok bool
+	err := db.QueryRow(ctx, `
+		SELECT o.used_at > now() - make_interval(secs => $2) AND n.used_at IS NULL
+		FROM refresh_tokens o JOIN refresh_tokens n ON n.id = o.replaced_by
+		WHERE o.id = $1 AND o.replay IS NOT NULL
+		FOR UPDATE OF n`, id, grace.Seconds()).Scan(&ok)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("refresh replay allowed: %w", err)
+	}
+	return ok, nil
 }
 
 func GetSession(ctx context.Context, db DBTX, sessionID string) (*Session, error) {

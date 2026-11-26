@@ -261,7 +261,7 @@ func (s *Service) satisfyOnce(ctx context.Context, orgID, userID, role, siteID, 
 		err = InsertSatisfaction(ctx, tx, orgID, sr.Site.ID, NewSatisfaction{
 			ID: id, DutyID: live.DutyID, DeadlineID: live.ID, SatisfiedAt: req.SatisfiedAt, Method: req.Method,
 			Reference: req.Reference, Note: req.Note, Evidence: req.EvidenceID, Document: req.DocumentID,
-			DocumentVersion: req.DocumentVersion, RecordedBy: userID})
+			DocumentVersion: req.DocumentVersion, RecordedBy: userID, DeviceID: req.DeviceID})
 		switch {
 		case isUniqueViolation(err, "deadline_satisfactions_pkey"):
 			return errIDTaken
@@ -351,6 +351,9 @@ func normaliseSatisfaction(req *SatisfactionRequest, now time.Time) error {
 	if !textOK(req.Note, 2000) {
 		return ErrBadNote
 	}
+	if req.DeviceID != nil && (len(*req.DeviceID) < 1 || len(*req.DeviceID) > 200 || !textOK(req.DeviceID, 200)) {
+		return ErrBadDeviceID
+	}
 	if req.EvidenceID != nil {
 		e, err := uuid.Parse(*req.EvidenceID)
 		if err != nil {
@@ -387,7 +390,8 @@ func textOK(s *string, max int) bool {
 func sameSatisfaction(s *Satisfaction, by string, req SatisfactionRequest) bool {
 	return s.RecordedBy == by && s.SatisfiedAt.Equal(req.SatisfiedAt) && s.Method == req.Method &&
 		equalPtr(s.Reference, req.Reference) && equalPtr(s.Note, req.Note) && equalPtr(s.EvidenceID, req.EvidenceID) &&
-		equalPtr(s.DocumentID, req.DocumentID) && equalPtr(s.DocumentVersion, req.DocumentVersion)
+		equalPtr(s.DocumentID, req.DocumentID) && equalPtr(s.DocumentVersion, req.DocumentVersion) &&
+		equalPtr(s.DeviceID, req.DeviceID)
 }
 
 // Retract takes a satisfaction back (an owner or SHE officer, with a reason).

@@ -94,13 +94,19 @@ Body: `TalkRequest`. Owner, SHE officer, supervisor. The response is the
 together take turns: an edit that comes second is refused if the signature
 went first.
 
+An edit may name the copy it was made from (SYNC conflict rule):
+`base_updated_at` is the talk's `updated_at` as last read, or its
+`created_at` if `updated_at` was null. If the talk changed since, the edit is
+refused with 409 `TalkChanged` carrying the talk as stored. Without it the
+last edit wins, as before. The same talk again is still 200.
+
 | Status | When |
 |---|---|
 | 201 | Created. `Talk` |
 | 200 | Edited, or the same talk again: the stored `Talk` |
 | 400 | `"talk id must be a UUID"`, `"topic_key is not a topic of this site's regime"`, `"topic is required without a topic_key"`, `"topic must be 1-200 characters"`, `"presenter_name must be 1-200 characters"`, `"notes must be 1-4000 characters"`, `"started_at is required"`, `"started_at is in the future; check the device clock"`, `"ended_at is in the future; check the device clock"`, `"ended_at must not be before started_at"`, `"ended_at must be at most 12 hours after started_at"`, `"device_id must be 1-200 bytes"` |
 | 404 | `"site not found"` |
-| 409 | `"talk id already used on another site"`; `"people have signed this talk; only its end time can be set, once"`; `"ended_at is before a signature already given"`; `"the site was archived before this talk started"` |
+| 409 | `"talk id already used on another site"`; `"people have signed this talk; only its end time can be set, once"`; `"ended_at is before a signature already given"`; `"the site was archived before this talk started"`; `TalkChanged`: `"talk changed since base_updated_at; get it and edit again"` with `current` |
 
 ### `GET /v1/sites/:siteId/toolbox-talks/:talkId` — get a talk
 
@@ -203,6 +209,12 @@ export interface TalkRequest {
   started_at: string;
   ended_at?: string | null;
   device_id?: string | null;
+  base_updated_at?: string | null;
+}
+
+export interface TalkChanged {
+  error: string;
+  current: Talk;
 }
 
 export interface PhotoRequest {

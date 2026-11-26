@@ -17,6 +17,9 @@ import (
 func (s *Service) Complete(ctx context.Context, orgID, userID, role, siteID, inspectionID string, req CompleteRequest) (in *Inspection, created bool, err error) {
 	// Postgres keeps microseconds.
 	req.ClientCompletedAt = req.ClientCompletedAt.Truncate(time.Microsecond)
+	if req.ClientCompletedAt.After(s.Clock.Now().Add(maxClockSkew)) {
+		return nil, false, ErrCompletedInFuture
+	}
 
 	err = s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
 		site, err := s.sites.GetInTx(ctx, tx, orgID, userID, role, siteID)
@@ -83,9 +86,10 @@ func (s *Service) Complete(ctx context.Context, orgID, userID, role, siteID, ins
 	return in, created, nil
 }
 
-// Findings lists a site's findings, newest first. It works on an archived
-// site. The query is checked before the site, so a bad one is 400 anywhere.
-func (s *Service) Findings(ctx context.Context, orgID, userID, role, siteID, severity, coverage string, limit int) ([]Finding, error) {
+// Findings lists a site's findings, newest first; inspectionID ("" for all)
+// keeps one inspection's (a sync item). It works on an archived site. The
+// query is checked before the site, so a bad one is 400 anywhere.
+func (s *Service) Findings(ctx context.Context, orgID, userID, role, siteID, severity, coverage, inspectionID string, limit int) ([]Finding, error) {
 	if severity != "" && !slices.ContainsFunc(Severities, func(l SeverityLevel) bool { return l.Key == severity }) {
 		return nil, ErrBadSeverity
 	}
@@ -102,7 +106,7 @@ func (s *Service) Findings(ctx context.Context, orgID, userID, role, siteID, sev
 		if err != nil {
 			return err
 		}
-		out, err = ListSiteFindings(ctx, tx, orgID, site.ID, severity, coverage, limit)
+		out, err = ListSiteFindings(ctx, tx, orgID, site.ID, severity, coverage, inspectionID, limit)
 		return err
 	})
 	if isSentinel(err) {

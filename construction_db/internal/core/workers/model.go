@@ -47,7 +47,20 @@ type WorkerRequest struct {
 	ClockNumber *string `json:"clock_number"`
 	Trade       *string `json:"trade"`
 	Active      *bool   `json:"active"`
+	// The worker's updated_at as the editor last read it (created_at if it
+	// was never edited). An edit of a worker changed since is 409 with the
+	// current worker (SYNC conflict rule). Optional: without it, the last
+	// edit wins.
+	BaseUpdatedAt *time.Time `json:"base_updated_at"`
 }
+
+// Changed is the 409 for an edit based on an older copy.
+type Changed struct {
+	Current *Worker
+}
+
+func (e *Changed) Error() string { return ErrChanged.Error() }
+func (e *Changed) Unwrap() error { return ErrChanged }
 
 type Worker struct {
 	ID          string     `json:"id"`
@@ -233,6 +246,7 @@ var (
 	ErrBadLimit           = errors.New("limit must be 1-500")
 	ErrBadReason          = errors.New("reason must be 1-500 characters")
 	ErrCantEdit           = errors.New("only an owner or SHE officer can edit a worker")
+	ErrChanged            = errors.New("worker changed since base_updated_at; get it and edit again")
 	ErrCantRetract        = errors.New("only an owner or SHE officer can retract a record")
 	ErrCantLink           = errors.New("only an owner or SHE officer can link or unlink a signature")
 	ErrIdentityTaken      = errors.New("a worker with this name, firm and clock number is already on the register")

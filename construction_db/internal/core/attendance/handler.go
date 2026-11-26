@@ -42,7 +42,7 @@ func writeError(c *gin.Context, err error) {
 	case is(err, ErrSignInNotFound, workers.ErrWorkerNotFound, ErrNotOnRoster):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case is(err, ErrIDReused, workers.ErrIDReused, ErrAlreadySignedOut, ErrAlreadyRetracted, ErrRetracted, ErrNeedsSheet, ErrSiteArchived,
-		ErrEvidenceNotVerified, ErrSignOutAfterNext):
+		ErrEvidenceNotVerified, ErrSignOutAfterNext, ErrAlreadyRemoved):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case isSentinel(err):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

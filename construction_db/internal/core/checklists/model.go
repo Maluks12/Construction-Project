@@ -222,6 +222,8 @@ var (
 	ErrRepeatedEvidence    = errors.New("evidence_ids must not repeat")
 	ErrTooManyPhotos       = errors.New("at most 20 photos per item")
 	ErrAnswerInFuture      = errors.New("client_answered_at is in the future; check the device clock")
+	ErrStartedInFuture     = errors.New("client_started_at is in the future; check the device clock")
+	ErrCompletedInFuture   = errors.New("client_completed_at is in the future; check the device clock")
 
 	// Sent with the offending ids (EvidenceError).
 	ErrEvidenceNotFound    = errors.New("evidence not found on this site")

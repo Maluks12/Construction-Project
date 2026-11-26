@@ -358,3 +358,58 @@ func TestEmailUsesTheRecordsZone(t *testing.T) {
 		t.Errorf("body %q, want %q (told in SAST, not %s)", mailer.bodies[0], want, other)
 	}
 }
+
+// SYNC review 4: one write left open anywhere on the server holds every
+// pull back; /healthz/jobs says so once it passes PullLagLimit.
+func TestPullLagHealth(t *testing.T) {
+	ctx := context.Background()
+	router := newRouter(t)
+	for _, job := range []string{notifications.JobReminders, notifications.JobEmails, notifications.JobHolidays, notifications.JobExports} {
+		if err := notifications.RecordRun(ctx, testPool, job, "lagtest", func(context.Context) (int, error) { return 0, nil }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func(was time.Duration) { notifications.PullLagLimit = was }(notifications.PullLagLimit)
+	notifications.PullLagLimit = time.Second
+
+	health := func() (int, map[string]any) {
+		rec := do(t, router, http.MethodGet, "/healthz/jobs", "", nil)
+		var body map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &body)
+		return rec.Code, body
+	}
+	if code, body := health(); code != http.StatusOK {
+		t.Fatalf("before: %d %v", code, body)
+	}
+
+	open, err := testAdmin.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer open.Rollback(ctx)
+	if _, err := open.Exec(ctx, `SELECT pg_current_xact_id()`); err != nil {
+		t.Fatal(err)
+	}
+	// A read-only transaction holds no xid and doesn't count.
+	reader, err := testAdmin.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Rollback(ctx)
+	if _, err := reader.Exec(ctx, `SELECT count(*) FROM sites`); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1500 * time.Millisecond)
+	code, body := health()
+	stale, _ := body["stale"].([]any)
+	age, _ := body["oldest_write_seconds"].(float64)
+	if code != http.StatusServiceUnavailable || !slices.Contains(stale, any(notifications.StaleSyncPull)) || age < 1.5 || age > 60 {
+		t.Errorf("with a write open 1.5 s: %d %v", code, body)
+	}
+	if err := open.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if code, body := health(); code != http.StatusOK {
+		t.Errorf("after it ended (a reader still open): %d %v", code, body)
+	}
+}

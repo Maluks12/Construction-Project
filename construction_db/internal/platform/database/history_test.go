@@ -24,13 +24,21 @@ func historyOrg(t *testing.T) (org, other, user, site string) {
 		{`INSERT INTO organisations (id, trading_name, primary_edition, enabled_editions) VALUES ($1, 'Other Co', 'construction', ARRAY['construction'])`, []any{other}},
 		{`INSERT INTO users (id, email, full_name) VALUES ($1, $2, 'Hist User')`, []any{user, user + "@history.test"}},
 		{`INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'owner')`, []any{org, user}},
-		{`INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'supervisor')`, []any{other, user}},
 		{`INSERT INTO sites (id, org_id, regime_id, name) SELECT $1, $2, id, 'Hist site' FROM regulatory_regimes LIMIT 1`, []any{site, org}},
 	} {
 		if _, err := admin.Exec(ctx, s.sql, s.args...); err != nil {
 			t.Fatalf("%s: %v", s.sql, err)
 		}
 	}
+	// The user is a supervisor in the other organisation, invited by its owner (000056).
+	otherOwner := fresh()
+	if _, err := admin.Exec(ctx, `INSERT INTO users (id, email, full_name) VALUES ($1::uuid, $1::text || '@history.test', 'Other Owner')`, otherOwner); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec(ctx, `INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'owner')`, other, otherOwner); err != nil {
+		t.Fatal(err)
+	}
+	seedMemberAdmin(t, other, user, "supervisor", "active")
 	return org, other, user, site
 }
 
@@ -73,9 +81,7 @@ func TestHistoryTables(t *testing.T) {
 	if _, err := admin.Exec(ctx, `INSERT INTO users (id, email, full_name) VALUES ($1::uuid, $1::text || '@history.test', 'Hist Actor')`, actor); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := admin.Exec(ctx, `INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'owner')`, org, actor); err != nil {
-		t.Fatal(err)
-	}
+	seedMemberAdmin(t, org, actor, "owner", "active")
 
 	err := database.WithTenant(ctx, pool, database.Tenant{OrgID: org, UserID: user}, func(tx pgx.Tx) error {
 		for _, s := range []struct {
@@ -121,7 +127,7 @@ func TestHistoryTables(t *testing.T) {
 		"-|-|-|-", "owner|active|Runs safety now|"+actor, "-|-|-|"+user)
 	wantValues(t, "member_history in the user's other org", historyValues(t,
 		`SELECT role || '|' || full_name FROM member_history WHERE org_id = $1 AND user_id = $2 ORDER BY id`, other, user),
-		"supervisor|Hist User", "supervisor|Hist User 2")
+		"supervisor|Hist User", "supervisor|Hist User", "supervisor|Hist User 2") // invited, accepted, renamed
 	wantValues(t, "toolbox_talk_history", historyValues(t,
 		`SELECT topic FROM toolbox_talk_history WHERE talk_id = $1 ORDER BY id`, talk),
 		"Working at height", "Ladders")

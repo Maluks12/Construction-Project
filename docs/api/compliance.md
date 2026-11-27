@@ -35,8 +35,8 @@ else green. **The site's `status` is its worst category.** `red_items` and
 | `vault` | yes | a required organisation document expired (shown on every site) | a current vault document in its expiring window (60 days) |
 | `appointments` | yes | – | a required type with no valid or expiring appointee (`note` says when it may not apply); an appointment expiring or expired |
 | `findings` | yes | an unactioned `high` or `critical` finding | an unactioned `low` or `medium` finding |
-| `actions` | yes | an open action past its due date, with `escalation_step` 1–3 | – |
-| `verifications` | yes | – | a close-out awaiting verification for more than 2 days |
+| `actions` | yes | an open action past its due date, with `escalation_step` 1–3, and `owner_eligible` (false: its owner can no longer act on it, being suspended, removed, in another role or off the site, and it needs a new owner; ONBOARD) | – |
+| `verifications` | yes | – | a close-out awaiting verification for more than 2 days, with `owner_eligible` as for `actions` |
 | `sign_ins` | yes | a sign-in today whose worker has a warning now (`no_valid_medical`, `medical_unfit`, `competency_expired`) | – |
 | `incident_deadlines` | yes | an incident deadline overdue, or a forthwith one (`due_now`) not met | an incident deadline due within 2 days |
 | `site_work_deadlines` | yes (construction sites) | a reg 4 notification overdue (it binds the contractor) | a reg 3 permit application overdue, with `note` (it binds the client, and SiteProof doesn't record this organisation's role on the site yet); a notice due within 7 days (REG4) |
@@ -139,6 +139,7 @@ export interface ComplianceItem {
   due_on: string | null;
   since: string | null;
   warnings: string[];
+  owner_eligible: boolean | null;
   note: string | null;
 }
 

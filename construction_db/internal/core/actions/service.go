@@ -268,8 +268,8 @@ func (s *Service) Get(ctx context.Context, orgID, userID, role, siteID, actionID
 
 // List is a site's register; ListAll is the same across every site the
 // caller can open (siteID ""). The query is checked before the site.
-func (s *Service) List(ctx context.Context, orgID, userID, role, siteID, state, owner, source string, limit int) ([]ActionHeader, error) {
-	f, err := filterOf(userID, role, state, owner, source, limit)
+func (s *Service) List(ctx context.Context, orgID, userID, role, siteID, state, owner, source, ownerEligible string, limit int) ([]ActionHeader, error) {
+	f, err := filterOf(userID, role, state, owner, source, ownerEligible, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -294,9 +294,11 @@ func (s *Service) List(ctx context.Context, orgID, userID, role, siteID, state, 
 	return out, nil
 }
 
-func filterOf(userID, role, state, owner, source string, limit int) (listFilter, error) {
-	f := listFilter{State: state, Source: source, UserID: userID, Lead: isLead(role), Limit: limit}
+func filterOf(userID, role, state, owner, source, ownerEligible string, limit int) (listFilter, error) {
+	f := listFilter{State: state, Source: source, OwnerEligible: ownerEligible, UserID: userID, Lead: isLead(role), Limit: limit}
 	switch {
+	case ownerEligible != "" && ownerEligible != "true" && ownerEligible != "false":
+		return f, ErrBadOwnerEligible
 	case state != "" && !slices.Contains(States, state):
 		return f, ErrBadState
 	case source != "" && !slices.Contains(Sources, source):
@@ -682,7 +684,7 @@ var sentinels = []error{
 	ErrBadCloseoutID, ErrCloseoutIDReused, ErrAlreadyAwaiting, ErrCantCloseOut, ErrBadNote, ErrNoPhotos, ErrTooManyPhotos,
 	ErrBadEvidenceIDs, ErrRepeatedEvidence, ErrNoSubmittedAt, ErrSubmittedInFuture,
 	ErrEvidenceNotFound, ErrEvidenceRejected, ErrEvidenceNotVerified, ErrEvidenceTooOld, ErrEvidenceIsSource,
-	ErrBadState, ErrBadSource, ErrBadOwner, ErrBadLimit,
+	ErrBadState, ErrBadSource, ErrBadOwner, ErrBadLimit, ErrBadOwnerEligible,
 }
 
 // normaliseRaise checks what can be checked without the database, and puts

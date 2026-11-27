@@ -10,12 +10,16 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
+	"construction_db/internal/core/actions"
 	"construction_db/internal/core/auth"
 	"construction_db/internal/core/invites"
 	"construction_db/internal/core/members"
+	"construction_db/internal/core/notifications"
+	"construction_db/internal/core/reports"
 )
 
 // teamFixture: an owner who signed up, a second owner, a SHE officer and a
@@ -445,5 +449,117 @@ func TestMemberRulesMatchDatabase(t *testing.T) {
 	}
 	if got := auth.Capabilities(auth.RoleSHEOfficer); !slices.Contains(got, auth.CapManageMembers) {
 		t.Errorf("SHE officer lacks manage_members: %v", got)
+	}
+}
+
+// ONBOARD review R1: owner_eligible is whether the owner can still act on
+// the action (action_site_member on its site). Moved to another role, taken
+// off the site or suspended, the owner stops being eligible: the action says
+// so everywhere leads look, a phone's next pull re-sends it, and the owner
+// gets no more reminders about it. Nothing is reassigned.
+func TestOwnerEligible(t *testing.T) {
+	f := newActionFixture(t, "ownereligible")
+	r := f.router
+	ctx := context.Background()
+	sfx := uuid.NewString()[:8]
+	onSite := func(name string) string {
+		id := inviteMember(t, r, f.owner, name+"-"+sfx+"@eligible.test", auth.RoleSupervisor)
+		wantStatus(t, do(t, r, http.MethodPut, "/v1/sites/"+f.siteA+"/members/"+id, f.owner, nil), http.StatusNoContent)
+		return id
+	}
+	moved, offSite, suspended := f.supervisorID, onSite("offsite"), onSite("suspended")
+	raised := testClock.Now().Add(-time.Minute)
+	acts := map[string]actions.Action{}
+	for _, who := range []string{moved, offSite, suspended} {
+		a := f.raise(t, f.owner, f.raiseBody(who, raised))
+		if !a.OwnerEligible {
+			t.Fatalf("a new action's owner %s isn't eligible", who)
+		}
+		acts[who] = a
+	}
+	_, cursor, _ := pullSite(t, r, f.owner, f.siteA, "", 200)
+
+	wantStatus(t, serveJSON(r, http.MethodPatch, memberPath(moved), f.owner, map[string]any{"role": "bookkeeper", "reason": "Office work"}), 200)
+	wantStatus(t, do(t, r, http.MethodDelete, "/v1/sites/"+f.siteA+"/members/"+offSite, f.owner, nil), http.StatusNoContent)
+	wantStatus(t, serveJSON(r, http.MethodPatch, memberPath(suspended), f.owner, map[string]any{"status": "suspended", "reason": "Left site"}), 200)
+
+	for who, a := range acts {
+		if got := decodeAction(t, do(t, r, http.MethodGet, actionPath(f.siteA, a.ID), f.owner, nil)); got.OwnerEligible {
+			t.Errorf("%s's action still shows its owner eligible", who)
+		}
+	}
+	items, _, _ := pullSite(t, r, f.owner, f.siteA, cursor, 200)
+	for who, a := range acts {
+		resent := false
+		for _, it := range items {
+			resent = resent || (it.Kind == "action" && it.ID == a.ID && strings.Contains(string(it.Data), `"owner_eligible":false`))
+		}
+		if !resent {
+			t.Errorf("the pull didn't re-send %s's action with owner_eligible false (%d items)", who, len(items))
+		}
+	}
+
+	ids := func(path string) []string {
+		t.Helper()
+		rec := do(t, r, http.MethodGet, path, f.owner, nil)
+		wantStatus(t, rec, 200)
+		var out struct{ Actions []actions.ActionHeader }
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		var got []string
+		for _, a := range out.Actions {
+			got = append(got, a.ID)
+		}
+		slices.Sort(got)
+		return got
+	}
+	var want []string
+	for _, a := range acts {
+		want = append(want, a.ID)
+	}
+	slices.Sort(want)
+	if got := ids("/v1/actions?owner_eligible=false"); !slices.Equal(got, want) {
+		t.Errorf("owner_eligible=false: %v, want %v", got, want)
+	}
+	if got := ids("/v1/sites/" + f.siteA + "/actions?owner_eligible=true"); slices.ContainsFunc(got, func(id string) bool { return slices.Contains(want, id) }) {
+		t.Errorf("owner_eligible=true lists an orphaned action: %v", got)
+	}
+	wantError(t, do(t, r, http.MethodGet, "/v1/actions?owner_eligible=maybe", f.owner, nil), 400, actions.ErrBadOwnerEligible.Error())
+
+	m := decodeMember[members.MemberDetail](t, do(t, r, http.MethodGet, memberPath(suspended), f.owner, nil))
+	if len(m.OpenWork.Actions) != 1 || m.OpenWork.Actions[0].ID != acts[suspended].ID || m.OpenWork.Actions[0].OwnerEligible {
+		t.Errorf("open work %+v", m.OpenWork)
+	}
+
+	// Days later the actions are overdue: the summary flags each, and the
+	// reminders skip their owners but still reach the leads.
+	later := testClock.Now().Add(6 * 24 * time.Hour)
+	s := siteSummary(t, routerAt(t, func() time.Time { return later }), f.owner, f.siteA)
+	flagged := 0
+	for _, it := range category(t, s, reports.CatActions).Items {
+		if it.ActionID != nil && slices.Contains(want, *it.ActionID) {
+			flagged++
+			if it.OwnerEligible == nil || *it.OwnerEligible {
+				t.Errorf("summary item owner_eligible %v", it.OwnerEligible)
+			}
+		}
+	}
+	if flagged != 3 {
+		t.Errorf("%d of the 3 overdue actions in the summary", flagged)
+	}
+	jobs := &notifications.Jobs{Pool: testPool, Registry: testRegistry, Mailer: &recordingMailer{}, OnlyOrgs: []string{f.ownerMe.OrgID}, Clock: func() time.Time { return later }}
+	if _, err := jobs.Reminders(ctx, later); err != nil {
+		t.Fatal(err)
+	}
+	for who, a := range acts {
+		var toOwner, toOthers int
+		if err := testAdmin.QueryRow(ctx, `SELECT count(*) FILTER (WHERE user_id = $2), count(*) FILTER (WHERE user_id <> $2)
+			FROM notifications WHERE subject_id = $1`, a.ID, who).Scan(&toOwner, &toOthers); err != nil {
+			t.Fatal(err)
+		}
+		if toOwner != 0 || toOthers == 0 {
+			t.Errorf("%s's action: %d reminders to its owner (want 0), %d to the leads (want some)", who, toOwner, toOthers)
+		}
 	}
 }

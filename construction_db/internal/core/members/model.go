@@ -66,6 +66,8 @@ type OpenAction struct {
 	Status  string `json:"status"`
 	DueOn   string `json:"due_on"`
 	Overdue bool   `json:"overdue"`
+	// Whether they can still act on it (the action's owner_eligible).
+	OwnerEligible bool `json:"owner_eligible"`
 }
 
 // OpenWork is what may need a new owner when someone leaves (D5). Nothing

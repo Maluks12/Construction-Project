@@ -129,7 +129,7 @@ func (h *Handler) list(c *gin.Context, siteID string) {
 		return
 	}
 	out, err := h.svc.List(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c), siteID,
-		c.Query("state"), c.Query("owner"), c.Query("source"), n)
+		c.Query("state"), c.Query("owner"), c.Query("source"), c.Query("owner_eligible"), n)
 	if err != nil {
 		writeError(c, err)
 		return

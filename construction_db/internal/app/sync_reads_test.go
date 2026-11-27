@@ -22,7 +22,6 @@ var syncContextReads = map[string]string{
 	"sessions":           "auth: the caller's own session (401 signs out)",
 	"org_members":        "auth: the caller's live role (a change resets every cursor, D5)",
 	"sites":              "the scope itself: the site list is sent whole on every org pull (D4)",
-	"site_members":       "scoping: losing a site is D5's 404",
 	"regulatory_regimes": "the site's regime row: fixed for a site",
 }
 

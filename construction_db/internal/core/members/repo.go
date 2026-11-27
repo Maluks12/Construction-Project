@@ -63,7 +63,7 @@ func GetMember(ctx context.Context, db DBTX, orgID, userID string) (*Member, err
 // OpenActions are the actions userID owns, open or awaiting verification.
 func OpenActions(ctx context.Context, db DBTX, orgID, userID string, now time.Time) ([]OpenAction, error) {
 	rows, err := db.Query(ctx, `
-		SELECT id, site_id, title, status, due_on::text, (status = 'open' AND $3 >= due_at)
+		SELECT id, site_id, title, status, due_on::text, (status = 'open' AND $3 >= due_at), action_site_member(org_id, site_id, owner_id)
 		FROM corrective_actions
 		WHERE org_id = $1 AND owner_id = $2 AND status IN ('open', 'awaiting_verification')
 		ORDER BY due_on, id`, orgID, userID, now)
@@ -74,7 +74,7 @@ func OpenActions(ctx context.Context, db DBTX, orgID, userID string, now time.Ti
 	out := []OpenAction{}
 	for rows.Next() {
 		var a OpenAction
-		if err := rows.Scan(&a.ID, &a.SiteID, &a.Title, &a.Status, &a.DueOn, &a.Overdue); err != nil {
+		if err := rows.Scan(&a.ID, &a.SiteID, &a.Title, &a.Status, &a.DueOn, &a.Overdue, &a.OwnerEligible); err != nil {
 			return nil, fmt.Errorf("open actions: %w", err)
 		}
 		out = append(out, a)

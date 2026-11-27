@@ -39,7 +39,11 @@ func newTeamOrg(t *testing.T) teamOrg {
 	run(`INSERT INTO organisations (id, trading_name, primary_edition, enabled_editions) VALUES ($1, 'Team Co', 'construction', ARRAY['construction'])`, o.org)
 	for _, mb := range members {
 		run(`INSERT INTO users (id, email, full_name) VALUES ($1::uuid, $1::text || '@team.test', 'Member ' || left($1::text, 4))`, mb.id)
-		run(`INSERT INTO org_members (org_id, user_id, role, status) VALUES ($1, $2, $3, $4)`, o.org, mb.id, mb.role, mb.status)
+		if mb.id == o.owner1 {
+			run(`INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'owner')`, o.org, mb.id)
+		} else {
+			seedMemberAdmin(t, o.org, mb.id, mb.role, mb.status)
+		}
 	}
 	for _, s := range []struct{ id, status string }{{o.site, "active"}, {o.site2, "active"}, {o.archived, "archived"}} {
 		run(`INSERT INTO sites (id, org_id, regime_id, name, status) SELECT $1, $2, id, 'Team site', $3 FROM regulatory_regimes LIMIT 1`, s.id, o.org, s.status)
@@ -382,4 +386,65 @@ func TestMemberLockAllowsForeignKeys(t *testing.T) {
 	if d := time.Since(start); d > time.Second {
 		t.Errorf("the site insert took %v: it waited on the organisation lock", d)
 	}
+}
+
+// R3 (000056): a membership is created only as an organisation's first
+// member, its owner, or as an invitation from someone allowed to grant the
+// role. Cross-tenant inserts are still refused by RLS first (TestRLSWrites).
+func TestMemberInsertRules(t *testing.T) {
+	o := newTeamOrg(t)
+	ctx := context.Background()
+	newUser := func() string {
+		id := fresh()
+		if _, err := admin.Exec(ctx, `INSERT INTO users (id, email, full_name) VALUES ($1::uuid, $1::text || '@team.test', 'New')`, id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	const add = `INSERT INTO org_members (org_id, user_id, role, status) VALUES ($1, $2, $3, $4)`
+	for _, status := range []string{"active", "suspended", "removed"} {
+		wantConstraint(t, "inserted "+status, o.asActor(t, o.owner1, "", nil, false, add, o.org, newUser(), "supervisor", status), "org_members_transition")
+	}
+	wantConstraint(t, "an active owner, not the first", o.asActor(t, o.owner1, "", nil, false, add, o.org, newUser(), "owner", "active"), "org_members_transition")
+	wantConstraint(t, "invited by nobody", func() error {
+		return database.WithTenant(ctx, pool, database.Tenant{OrgID: o.org}, func(tx pgx.Tx) error {
+			_, err := tx.Exec(ctx, add, o.org, newUser(), "supervisor", "invited")
+			return err
+		})
+	}(), "org_members_actor")
+	wantConstraint(t, "invited by a supervisor", o.asActor(t, o.sup, "", nil, false, add, o.org, newUser(), "supervisor", "invited"), "org_members_actor")
+	wantConstraint(t, "invited by a removed member", o.asActor(t, o.removed, "", nil, false, add, o.org, newUser(), "supervisor", "invited"), "org_members_actor")
+	wantConstraint(t, "a SHE officer invites an owner", o.asActor(t, o.she, "", nil, false, add, o.org, newUser(), "owner", "invited"), "org_members_actor")
+	wantOK(t, "a SHE officer invites a supervisor", o.asActor(t, o.she, "", nil, false, add, o.org, newUser(), "supervisor", "invited"))
+	wantOK(t, "an owner invites an owner", o.asActor(t, o.owner1, "", nil, false, add, o.org, newUser(), "owner", "invited"))
+
+	// A new organisation's first member: the owner, active; not a supervisor.
+	org := fresh()
+	if _, err := admin.Exec(ctx, `INSERT INTO organisations (id, trading_name, primary_edition, enabled_editions) VALUES ($1, 'Empty Co', 'construction', ARRAY['construction'])`, org); err != nil {
+		t.Fatal(err)
+	}
+	_, err := admin.Exec(ctx, add, org, newUser(), "supervisor", "active")
+	wantConstraint(t, "a first member who isn't the owner", err, "org_members_transition")
+
+	// Forced: two "first owners" at once. The second waits on the
+	// organisation's lock, then counts two members and is refused.
+	first, err := admin.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Rollback(ctx)
+	if _, err := first.Exec(ctx, add, org, newUser(), "owner", "active"); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	second := newUser()
+	go func() {
+		_, err := admin.Exec(ctx, add+` /* second first owner */`, org, second, "owner", "active")
+		done <- err
+	}()
+	waitingOn(t, "second first owner")
+	if err := first.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	wantConstraint(t, "a second first owner", <-done, "org_members_transition")
 }

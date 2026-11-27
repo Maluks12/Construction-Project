@@ -106,6 +106,10 @@ type Item struct {
 	DueOn    *string    `json:"due_on"`
 	Since    *time.Time `json:"since"`
 	Warnings []string   `json:"warnings"`
+	// An action's item (overdue, stalled verification): false when its owner
+	// can no longer act on it (suspended, removed, another role, off the
+	// site) and it needs a new owner (ONBOARD review R1); null elsewhere.
+	OwnerEligible *bool `json:"owner_eligible"`
 	// Why the colour may not apply (a required appointment, D4).
 	Note *string `json:"note"`
 }

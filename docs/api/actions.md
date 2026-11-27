@@ -31,6 +31,14 @@ supervisor only on sites they've been added to (any other site is 404
   officer, or a supervisor added to the site. `responsible_party` is free
   text for whoever does the work off SiteProof (e.g. "ABC Scaffolding,
   J. Dlamini").
+  **`owner_eligible`** (ONBOARD) is whether the owner can still act on the
+  action: an active member who could be made its owner now (an owner or SHE
+  officer, or a supervisor on its site), the rule raise and reassign use. It
+  turns false when the owner is suspended or removed (`members.md`), moved to
+  another role, or taken off the site. Nothing is reassigned automatically:
+  show such an action as needing a new owner and offer `reassign`. The owner
+  gets no more reminders about it; the escalation to SHE officers and owners
+  carries on.
 - **Due dates.** A date in the site regime's time zone (`time_zone`), due by
   the end of that day: `due_at` is the next local midnight, and from then on
   an open action is **overdue**. The default comes from the severity (below).
@@ -142,7 +150,7 @@ and every close-out. Works on an archived site. 404 `"site not found"` or
 so this isn't a view of the evidence; open a photo with the evidence
 `view` endpoint (logged).
 
-### `GET /v1/sites/:siteId/actions?state=&owner=&source=&limit=` — a site's register
+### `GET /v1/sites/:siteId/actions?state=&owner=&source=&owner_eligible=&limit=` — a site's register
 
 Owner, SHE officer, supervisor. `ActionList` (`{"actions": []}` when empty,
 never `null`), due soonest first, then oldest raised. Works on an archived
@@ -151,20 +159,25 @@ site.
 - `state` is one of the states above. **`state=overdue` is the overdue
   list.**
 - `owner` is `me` or a user id; `source` is `finding` or `incident`.
+- `owner_eligible=false` lists the actions whose owner can no longer act on
+  them (suspended, removed, another role, off the site; ONBOARD): they need a
+  new owner (`reassign`). `owner_eligible=true` the rest.
 - `limit` is 1–200, default 50. No paging yet.
 
 | Status | When |
 |---|---|
 | 200 | `ActionList` |
-| 400 | `"state must be open, overdue, awaiting_verification, closed, closed_late or cancelled"`, `"source must be finding or incident"`, `"owner must be me or a user id"`, `"limit must be 1-200"` |
+| 400 | `"state must be open, overdue, awaiting_verification, closed, closed_late or cancelled"`, `"source must be finding or incident"`, `"owner must be me or a user id"`, `"owner_eligible must be true or false"`, `"limit must be 1-200"` |
 | 404 | `"site not found"` |
 
-### `GET /v1/actions?state=&owner=&source=&limit=` — the register across sites
+### `GET /v1/actions?state=&owner=&source=&owner_eligible=&limit=` — the register across sites
 
 The same as the site register, across every site the caller can open: all
 of the organisation's for an owner or SHE officer (archived ones included),
 the sites they were added to for a supervisor. `/v1/actions?state=overdue`
 is the organisation's overdue list; add `owner=me` for "my overdue actions".
+`/v1/actions?owner_eligible=false` is every action whose owner can no
+longer act on it.
 The same 400 texts as above.
 
 ### `PUT /v1/sites/:siteId/actions/:actionId/events/:eventId` — change an action
@@ -340,6 +353,7 @@ export interface ActionSummary {
   status: ActionStatus;
   state: ActionState;
   owner_id: string;
+  owner_eligible: boolean;
   responsible_party: string | null;
   due_on: string;
   due_at: string;
@@ -372,6 +386,7 @@ export interface Action {
   status: ActionStatus;
   state: ActionState;
   owner_id: string;
+  owner_eligible: boolean;
   responsible_party: string | null;
   due_on: string;
   due_at: string;

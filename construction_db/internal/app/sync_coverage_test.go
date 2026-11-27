@@ -22,9 +22,7 @@ import (
 var syncServerOnly = map[string]string{
 	"organisations":             "the caller's organisation is /v1/me's, sent whole on every org pull",
 	"users":                     "no org; names reach a phone inside the records that show them",
-	"org_members":               "the caller's role is /v1/me's, read live; a change of it resets every cursor (D5)",
 	"sites":                     "the site list is sent whole on every org pull (D4, D5)",
-	"site_members":              "who sees a site: the site list and the site pull's 404 (D5)",
 	"sessions":                  "auth, online only",
 	"refresh_tokens":            "auth, online only",
 	"invitations":               "team management, online only",
@@ -81,8 +79,10 @@ func loadSyncCatalog(t *testing.T, db interface {
 		               AND g.tgenabled = 'O' AND g.tgtype & 2 = 2 AND g.tgtype & 4 = 4 AND g.tgtype & 16 = 16),
 		       EXISTS (SELECT 1 FROM pg_index i JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = i.indkey[1]
 		               WHERE i.indrelid = c.oid AND a.attname = 'sync_xid'),
+		       -- sync_deleted, or a table's own <table>_sync_deleted that fans a
+		       -- deletion out to other roots (site_members: the member's actions).
 		       EXISTS (SELECT 1 FROM pg_trigger g JOIN pg_proc p ON p.oid = g.tgfoid
-		               WHERE g.tgrelid = c.oid AND p.proname = 'sync_deleted' AND g.tgenabled = 'O' AND g.tgtype & 8 = 8),
+		               WHERE g.tgrelid = c.oid AND (p.proname = 'sync_deleted' OR p.proname = c.relname || '_sync_deleted') AND g.tgenabled = 'O' AND g.tgtype & 8 = 8),
 		       -- Triggers on one event fire in name order (bytewise): no BEFORE
 		       -- row trigger on insert or update may come after the stamp.
 		       NOT EXISTS (SELECT 1 FROM pg_trigger g WHERE g.tgrelid = c.oid AND NOT g.tgisinternal
@@ -221,6 +221,7 @@ func TestSyncCoverage(t *testing.T) {
 	t.Run("the deletion trigger dropped", func(t *testing.T) {
 		probe(t, `DROP TRIGGER zz_sync_deleted ON inspection_response_evidence`,
 			"inspection_response_evidence: deleted from with no sync_deleted trigger")
+		probe(t, `DROP TRIGGER zz_sync_deleted ON site_members`, "site_members: deleted from with no sync_deleted trigger")
 	})
 	t.Run("a nullable column", func(t *testing.T) {
 		probe(t, `ALTER TABLE site_roster ALTER COLUMN sync_xid DROP NOT NULL`, "site_roster: no sync_xid xid8 NOT NULL")

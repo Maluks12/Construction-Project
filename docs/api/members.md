@@ -63,7 +63,10 @@ status `invited`, and accepting it makes them `active`.
     removal, by any path, is in `site_history`.
 - **Open work.** Nothing is reassigned when someone is suspended or removed.
   `open_work` lists the corrective actions they own that are still open or
-  awaiting verification, and their sites. Reassign them on the action.
+  awaiting verification, each with `owner_eligible` (whether they can still
+  act on it), and their sites. Reassign them on the action, which shows
+  `owner_eligible: false` too (`actions.md`): after a suspension or removal,
+  a change into a role that can't own actions, or being taken off the site.
 
 ## Endpoints
 
@@ -151,6 +154,7 @@ export interface OpenAction {
   status: "open" | "awaiting_verification";
   due_on: string;
   overdue: boolean;
+  owner_eligible: boolean;
 }
 
 export interface OpenWork {

@@ -77,7 +77,7 @@ func event(action string, seq int, kind, actor string, reason any, s state) stmt
 func addMember(t *testing.T, tx pgx.Tx, id, role, status string, onSiteA bool) {
 	t.Helper()
 	must(t, tx, 1, `INSERT INTO users (id, email, full_name) VALUES ($1, $2, 'Member')`, id, id+"@actions.test")
-	must(t, tx, 1, `INSERT INTO org_members (org_id, user_id, role, status) VALUES ($1, $2, $3, $4)`, rlsOrgA, id, role, status)
+	seedMember(t, tx, rlsOrgA, id, role, status)
 	if onSiteA {
 		must(t, tx, 1, `INSERT INTO site_members (org_id, site_id, user_id) VALUES ($1, $2, $3)`, rlsOrgA, rlsSiteA, id)
 	}

@@ -516,12 +516,17 @@ func TestInspectionAbandon(t *testing.T) {
 	tx := beginAs(t, pool, rlsOrgA)
 	const supervisorA = "21000000-0000-0000-0000-0000000000a5"
 	must(t, tx, 1, `INSERT INTO users (id, email, full_name) VALUES ($1, 'abandon-sup@rls.test', 'Supervisor')`, supervisorA)
-	must(t, tx, 1, `INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'supervisor')`, rlsOrgA, supervisorA)
+	seedMember(t, tx, rlsOrgA, supervisorA, "supervisor", "active")
 
 	t.Run("with a fail, only an owner or a SHE officer", func(t *testing.T) {
 		start(t, tx, rlsOrgA, rlsSiteA, supervisorA, inspID(50), nil, "a", "b")
 		answer(t, tx, inspID(50), "a", "fail", "high")
 		refused(t, tx, "23514", "can only be abandoned by an owner or a SHE officer", abandonSQL, inspID(50), supervisorA, "Started by mistake")
+		// Nor by a SHE officer who has been suspended (000056).
+		const suspendedLead = "21000000-0000-0000-0000-0000000000a7"
+		must(t, tx, 1, `INSERT INTO users (id, email, full_name) VALUES ($1, 'abandon-sus@rls.test', 'Suspended Lead')`, suspendedLead)
+		seedMember(t, tx, rlsOrgA, suspendedLead, "she_officer", "suspended")
+		refused(t, tx, "23514", "can only be abandoned by an owner or a SHE officer", abandonSQL, inspID(50), suspendedLead, "Started by mistake")
 		must(t, tx, 1, abandonSQL, inspID(50), rlsUserA, "Started by mistake")
 	})
 

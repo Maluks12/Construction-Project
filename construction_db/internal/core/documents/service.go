@@ -149,6 +149,26 @@ func readiness(ds *regimes.DataSet, scope string, docs []DocumentSummary) []Read
 // database refuses a document without a version at commit). An identical
 // repeat answers 200.
 func (s *Service) Create(ctx context.Context, orgID, userID, role string, w Where, docID string, req CreateRequest) (*Document, bool, error) {
+	var (
+		out     *Document
+		created bool
+	)
+	err := s.retryOnce(func() error {
+		return s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
+			var err error
+			out, created, err = s.CreateTx(ctx, tx, orgID, userID, role, w, docID, req)
+			return err
+		})
+	})
+	if err = finish(err, "create document"); err != nil {
+		return nil, false, err
+	}
+	return out, created, nil
+}
+
+// CreateTx is Create in the caller's transaction (ONBOARD's bulk
+// documents). Losing a race for the document's id is IsRetry.
+func (s *Service) CreateTx(ctx context.Context, tx pgx.Tx, orgID, userID, role string, w Where, docID string, req CreateRequest) (*Document, bool, error) {
 	id, err := uuid.Parse(docID)
 	if err != nil {
 		return nil, false, ErrBadDocumentID
@@ -165,66 +185,60 @@ func (s *Service) Create(ctx context.Context, orgID, userID, role string, w Wher
 	if w.Scope == ScopeOrg && req.RegimeCode == nil {
 		return nil, false, ErrBadRegime
 	}
-	var (
-		out     *Document
-		created bool
-	)
-	err = s.retryOnce(func() error {
-		created = false
-		return s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
-			t, err := s.resolve(ctx, tx, orgID, userID, role, w, req.RegimeCode)
-			if err != nil {
-				return err
-			}
-			dt, ok := t.ds.DocumentType(t.scope, req.TypeKey)
-			if !ok {
-				return ErrBadType
-			}
-			if err := checkAgainstType(dt, req.Version); err != nil {
-				return err
-			}
-			if existing, err := getDoc(ctx, tx, orgID, t.scope, t.siteID, id.String()); err == nil {
-				first, err := listVersions(ctx, tx, orgID, existing.ID)
-				if err != nil {
-					return err
-				}
-				if existing.TypeKey != req.TypeKey || existing.Title != req.Title || existing.CreatedBy != userID ||
-					!sameVersion(&first[0], userID, req.Version) {
-					return ErrIDReused
-				}
-				out, err = s.view(ctx, tx, orgID, t, existing.ID)
-				return err
-			} else if !isNotFound(err) {
-				return err
-			}
-			if found, err := docAnywhere(ctx, tx, orgID, id.String()); err != nil {
-				return err
-			} else if found {
-				return ErrIDReused
-			}
-			if err := files.Attachable(ctx, tx, orgID, req.Version.FileID, t.scope+"_document", t.siteID); err != nil {
-				return err
-			}
-			err = insertDoc(ctx, tx, orgID, id.String(), t.scope, t.siteID, t.ds.Regime.Code, req.TypeKey, req.Title, userID)
-			if isUniqueViolation(err, "documents_pkey") {
-				return errRetry
-			}
-			if err != nil {
-				return err
-			}
-			if err := versionErr(insertVersion(ctx, tx, orgID, id.String(), t.scope, t.siteID, 1, userID, req.Version)); err != nil {
-				return err
-			}
-			created = true
-			out, err = s.view(ctx, tx, orgID, t, id.String())
-			return err
-		})
-	})
-	if err = finish(err, "create document"); err != nil {
+	t, err := s.resolve(ctx, tx, orgID, userID, role, w, req.RegimeCode)
+	if err != nil {
 		return nil, false, err
 	}
-	return out, created, nil
+	dt, ok := t.ds.DocumentType(t.scope, req.TypeKey)
+	if !ok {
+		return nil, false, ErrBadType
+	}
+	if err := checkAgainstType(dt, req.Version); err != nil {
+		return nil, false, err
+	}
+	if existing, err := getDoc(ctx, tx, orgID, t.scope, t.siteID, id.String()); err == nil {
+		first, err := listVersions(ctx, tx, orgID, existing.ID)
+		if err != nil {
+			return nil, false, err
+		}
+		if existing.TypeKey != req.TypeKey || existing.Title != req.Title || existing.CreatedBy != userID ||
+			!sameVersion(&first[0], userID, req.Version) {
+			return nil, false, ErrIDReused
+		}
+		out, err := s.view(ctx, tx, orgID, t, existing.ID)
+		return out, false, err
+	} else if !isNotFound(err) {
+		return nil, false, err
+	}
+	if found, err := docAnywhere(ctx, tx, orgID, id.String()); err != nil {
+		return nil, false, err
+	} else if found {
+		return nil, false, ErrIDReused
+	}
+	if err := files.Attachable(ctx, tx, orgID, req.Version.FileID, t.scope+"_document", t.siteID); err != nil {
+		return nil, false, err
+	}
+	err = insertDoc(ctx, tx, orgID, id.String(), t.scope, t.siteID, t.ds.Regime.Code, req.TypeKey, req.Title, userID)
+	if isUniqueViolation(err, "documents_pkey") {
+		return nil, false, errRetry
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if err := versionErr(insertVersion(ctx, tx, orgID, id.String(), t.scope, t.siteID, 1, userID, req.Version)); err != nil {
+		return nil, false, err
+	}
+	out, err := s.view(ctx, tx, orgID, t, id.String())
+	return out, true, err
 }
+
+// IsRetry: a ...Tx call lost a race for its record's id to a request that
+// committed meanwhile; run the transaction again and it is a repeat.
+func IsRetry(err error) bool { return errors.Is(err, errRetry) }
+
+// IsClientError reports whether err is the caller's mistake (a 4xx of this
+// package): what a batch reports per item.
+func IsClientError(err error) bool { return isSentinel(err) }
 
 // AddVersion adds version n (2 and up) of a document. An identical repeat
 // answers 200; another version n, or a number that isn't next, is 409.

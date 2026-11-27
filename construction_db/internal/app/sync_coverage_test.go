@@ -243,6 +243,8 @@ var syncOnlineOnly = map[string]string{
 	"DELETE /v1/invites/:id":                                                  "team management, online",
 	"PATCH /v1/members/:userId":                                               "team management (ONBOARD D13): a lead at the dashboard; the rules need the live membership",
 	"PUT /v1/worker-imports/:importId":                                        "a lead's set-up task at the dashboard (ONBOARD D13); all or nothing against the live register",
+	"POST /v1/files/batch":                                                    "a lead's bulk upload at the dashboard (ONBOARD D13); a phone declares each file with its PUT",
+	"POST /v1/onboarding/documents":                                           "a lead's bulk load at the dashboard (ONBOARD D13); all or nothing against verified files",
 	"POST /v1/sites":                                                          "site set-up by leads, online (server ids)",
 	"PATCH /v1/sites/:id":                                                     "site set-up by leads, online; last write wins",
 	"DELETE /v1/sites/:id":                                                    "site set-up by leads, online",

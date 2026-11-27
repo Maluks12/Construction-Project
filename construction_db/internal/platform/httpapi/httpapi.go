@@ -28,6 +28,11 @@ const (
 	DeadlockDetected = "40P01"
 )
 
+// ErrBusy is a "try again" that isn't a timeout: a service that lost a race
+// twice returns it, and WriteUnexpected answers it like a deadline, 503 with
+// Retry-After (ONBOARD review).
+var ErrBusy = errors.New("server busy")
+
 // Deadline gives every request one deadline. Handlers pass c.Request.Context()
 // down to the database and S3, so they all stop when it passes.
 func Deadline(d time.Duration) gin.HandlerFunc {
@@ -49,7 +54,7 @@ func WriteUnexpected(c *gin.Context, msg string, err error) {
 	// A lock wait past the pool's lock_timeout (database.Bounds), or a
 	// deadlock Postgres broke, is the same: busy, retry.
 	var pgErr *pgconn.PgError
-	if lock := errors.As(err, &pgErr) && (pgErr.Code == LockNotAvailable || pgErr.Code == DeadlockDetected); lock || errors.Is(err, context.DeadlineExceeded) {
+	if lock := errors.As(err, &pgErr) && (pgErr.Code == LockNotAvailable || pgErr.Code == DeadlockDetected); lock || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrBusy) {
 		if lock {
 			// Where says what it waited on ("while locking tuple (0,1) in relation ...").
 			slog.Warn(msg, "path", c.Request.URL.Path, "err", err, "waited_on", pgErr.Where)

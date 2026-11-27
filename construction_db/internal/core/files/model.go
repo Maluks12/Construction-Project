@@ -102,3 +102,32 @@ var (
 	ErrWrongPurpose   = errors.New("file was uploaded for another purpose")
 	ErrCantViewHealth = errors.New("only an owner or SHE officer can open a medical certificate")
 )
+
+// MaxBatchFiles bounds POST /v1/files/batch.
+const MaxBatchFiles = 100
+
+var ErrBatchSize = errors.New("files must hold 1-100 declarations")
+
+// BatchDeclareItem is one declaration of a batch: the file's id and what
+// PUT /v1/files/:fileId takes.
+type BatchDeclareItem struct {
+	FileID string `json:"file_id"`
+	DeclareRequest
+}
+
+type BatchDeclareRequest struct {
+	Files []BatchDeclareItem `json:"files"`
+}
+
+// BatchDeclareResult is one declaration's answer: the status its own PUT
+// would have had, and the File (with upload) or the error.
+type BatchDeclareResult struct {
+	FileID string  `json:"file_id"`
+	Status int     `json:"status"`
+	File   *File   `json:"file"`
+	Error  *string `json:"error"`
+}
+
+type BatchDeclareResponse struct {
+	Results []BatchDeclareResult `json:"results"`
+}

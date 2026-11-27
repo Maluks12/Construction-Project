@@ -216,6 +216,7 @@ func isSentinel(err error) bool {
 
 // Sentinels are the errors the handlers send; TestAPIDoc checks each is quoted.
 var Sentinels = []error{
+	ErrBatchSize,
 	sites.ErrSiteNotFound,
 	ErrFileNotFound, ErrBadFileID, ErrBadPurpose, ErrSiteRequired, ErrBadHash, ErrBadSize, ErrBadType, ErrBadFileName,
 	ErrBadDeviceID, ErrCantUpload, ErrIDReused, ErrRejected, ErrNotUploaded, ErrNotVerified, ErrWrongPurpose, ErrCantViewHealth,

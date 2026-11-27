@@ -73,6 +73,29 @@ Only the uploader (anyone else: 404 `"file not found"`).
 | 404 | `"file not found"` |
 | 409 | `"file not uploaded yet"` |
 
+### `POST /v1/files/batch` — declare many files at once (ONBOARD)
+
+For loading documents in bulk at the dashboard (`onboarding.md`). Body:
+`BatchDeclareRequest`, 1–100 declarations, each a file id and what
+`PUT /v1/files/:fileId` takes. 200 `BatchDeclareResponse`: one result per
+declaration, in order, each with the status its own `PUT` would have had
+(201, 200 or a 4xx) and the `File` (with `upload`) or that `PUT`'s error
+text. The batch isn't all or nothing: every declaration is its own, and
+repeating one is safe, so after a failure send the same batch again.
+
+Then upload and `complete` each file as usual. A file that failed its
+upload (a dropped connection, an expired URL) is still pending: declare it
+again (alone or in another batch) for a fresh `upload`. A `rejected` file
+can't be retried: declare a new file id.
+
+| Status | When |
+|---|---|
+| 200 | `BatchDeclareResponse` |
+| 400 | `"files must hold 1-100 declarations"`, or the JSON decoder's own text |
+| 403 | `"forbidden"` (roles that upload no files) |
+
+Online only: not in a sync push (a phone declares each file with its `PUT`).
+
 ### `GET /v1/files/:fileId` — a file's record
 
 The uploader, an owner or a SHE officer. The `File` (never the bytes). 404
@@ -120,6 +143,32 @@ export interface DeclareRequest {
   content_type: FileContentType;
   file_name?: string | null;
   device_id?: string | null;
+}
+
+export interface BatchDeclareItem {
+  file_id: string;
+  purpose: FilePurpose;
+  site_id?: string | null;
+  content_sha256: string;
+  size_bytes: number;
+  content_type: FileContentType;
+  file_name?: string | null;
+  device_id?: string | null;
+}
+
+export interface BatchDeclareRequest {
+  files: BatchDeclareItem[];
+}
+
+export interface BatchDeclareResult {
+  file_id: string;
+  status: number;
+  file: File | null;
+  error: string | null;
+}
+
+export interface BatchDeclareResponse {
+  results: BatchDeclareResult[];
 }
 
 export interface Upload {

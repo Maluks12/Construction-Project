@@ -14,6 +14,10 @@ func TestAPIDoc(t *testing.T) {
 		t.Run(name, func(t *testing.T) { doc.CheckStruct(t, name, v, false) })
 	}
 	doc.CheckStruct(t, "DeclareRequest", DeclareRequest{}, true)
+	doc.CheckStruct(t, "BatchDeclareItem", BatchDeclareItem{}, true)
+	doc.CheckStruct(t, "BatchDeclareResult", BatchDeclareResult{}, false)
+	doc.CheckFields(t, "BatchDeclareRequest", []string{"files"})
+	doc.CheckFields(t, "BatchDeclareResponse", []string{"results"})
 	doc.CheckFields(t, "Rejected", []string{"error", "rejected_reason"})
 	doc.CheckUnion(t, "FilePurpose", Purposes)
 	doc.CheckUnion(t, "FileContentType", ContentTypes)

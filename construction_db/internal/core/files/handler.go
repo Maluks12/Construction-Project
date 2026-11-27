@@ -30,23 +30,63 @@ func is(err error, targets ...error) bool {
 // show files use it for those.
 func WriteError(c *gin.Context, err error) bool {
 	var rej *Rejected
-	switch {
-	case errors.As(err, &rej):
+	if errors.As(err, &rej) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": rej.Error(), "rejected_reason": rej.Reason})
-	case is(err, ErrCantUpload, ErrCantViewHealth):
-		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-	case errors.Is(err, sites.ErrSiteNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"error": "site not found"})
-	case errors.Is(err, ErrFileNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-	case is(err, ErrIDReused, ErrNotUploaded, ErrNotVerified):
-		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-	case isSentinel(err):
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	default:
-		return false
+		return true
 	}
-	return true
+	st, ok := errorStatus(err)
+	if ok {
+		c.JSON(st, gin.H{"error": err.Error()})
+	}
+	return ok
+}
+
+// errorStatus is the status this package answers err with; false for an
+// error that isn't the caller's (a 5xx).
+func errorStatus(err error) (int, bool) {
+	switch {
+	case is(err, ErrCantUpload, ErrCantViewHealth):
+		return http.StatusForbidden, true
+	case is(err, sites.ErrSiteNotFound, ErrFileNotFound):
+		return http.StatusNotFound, true
+	case is(err, ErrIDReused, ErrNotUploaded, ErrNotVerified):
+		return http.StatusConflict, true
+	case isSentinel(err):
+		return http.StatusBadRequest, true
+	}
+	return 0, false
+}
+
+// DeclareBatch is POST /v1/files/batch (ONBOARD D11): many declarations in
+// one request, each answered as its own PUT would be. Each is its own
+// transaction, and repeating one is safe, so the batch isn't all or
+// nothing: send it again after a failure.
+func (h *Handler) DeclareBatch(c *gin.Context) {
+	var req BatchDeclareRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if n := len(req.Files); n < 1 || n > MaxBatchFiles {
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrBatchSize.Error()})
+		return
+	}
+	out := BatchDeclareResponse{Results: make([]BatchDeclareResult, 0, len(req.Files))}
+	for _, it := range req.Files {
+		f, created, err := h.svc.Declare(c.Request.Context(), auth.OrgID(c), auth.UserID(c), auth.Role(c), it.FileID, it.DeclareRequest)
+		if err != nil {
+			st, ok := errorStatus(err)
+			if !ok {
+				httpapi.WriteUnexpected(c, "declare files", err)
+				return
+			}
+			msg := err.Error()
+			out.Results = append(out.Results, BatchDeclareResult{FileID: it.FileID, Status: st, Error: &msg})
+			continue
+		}
+		out.Results = append(out.Results, BatchDeclareResult{FileID: it.FileID, Status: status(created), File: f})
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 func writeError(c *gin.Context, err error) {

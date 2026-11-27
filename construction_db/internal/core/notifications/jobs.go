@@ -83,10 +83,14 @@ func (j *Jobs) inOrg(ctx context.Context, orgID string, fn func(pgx.Tx) error) e
 // remindersSQL inserts what is due and queues an email for each new row
 // whose recipient has an email address. ON CONFLICT DO NOTHING is the
 // once-only rule: a reminder already given inserts nothing, so it queues no
-// email either.
+// email either. Only active members are told (ONBOARD D5): a reminder to
+// someone suspended or removed is never created, and what was already
+// queued for them was cancelled when it happened (000054).
 const remindersSQL = `
 	WITH due AS (
-	    SELECT * FROM notifications_due($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	    SELECT d.* FROM notifications_due($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) d
+	    WHERE EXISTS (SELECT 1 FROM org_members m
+	                  WHERE m.org_id = app_org_id() AND m.user_id = d.user_id AND m.status = 'active')
 	), added AS (
 	    INSERT INTO notifications (org_id, user_id, kind, subject_type, subject_id, threshold, site_id, title, due_on, due_at)
 	    SELECT app_org_id(), user_id, kind, subject_type, subject_id, threshold, site_id, title, due_on, due_at FROM due

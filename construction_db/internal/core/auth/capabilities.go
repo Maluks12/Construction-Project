@@ -19,6 +19,7 @@ const (
 	CapManageWorkers           = "manage_workers"
 	CapViewCompliance          = "view_compliance"
 	CapExportAuditPack         = "export_audit_pack"
+	CapManageMembers           = "manage_members"
 )
 
 var (
@@ -41,6 +42,7 @@ var capabilityRoles = map[string][]string{
 	CapManageWorkers:           leadRoles,
 	CapViewCompliance:          fieldRoles,
 	CapExportAuditPack:         leadRoles,
+	CapManageMembers:           memberManagers(),
 }
 
 // AllCapabilities lists every capability, sorted.

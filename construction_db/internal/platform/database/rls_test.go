@@ -161,7 +161,7 @@ var rlsTables = []rlsTable{
 	{"site_locations", "org_id", rlsOrgA, rlsOrgB, "org_id", deleteOK},
 	{"site_members", "org_id", rlsOrgA, rlsOrgB, "org_id", deleteOK},
 	{"sites", "org_id", rlsOrgA, rlsOrgB, "org_id", deletePinned},
-	{"org_members", "org_id", rlsOrgA, rlsOrgB, "org_id", deletePinned},
+	{"org_members", "org_id", rlsOrgA, rlsOrgB, "org_id", deleteDenied}, // never deleted (000054)
 	{"organisations", "id", rlsOrgA, rlsOrgB, "id", deletePinned},
 }
 

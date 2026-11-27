@@ -49,13 +49,13 @@ func TestMeFollowsLiveMembership(t *testing.T) {
 		t.Fatalf("supervisor shows view_vault: %v", sup.Capabilities)
 	}
 
-	execAsTenant(t, sup.OrgID, 1, `UPDATE org_members SET role = 'she_officer' WHERE user_id = $1`, sup.UserID)
+	changeMember(t, f.router, f.owner, sup.UserID, map[string]any{"role": auth.RoleSHEOfficer})
 	now := me(t, f.router, f.supervisor)
 	if now.Role != auth.RoleSHEOfficer || !slices.Equal(now.Capabilities, auth.Capabilities(auth.RoleSHEOfficer)) {
 		t.Errorf("after the role change: role %q, capabilities %v", now.Role, now.Capabilities)
 	}
 
-	execAsTenant(t, sup.OrgID, 1, `UPDATE org_members SET status = 'suspended' WHERE user_id = $1`, sup.UserID)
+	changeMember(t, f.router, f.owner, sup.UserID, map[string]any{"status": "suspended"})
 	wantStatus(t, do(t, f.router, http.MethodGet, "/v1/me", f.supervisor, nil), http.StatusUnauthorized)
 }
 
@@ -108,6 +108,7 @@ func TestCapabilitiesMatchRoutes(t *testing.T) {
 			return do(t, r, http.MethodGet, "/v1/sites/"+site+"/members", token, nil)
 		}},
 		auth.CapInviteMembers: {false, get("/v1/invites")},
+		auth.CapManageMembers: {false, get("/v1/members")},
 		auth.CapViewVault:     {false, get("/v1/vault/documents")},
 		auth.CapOpenMedicalCertificates: {false, func(token, _ string) *httptest.ResponseRecorder {
 			return do(t, r, http.MethodPost, workerPath(worker)+"/medicals/"+medical+"/view", token, nil)

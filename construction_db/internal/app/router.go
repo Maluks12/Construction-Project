@@ -21,6 +21,7 @@ import (
 	"construction_db/internal/core/files"
 	"construction_db/internal/core/incidents"
 	"construction_db/internal/core/invites"
+	"construction_db/internal/core/members"
 	"construction_db/internal/core/notifications"
 	"construction_db/internal/core/reports"
 	"construction_db/internal/core/sites"
@@ -81,6 +82,9 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 
 	invitesSvc := invites.NewService(pool, authSvc)
 	invites.Register(router, invitesSvc, authSvc)
+	membersSvc := members.NewService(pool)
+	membersSvc.Clock = opts.Clock
+	members.Register(router, membersSvc, authSvc)
 
 	evidenceSvc := evidence.NewService(pool, sitesSvc, store)
 	evidence.Register(router, evidenceSvc, authSvc)

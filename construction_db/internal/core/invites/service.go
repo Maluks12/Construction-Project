@@ -56,6 +56,11 @@ func (s *Service) Invite(ctx context.Context, orgID, inviterID, inviterRole stri
 
 	var resp *InviteResponse
 	err := database.WithTenant(ctx, s.pool, database.Tenant{OrgID: orgID, UserID: inviterID}, func(tx pgx.Tx) error {
+		// The organisation first: the lock order every writer of org_members
+		// follows (ONBOARD D3).
+		if err := database.LockOrganisation(ctx, tx, orgID); err != nil {
+			return err
+		}
 		userID, err := findOrCreateUser(ctx, tx, req.Email, req.Mobile, name)
 		if err != nil {
 			return err
@@ -115,6 +120,9 @@ func (s *Service) Revoke(ctx context.Context, orgID, inviteID string) error {
 	var revoked bool
 	err := database.WithTenant(ctx, s.pool, database.Tenant{OrgID: orgID}, func(tx pgx.Tx) error {
 		var err error
+		if err := database.LockOrganisation(ctx, tx, orgID); err != nil {
+			return err
+		}
 		revoked, err = RevokeInvite(ctx, tx, orgID, inviteID)
 		return err
 	})
@@ -220,6 +228,11 @@ func (s *Service) Accept(ctx context.Context, req AcceptRequest, userAgent strin
 
 	var tokens *auth.TokenPair
 	err = database.WithTenant(ctx, s.pool, database.Tenant{OrgID: orgID}, func(tx pgx.Tx) error {
+		// The organisation before the invitation (ONBOARD D3): a members PATCH
+		// removing this invitee takes the organisation, then the invitation.
+		if err := database.LockOrganisation(ctx, tx, orgID); err != nil {
+			return err
+		}
 		a, err := FindInviteForAccept(ctx, tx, hash)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrInvalidInvite

@@ -2,7 +2,9 @@ package workers
 
 import (
 	"errors"
+	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -212,4 +214,45 @@ func (h *Handler) Unlink(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, l)
+}
+
+// Import is PUT /v1/worker-imports/:importId: the body is the CSV file.
+func (h *Handler) Import(c *gin.Context) {
+	if mt, _, err := mime.ParseMediaType(c.GetHeader("Content-Type")); err != nil || !slices.Contains(ImportContentTypes, mt) {
+		c.JSON(http.StatusUnsupportedMediaType, gin.H{"error": ErrNotCSV.Error()})
+		return
+	}
+	dry := c.Query("dry_run")
+	if dry != "" && dry != "true" && dry != "false" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": ErrBadDryRun.Error()})
+		return
+	}
+	// RejectNUL has bounded the body (1 MiB) and left a non-JSON one to
+	// this handler: ParseCSV refuses a NUL with the other control characters.
+	body, err := c.GetRawData()
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": httpapi.TooLargeText})
+		return
+	}
+	if err != nil {
+		httpapi.WriteUnexpected(c, "read import", err)
+		return
+	}
+	res, created, err := h.svc.Import(c.Request.Context(), auth.OrgID(c), auth.UserID(c), c.Param("importId"), body, dry == "true")
+	var fe *FileError
+	switch {
+	case errors.Is(err, ErrImportHasProblems):
+		c.JSON(http.StatusBadRequest, res)
+	case errors.As(err, &fe):
+		c.JSON(http.StatusBadRequest, ImportFileProblem{Error: fe.Error(), Column: fe.Column, Row: fe.Row})
+	case is(err, ErrImportIDReused, ErrRegisterChanged):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case is(err, ErrBadImportID, ErrEmptyFile, ErrNotText, ErrNoNameColumn, ErrNoWorkers, ErrTooManyRows):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case err != nil:
+		httpapi.WriteUnexpected(c, "import workers", err)
+	default:
+		c.JSON(status(created), res)
+	}
 }

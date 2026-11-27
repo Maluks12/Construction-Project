@@ -13,7 +13,21 @@ var (
 	ErrParentNotFound      = errors.New("parent location not found")
 	ErrLocationNameTaken   = errors.New("a location with that name already exists here")
 	ErrLocationHasChildren = errors.New("location has active child locations")
+	ErrBadPosition         = errors.New("position must be a whole number from 0 to 9999, or null")
+	ErrEmptyLocationUpdate = errors.New("send name, position or both")
 )
+
+// LocationErrors are the texts the location endpoints send besides the
+// binding's own; docs/api/locations.md quotes each.
+var LocationErrors = []error{ErrSiteNotFound, ErrLocationNotFound, ErrParentNotFound, ErrBlankName,
+	ErrLocationNameTaken, ErrLocationHasChildren, ErrBadPosition, ErrEmptyLocationUpdate}
+
+// LocationKinds are site_locations.kind's values (Construction; Mining adds
+// its own when it ships).
+var LocationKinds = []string{"zone", "floor"}
+
+// MaxPosition is site_locations_position_range's upper bound.
+const MaxPosition = 9999
 
 // StatusArchived is Site.Status after DELETE /v1/sites/:id. Reads of an
 // archived site still work; features decide what may still be written.
@@ -57,6 +71,7 @@ type Location struct {
 	ParentID  *string   `json:"parent_id"`
 	Kind      string    `json:"kind"`
 	Name      string    `json:"name"`
+	Position  *int      `json:"position"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -64,8 +79,14 @@ type CreateLocationRequest struct {
 	Kind     string  `json:"kind" binding:"required,oneof=zone floor"`
 	Name     string  `json:"name" binding:"required,max=100"`
 	ParentID *string `json:"parent_id" binding:"omitempty,uuid"`
+	Position *int    `json:"position"`
 }
 
+// UpdateLocationRequest keeps a field left out. "position": null clears it,
+// which a *int can't tell from leaving it out, so the handler sets
+// PositionSet from the raw body.
 type UpdateLocationRequest struct {
-	Name string `json:"name" binding:"required,max=100"`
+	Name        *string `json:"name" binding:"omitempty,max=100"`
+	Position    *int    `json:"position"`
+	PositionSet bool    `json:"-"`
 }

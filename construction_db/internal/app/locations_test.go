@@ -3,6 +3,8 @@ package app
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -125,6 +127,102 @@ func TestLocations(t *testing.T) {
 	})
 }
 
+// ONBOARD D14: siblings in position order, numbered first, then by name.
+func TestLocationPositions(t *testing.T) {
+	sfx := uuid.NewString()[:8]
+	router := newRouter(t)
+	owner := signup(t, router, "Pos Co", "owner@positions-"+sfx+".test")
+	site := listSites(t, router, owner)[0].ID
+	path := "/v1/sites/" + site + "/locations"
+
+	block := createLocation(t, router, owner, site, map[string]any{"kind": "zone", "name": "Block A"})
+	l2 := createLocation(t, router, owner, site, map[string]any{"kind": "floor", "name": "Level 2", "parent_id": block.ID, "position": 3})
+	ground := createLocation(t, router, owner, site, map[string]any{"kind": "floor", "name": "Ground", "parent_id": block.ID, "position": 1})
+	roof := createLocation(t, router, owner, site, map[string]any{"kind": "floor", "name": "Roof", "parent_id": block.ID})
+	basement := createLocation(t, router, owner, site, map[string]any{"kind": "floor", "name": "Basement", "parent_id": block.ID, "position": 0})
+	if basement.Position == nil || *basement.Position != 0 {
+		t.Fatalf("position 0 must be kept, got %v", basement.Position)
+	}
+
+	order := func(t *testing.T) []string {
+		t.Helper()
+		rec := do(t, router, http.MethodGet, path, owner, nil)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
+		}
+		var body struct {
+			Locations []sites.Location `json:"locations"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		for _, l := range body.Locations {
+			if l.ParentID != nil {
+				ids = append(ids, l.Name)
+			}
+		}
+		return ids
+	}
+	same := func(t *testing.T, got []string, want ...string) {
+		t.Helper()
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("order %v, want %v", got, want)
+		}
+	}
+	same(t, order(t), "Basement", "Ground", "Level 2", "Roof")
+
+	patch := func(t *testing.T, id, body string, want int) sites.Location {
+		t.Helper()
+		rec := doRaw(t, router, http.MethodPatch, path+"/"+id, owner, body)
+		if rec.Code != want {
+			t.Fatalf("PATCH %s: got %d, want %d (%s)", body, rec.Code, want, rec.Body.String())
+		}
+		var l sites.Location
+		_ = json.Unmarshal(rec.Body.Bytes(), &l)
+		return l
+	}
+
+	t.Run("a name alone keeps the position", func(t *testing.T) {
+		l := patch(t, l2.ID, `{"name":"Level 1"}`, http.StatusOK)
+		if l.Name != "Level 1" || l.Position == nil || *l.Position != 3 {
+			t.Fatalf("got %+v", l)
+		}
+	})
+	t.Run("a position alone keeps the name", func(t *testing.T) {
+		l := patch(t, roof.ID, `{"position":9999}`, http.StatusOK)
+		if l.Name != "Roof" || l.Position == nil || *l.Position != 9999 {
+			t.Fatalf("got %+v", l)
+		}
+	})
+	t.Run("null clears the position", func(t *testing.T) {
+		if l := patch(t, ground.ID, `{"position":null}`, http.StatusOK); l.Position != nil {
+			t.Fatalf("got %+v", l)
+		}
+		same(t, order(t), "Basement", "Level 1", "Roof", "Ground")
+	})
+	t.Run("refused", func(t *testing.T) {
+		for _, tc := range []struct{ body, want string }{
+			{`{}`, sites.ErrEmptyLocationUpdate.Error()},
+			{`{"position":-1}`, sites.ErrBadPosition.Error()},
+			{`{"position":10000}`, sites.ErrBadPosition.Error()},
+			{`{"name":"  "}`, sites.ErrBlankName.Error()},
+		} {
+			rec := doRaw(t, router, http.MethodPatch, path+"/"+roof.ID, owner, tc.body)
+			if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), tc.want) {
+				t.Errorf("PATCH %s: got %d %s, want 400 %q", tc.body, rec.Code, rec.Body.String(), tc.want)
+			}
+		}
+		rec := do(t, router, http.MethodPost, path, owner, map[string]any{"kind": "floor", "name": "Level 9", "position": 10000})
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), sites.ErrBadPosition.Error()) {
+			t.Errorf("create: got %d %s", rec.Code, rec.Body.String())
+		}
+		if rec := doRaw(t, router, http.MethodPatch, path+"/"+roof.ID, owner, `{"position":1.5}`); rec.Code != http.StatusBadRequest {
+			t.Errorf("a fraction: got %d %s", rec.Code, rec.Body.String())
+		}
+	})
+}
+
 func createLocation(t *testing.T, router http.Handler, token, siteID string, body map[string]any) sites.Location {
 	t.Helper()
 
@@ -137,4 +235,10 @@ func createLocation(t *testing.T, router http.Handler, token, siteID string, bod
 		t.Fatalf("decode location: %v", err)
 	}
 	return loc
+}
+
+// doRaw sends body as written, so a test can send null or leave a key out.
+func doRaw(t *testing.T, router http.Handler, method, path, token, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return do(t, router, method, path, token, json.RawMessage(body))
 }

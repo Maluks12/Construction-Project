@@ -279,12 +279,25 @@ func RemoveSiteMember(ctx context.Context, db DBTX, orgID, siteID, userID string
 	return tag.RowsAffected() == 1, nil
 }
 
+// locationColumns is every location's SELECT list, in Scan order.
+const locationColumns = `id, site_id, parent_id, kind, name, position, created_at`
+
+func scanLocation(row pgx.Row) (*Location, error) {
+	var l Location
+	if err := row.Scan(&l.ID, &l.SiteID, &l.ParentID, &l.Kind, &l.Name, &l.Position, &l.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &l, nil
+}
+
+// ListLocations orders siblings by position (numbered first), then name; the
+// list is flat, so that order holds within each parent.
 func ListLocations(ctx context.Context, db DBTX, orgID, siteID string) ([]Location, error) {
 	query := `
-		SELECT id, site_id, parent_id, kind, name, created_at
+		SELECT ` + locationColumns + `
 		FROM site_locations
 		WHERE org_id = $1 AND site_id = $2 AND archived_at IS NULL
-		ORDER BY created_at
+		ORDER BY position NULLS LAST, lower(name), created_at, id
 	`
 	rows, err := db.Query(ctx, query, orgID, siteID)
 	if err != nil {
@@ -294,11 +307,11 @@ func ListLocations(ctx context.Context, db DBTX, orgID, siteID string) ([]Locati
 
 	locations := []Location{}
 	for rows.Next() {
-		var l Location
-		if err := rows.Scan(&l.ID, &l.SiteID, &l.ParentID, &l.Kind, &l.Name, &l.CreatedAt); err != nil {
+		l, err := scanLocation(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan locations: %w", err)
 		}
-		locations = append(locations, l)
+		locations = append(locations, *l)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("list locations: %w", err)
@@ -307,55 +320,37 @@ func ListLocations(ctx context.Context, db DBTX, orgID, siteID string) ([]Locati
 	return locations, nil
 }
 
-func CreateLocation(ctx context.Context, db DBTX, orgID, siteID string, parentID *string, kind, name string) (*Location, error) {
+func CreateLocation(ctx context.Context, db DBTX, orgID, siteID string, parentID *string, kind, name string, position *int) (*Location, error) {
 	query := `
-		INSERT INTO site_locations (org_id, site_id, parent_id, kind, name)
-		SELECT $1, $2, $3, $4, $5
+		INSERT INTO site_locations (org_id, site_id, parent_id, kind, name, position)
+		SELECT $1, $2, $3, $4, $5, $6
 		WHERE $3::uuid IS NULL OR EXISTS (
 			SELECT 1 FROM site_locations p
 			WHERE p.org_id = $1 AND p.site_id = $2 AND p.id = $3 AND p.archived_at IS NULL
 		)
-		RETURNING id, site_id, parent_id, kind, name, created_at
-	`
-	var l Location
-	err := db.QueryRow(ctx, query, orgID, siteID, parentID, kind, name).Scan(
-		&l.ID,
-		&l.SiteID,
-		&l.ParentID,
-		&l.Kind,
-		&l.Name,
-		&l.CreatedAt,
-	)
-
+		RETURNING ` + locationColumns
+	l, err := scanLocation(db.QueryRow(ctx, query, orgID, siteID, parentID, kind, name, position))
 	if err != nil {
 		return nil, fmt.Errorf("create location: %w", err)
 	}
-
-	return &l, nil
+	return l, nil
 }
 
-func RenameLocation(ctx context.Context, db DBTX, orgID, siteID, locationID, name string) (*Location, error) {
+// UpdateLocation sets name unless it is nil, and position when setPosition
+// (nil clears it).
+func UpdateLocation(ctx context.Context, db DBTX, orgID, siteID, locationID string, name *string, setPosition bool, position *int) (*Location, error) {
 	query := `
 		UPDATE site_locations
-		SET name = $4, updated_at = now()
+		SET name = coalesce($4, name),
+		    position = CASE WHEN $5 THEN $6 ELSE position END,
+		    updated_at = now()
 		WHERE org_id = $1 AND site_id = $2 AND id = $3 AND archived_at IS NULL
-		RETURNING id, site_id, parent_id, kind, name, created_at
-	`
-	var l Location
-	err := db.QueryRow(ctx, query, orgID, siteID, locationID, name).Scan(
-		&l.ID,
-		&l.SiteID,
-		&l.ParentID,
-		&l.Kind,
-		&l.Name,
-		&l.CreatedAt,
-	)
-
+		RETURNING ` + locationColumns
+	l, err := scanLocation(db.QueryRow(ctx, query, orgID, siteID, locationID, name, setPosition, position))
 	if err != nil {
-		return nil, fmt.Errorf("rename location: %w", err)
+		return nil, fmt.Errorf("update location: %w", err)
 	}
-
-	return &l, nil
+	return l, nil
 }
 
 func HasActiveChildren(ctx context.Context, db DBTX, orgID, siteID, locationID string) (bool, error) {

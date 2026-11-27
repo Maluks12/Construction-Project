@@ -1,10 +1,12 @@
 package sites
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 
 	"construction_db/internal/core/auth"
 	"construction_db/internal/platform/httpapi"
@@ -30,6 +32,8 @@ func writeError(c *gin.Context, err error) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "parent location not found"})
 	case errors.Is(err, ErrBlankName):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "name is required"})
+	case errors.Is(err, ErrBadPosition), errors.Is(err, ErrEmptyLocationUpdate):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, ErrLocationNameTaken):
 		c.JSON(http.StatusConflict, gin.H{"error": "a location with that name already exists here"})
 	case errors.Is(err, ErrLocationHasChildren):
@@ -191,18 +195,31 @@ func (h *Handler) CreateLocation(c *gin.Context) {
 	c.JSON(http.StatusCreated, location)
 }
 
-func (h *Handler) RenameLocation(c *gin.Context) {
+func (h *Handler) UpdateLocation(c *gin.Context) {
 	var req UpdateLocationRequest
 	orgID := auth.OrgID(c)
 	id := c.Param("id")
 	locationID := c.Param("locationId")
 
-	if err := c.ShouldBindJSON(&req); err != nil {
+	// Read once: bound into req, and looked at again for whether "position"
+	// was sent at all (null clears it; left out keeps it).
+	body, err := c.GetRawData()
+	if err != nil {
+		httpapi.WriteUnexpected(c, "read location update", err)
+		return
+	}
+	if err := binding.JSON.BindBody(body, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(body, &keys); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	_, req.PositionSet = keys["position"]
 
-	location, err := h.svc.RenameLocation(c.Request.Context(), orgID, id, locationID, req)
+	location, err := h.svc.UpdateLocation(c.Request.Context(), orgID, id, locationID, req)
 
 	if err != nil {
 		writeError(c, err)

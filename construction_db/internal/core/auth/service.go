@@ -161,6 +161,10 @@ func (s *Service) Signup(ctx context.Context, req SignupRequest, userAgent strin
 		if err := CreateOrganisation(ctx, tx, orgID, req.CompanyName, s.defaultEdition); err != nil {
 			return fmt.Errorf("signup: %w", err)
 		}
+		// The lock order every writer of org_members follows (ONBOARD D3).
+		if err := database.LockOrganisation(ctx, tx, orgID); err != nil {
+			return fmt.Errorf("signup: %w", err)
+		}
 
 		userID, err := CreateUser(ctx, tx, req.FullName, req.Email, hash)
 		if isEmailTaken(err) {

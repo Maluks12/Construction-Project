@@ -141,6 +141,15 @@ func CoreKinds() []Kind {
 				// shows whether it was raised on the latest.
 				{"incidents", `SELECT a.id::text FROM incidents i JOIN corrective_actions a ON a.incident_id = i.id
 					WHERE i.site_id = $1 AND ` + W("i")},
+				// owner_eligible (ONBOARD review R1): the owner's membership
+				// changed (role, status), they were added to the site, or taken
+				// off it (000056 records each of their actions on that site in
+				// sync_deletions, which only means "render it again").
+				{"org_members", `SELECT a.id::text FROM corrective_actions a JOIN org_members m
+					ON m.org_id = a.org_id AND m.user_id = a.owner_id WHERE a.site_id = $1 AND ` + W("m")},
+				{"site_members", `SELECT a.id::text FROM corrective_actions a JOIN site_members m
+					ON m.site_id = a.site_id AND m.user_id = a.owner_id WHERE a.site_id = $1 AND ` + W("m")},
+				{"sync_deletions", `SELECT root FROM sync_deletions WHERE site_id = $1 AND kind = 'action' AND ` + W("")},
 			},
 		},
 		{

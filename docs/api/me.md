@@ -44,6 +44,7 @@ approval; when it is approved, this list and the guards change together.
 | `write_safety_file` | Add, version or retract H&S file documents | ✓ | ✓ | – | – |
 | `manage_sites` | Create, edit and archive sites; site members and locations | ✓ | ✓ | – | – |
 | `invite_members` | Invite people and see pending invites | ✓ | ✓ | – | – |
+| `manage_members` | List members; change roles and statuses (only an owner touches an owner; `members.md`) | ✓ | ✓ | – | – |
 | `view_vault` | The organisation's statutory vault | ✓ | ✓ | – | – |
 | `open_medical_certificates` | Open a medical certificate of fitness (every view is logged) | ✓ | ✓ | – | – |
 | `verify_chain` | Check a site's evidence chain | ✓ | ✓ | – | – |
@@ -65,7 +66,7 @@ capabilities: show the button and let the endpoint answer.
 
 <!-- types -->
 ```ts
-export type Capability = "capture_records" | "read_safety_file" | "write_safety_file" | "manage_sites" | "invite_members" | "view_vault" | "open_medical_certificates" | "verify_chain" | "waive_findings" | "verify_actions" | "manage_workers" | "view_compliance" | "export_audit_pack";
+export type Capability = "capture_records" | "read_safety_file" | "write_safety_file" | "manage_sites" | "invite_members" | "view_vault" | "open_medical_certificates" | "verify_chain" | "waive_findings" | "verify_actions" | "manage_workers" | "view_compliance" | "export_audit_pack" | "manage_members";
 
 export type Role = "owner" | "she_officer" | "supervisor" | "claims_handler" | "contracts_manager" | "bookkeeper";
 

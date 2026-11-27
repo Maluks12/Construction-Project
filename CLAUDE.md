@@ -54,7 +54,7 @@ Endpoint references for the frontend live in `docs/api/` (so far:
 `evidence.md`, `inspections.md`, `incidents.md`, `actions.md`, `toolbox.md`,
 `diary.md`, `files.md`, `workers.md`, `attendance.md`, `documents.md`,
 `appointments.md`, `notifications.md`, `me.md`, `compliance.md`,
-`exports.md`, `deadlines.md`, `site-work.md` and `sync.md`, with the types to mirror; each milestone's `mN-handover.md` lists what changed). A backend
+`exports.md`, `deadlines.md`, `site-work.md`, `sync.md`, `locations.md`, `members.md` and `onboarding.md`, with the types to mirror; each milestone's `mN-handover.md` lists what changed). A backend
 change to an endpoint listed there updates the reference in the same
 commit; `TestAPIDoc` fails if its types drift from the Go code.
 

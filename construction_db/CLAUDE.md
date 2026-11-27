@@ -293,6 +293,18 @@ both errors.
   kinds, reference parts and push routes through `SyncSources()` (a type
   assertion in `app.NewRouter`, like `DeadlineSubjects`). `docs/api/sync.md`;
   `TestSyncAPIDoc` is in `internal/app` (the kinds union names the edition's).
+- ONBOARD packages:
+  - **`internal/core/members`:** team management (`docs/api/members.md`).
+    The rules are 000054's triggers on `org_members` (`org_members_guard`,
+    `org_members_changed`); the service checks the same first and maps the
+    database's refusals by constraint name. The rule table is
+    `auth.memberRules` (`internal/core/auth/members.go`).
+  - **`internal/core/onboarding`:** bulk documents (one transaction, a
+    savepoint per item, through the records' own `...Tx` functions) and the
+    wizard's progress; the edition adds steps through
+    `OnboardingContributor` (a type assertion in `app.NewRouter`).
+  - **The worker import** is `internal/core/workers` (`csvimport.go`: the
+    pure CSV reading; `imports.go`: the all-or-nothing write).
 - M12 packages:
   - **`internal/core/reports`:** the compliance summary and rollup. Core
     categories by SQL in one tenant transaction; the vault through
@@ -713,6 +725,15 @@ under cmd/.
   online-only with a reason (`TestPushRoutes`, `syncOnlineOnly`). Never
   compare a pull cursor with a time: `sync_xid` against the snapshot's xmin
   is the only bound that can't pass a slow commit.
+- **Memberships (ONBOARD):** every writer of `org_members` calls
+  `database.LockOrganisation` first (one lock order, D3), and a change of an
+  active or suspended membership sets `database.SetMemberChange` (the
+  reason; a new supervisor's sites) before its UPDATE: the 000054 guard
+  refuses it otherwise. Never DELETE a membership (refused); remove it. A
+  test fixture changes a member through `PATCH /v1/members/:userId`
+  (`changeMember`), not raw SQL.
+  A membership is created only as the first owner or as an invitation
+  (000056): database fixtures add members with `seedMember`.
 - **Edited-in-place records** (workers, talks) take `base_updated_at`; an
   edit locks the row before comparing it.
 - **Sync kinds list what their GET reads** (SYNC review 3): every table is a
@@ -726,8 +747,9 @@ under cmd/.
   per-route override** is that same list (`RejectNUL(ownBody...)` in
   `app.NewRouter`): a route that needs more than 1 MiB is named there and
   must then bound its body and refuse NUL itself, as the push does
-  (`MaxBytesReader`; each record's sub-request). ONBOARD's CSV import is the
-  likely one: decide its limit there.
+  (`MaxBytesReader`; each record's sub-request). ONBOARD's CSV import stays
+  within 1 MiB (5,000 rows; D9), so no route besides the push overrides it;
+  its body isn't JSON, so it refuses NUL itself (`workers.ParseCSV`).
 - **Known flake (until R2's own PR):** `TestSiteWorkPackSpans` failed once
   in a full local run and passed alone. Suspected cause: Docker Desktop's
   VM clock drifting from the host. The pack reads as of the test's clock,
@@ -2492,6 +2514,168 @@ under cmd/.
       - `.env.example` 1 of 1.
     - **Convention:** never name a Go file `nul.go` (or `con`, `aux`, `prn`):
       they are Windows device names, and Git on Windows refuses the path.
+- **ONBOARD, onboarding** (Thu 26 Nov; light, full rigour for team
+  management, the import's all-or-nothing tested). Plan and decisions D1–D14
+  answered Thu 26 Nov, in four batches; built the same day; reviewed the
+  same day, approved with fixes (R1–R6 and nits, below), fixed the same
+  day. Handover: `docs/api/onboard-handover.md`.
+  - **Task 1, zones and floors:** `site_locations` (000006) already had
+    `zone` and `floor`, a same-site tree, CRUD, sync and tests. Added only
+    D14: `position` (000053, 0–9999, null last) ordering siblings, set on
+    create and PATCH (null clears, left out keeps; PATCH no longer requires
+    `name`), and `docs/api/locations.md`.
+  - **D1 Role rules:** `auth.memberRules` (owners change anyone; SHE
+    officers anyone but owners, never granting owner; other roles no one;
+    nobody themselves), its SQL twin `member_change_allowed` (000054),
+    `TestMemberRulesMatchDatabase` over 6×6×6, and `manage_members` from the
+    same table. Approving the role matrix is a data change for member
+    management only; the `RequireRole` lists, the `isLead` copies, health
+    details, summary and export scope, the three non-field roles and G22
+    stay code.
+  - **D2 Statuses:** a PATCH swaps active and suspended, or removes
+    (removing an invited member revokes the invitation); removed comes
+    back only by re-invite (same user). `org_members` is never deleted
+    (grant revoked, trigger, no truncate).
+  - **D3 Last owner:** `org_members_guard` locks the organisation row FOR
+    NO KEY UPDATE, then counts other active owners (a fresh snapshot per
+    statement under READ COMMITTED), before checking who acts, so the
+    loser of two owners demoting each other is refused by this rule.
+    **One lock order:** every writer of `org_members` takes
+    `database.LockOrganisation` first: signup, invite send, revoke, accept
+    (before its invitation's FOR UPDATE) and the members PATCH. `40P01` is
+    503 like 55P03 (`httpapi.DeadlockDetected`). FOR NO KEY UPDATE doesn't
+    block FK checks (`TestMemberLockAllowsForeignKeys`).
+  - **D4 Immediate effect:** leaving `active` revokes the member's sessions
+    in that org in the same transaction (`org_members_changed`, SECURITY
+    DEFINER), so the access token is refused on the next request
+    (`RequireAuth` reads the session and membership each time), the
+    refresh token too, and a push stops at the next record (forced:
+    `TestMemberSuspendedMidPush`). A role change signs no one out.
+  - **D5 Open work:** nothing reassigned. `open_work` on the member;
+    `owner_active` on actions and the compliance summary's action items
+    (renamed `owner_eligible` and widened in review R1, below). Reminders
+    go to active members only (`remindersSQL`; narrowed in R1); a member's pending emails are cancelled
+    when they leave `active`. **D5b:** `org_members` is stamped and a dep of
+    the `action` kind (no longer server-only).
+  - **D6 Log:** `member_history` gains `reason`, `prev_role`,
+    `prev_status`, `site_ids`, `prev_site_ids`; the reason travels in
+    `siteproof.member_reason` (`database.SetMemberChange`) and the guard
+    refuses a change to an active or suspended membership without one.
+    `GET /v1/members/:userId/history`. The pack reads named columns:
+    `pack_format` unchanged.
+  - **D7 Sites:** into supervisor needs `site_ids` (`siteproof.member_site_ids`,
+    live sites only), applied by the trigger; out of supervisor or removed
+    clears them; suspended keeps them. **D7b:** `site_member_history`
+    (append-only, every add and remove, by any path).
+  - **D8 Endpoints:** `GET /v1/members`, `GET/PATCH /v1/members/:userId`,
+    `GET /v1/members/:userId/history` (`internal/core/members`,
+    `docs/api/members.md`). Answers "Requested by the frontend".
+  - **D9, D10 CSV import:** `PUT /v1/worker-imports/:importId`
+    (`?dry_run=true`), body `text/csv` up to 1 MiB and 5,000 rows;
+    UTF-8 with or without BOM, or Windows-1252 decoded and reported
+    (`encoding`; bytes it leaves undefined refused, checked in the raw
+    input: x/text maps them to U+FFFD); comma or semicolon from the header;
+    header aliases; row numbers as Excel's. `CheckRows` now takes each
+    row's number. Workers inserted in one statement (unnest); the import's
+    record (`worker_imports`, 000055, append-only) first, so a concurrent
+    repeat waits on its key and answers as a repeat.
+  - **D11 Bulk documents:** `POST /v1/files/batch` (each declaration
+    answered as its own PUT; not all or nothing) and
+    `POST /v1/onboarding/documents` (`?dry_run=true`): one transaction,
+    each item in a savepoint through `workers.PutCompetencyTx`,
+    `PutMedicalTx` and `documents.CreateTx` (the single endpoints now call
+    these), every item's problem reported, all or nothing; an unverified
+    file is 409.
+  - **D12 Progress:** `GET /v1/onboarding/progress`, computed per call.
+    Core: sites, team, company_documents, workers, locations,
+    worker_documents (the last two read core tables, so they're core, not
+    the edition's as planned); construction (`OnboardingContributor`, a
+    type assertion): hs_file, required_appointments, site_work. Required:
+    sites, company_documents, workers, hs_file.
+  - **D13 Sync:** every new write route online-only (`syncOnlineOnly`);
+    `worker_imports` and `site_member_history` server-only.
+  - **Fixtures:** tests that changed `org_members` by SQL now PATCH as an
+    owner with a reason (the guard needs both).
+  - **Mutation checks** (each broken, a test failing, restored):
+    - 000054, 21: the org lock, FOR UPDATE for FOR NO KEY UPDATE, the
+      last-owner count, the self rule, SHE officers on owners, supervisors
+      acting, the reason, the reason's length, removed to active, an
+      accept changing the role, invites granting owner, DELETE, sites kept
+      out of supervisor, `site_ids` optional, archived sites, sessions
+      kept, emails kept, the invitation kept, the reason not recorded,
+      `site_member_history`: 20 caught. "No actor needed" survived: with
+      no actor there is no active membership and the next check refuses
+      it by the same constraint, so the redundant check was removed.
+    - Go: accept's lock order, the push continuing after a 401, reminders
+      to inactive members, the action kind's `org_members` dep, the import
+      ignoring problems, the import repeat, the bulk commit ignoring
+      problems, a dry run committing, an expired document counted as
+      present: 9 of 9.
+  - **Races (forced):** `TestLastOwnerRace` (database), `TestLastOwnerRaceAPI`
+    and `TestInviteAcceptRacesMemberPatch` (the test holds the
+    organisation's lock; the accept is shown holding no invitation lock
+    while it waits), `TestMemberSuspendedMidPush` (a worker insert held on
+    an uncommitted identity key).
+  - **Migrations:** 000053–000055 applied up, down 3 and up again on a
+    throwaway Postgres.
+  - **Date tests:** `TestBulkDocuments`, `TestOnboardingProgress`,
+    `TestOwnerActive` added to DATE_TESTS (`TestWorkerImport` matched
+    already); passed at 00:30 and 23:30 SAST.
+  - **Review (Thu 26 Nov), approved with fixes; decisions D1–D7 of the
+    review, fixed the same day (000056):**
+    - **R1 `owner_active` → `owner_eligible`:** `action_site_member(org,
+      site, owner)`, the rule raise and reassign use, on the action, both
+      registers (`?owner_eligible=`), the compliance summary's action items
+      and each `open_work` action (D7). It turns false when the owner is
+      suspended, removed, moved to another role or taken off the site.
+      **Reminders (D3):** one about a site goes only to someone
+      `action_site_member` admits there now; one with no site to active
+      members. **Sync (D1, D2):** `site_members` is stamped (additions); a
+      removal, by the site member endpoint or the 000054 trigger, records
+      each action the member owns there in `sync_deletions` (kind `action`),
+      which a pull reads as "render it again" (checked: a root's GET is
+      rendered, 200 goes out as an item, 404 or 403 sends nothing; there are
+      no tombstones). `site_members` is no longer an excused context read or
+      server-only, so `TestSyncDepsCoverWhatGETsRead` proves the dep (only
+      the action GET reads it, as an owner). `TestSyncCoverage` accepts a
+      table's own `<table>_sync_deleted` that fans a deletion out.
+    - **R2:** `action_site_member` and `action_lead` already required
+      `status = 'active'`. The audit of every `org_members` read in the
+      migrations found three that didn't: `inspections_guard` (000014),
+      `deadlines_weakening_check` (000046), `deadline_satisfaction_retractions_release`
+      (000017), none replaced since 000047; each now calls `action_lead`.
+      Everything else (waivers, retractions, toolbox, diaries, addenda,
+      sign-ins, roster, appointments, worker links, documents' retraction)
+      goes through `action_lead`, `action_site_member` or `workers_lead`, all
+      status-checked; exports check it inline. Documents and site work have
+      no database role rule at all (Go only): outside R2, noted.
+    - **R3:** `org_members_insert_guard` (AFTER INSERT, so RLS refuses a
+      cross-tenant insert first; the BEFORE guard keeps the lock): an active
+      insert only as the organisation's first member, its owner; an
+      invitation only from an active member allowed to grant the role;
+      nothing else (D4). Database fixtures go through `seedMember` (the
+      real path: invited by an active owner, accepted, then suspended or
+      removed with a reason); no exemption in the rule.
+    - **R4:** tests only, nothing to fix: no active membership is 401 at
+      login (as a wrong password); suspended in A and active in B signs in to
+      B, and naming A is 400 `"not a member of this organisation"`; inviting a
+      suspended or active member is 409 `"this person is already a member"`
+      (the upsert's WHERE matches nothing; no insert, so no rule fires).
+    - **R5:** `RejectNUL` already bounded every body, CSV included, at 1 MiB
+      (413 before the handler); tested at exactly 1 MiB + 1, and the handler
+      maps a `*http.MaxBytesError` to the shared 413 as a backstop.
+    - **R6:** the import takes `application/vnd.ms-excel` too; a real .xls is
+      "not text".
+    - **Nits:** `httpapi.ErrBusy` (503 with Retry-After; a second lost race in
+      the bulk commit, D6); a members PATCH that changes nothing doesn't
+      write the row; `ListLocations` orders by `id` last; `edition.Deps` is
+      built once in `app.NewRouter`.
+    - **Mutation checks:** 000056 7 of 7 (an active non-first member, a
+      first member who isn't the owner, any inserted status, anyone
+      inviting, and each of the three guards reverted); the `site_members`
+      dep, the `sync_deletions` dep, the removal trigger, the site reminder
+      rule, the no-op PATCH: 5 of 5.
+    - **Date tests:** `TestOwnerActive` is `TestOwnerEligible` in DATE_TESTS.
 
 ## Finding severity
 
@@ -2519,4 +2703,5 @@ A practitioner has yet to review these too.
 - `/v1/me` to include `role`, `full_name` and `org_name` (the dashboard
   currently guesses the role from 403s).
 - An endpoint listing the organisation's active members, so the dashboard can
-  add people to a site.
+  add people to a site. **Done in ONBOARD:** `GET /v1/members?status=active`
+  (`docs/api/members.md`).

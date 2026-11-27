@@ -21,7 +21,9 @@ import (
 	"construction_db/internal/core/files"
 	"construction_db/internal/core/incidents"
 	"construction_db/internal/core/invites"
+	"construction_db/internal/core/members"
 	"construction_db/internal/core/notifications"
+	"construction_db/internal/core/onboarding"
 	"construction_db/internal/core/reports"
 	"construction_db/internal/core/sites"
 	"construction_db/internal/core/toolbox"
@@ -81,6 +83,9 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 
 	invitesSvc := invites.NewService(pool, authSvc)
 	invites.Register(router, invitesSvc, authSvc)
+	membersSvc := members.NewService(pool)
+	membersSvc.Clock = opts.Clock
+	members.Register(router, membersSvc, authSvc)
 
 	evidenceSvc := evidence.NewService(pool, sitesSvc, store)
 	evidence.Register(router, evidenceSvc, authSvc)
@@ -112,9 +117,18 @@ func NewRouter(ctx context.Context, pool *pgxpool.Pool, jwtSecret string, reg *r
 	documentsSvc := documents.NewService(pool, sitesSvc, filesSvc, reg)
 	documentsSvc.Clock = opts.Clock
 	vault.Register(router, documentsSvc, authSvc)
+
+	// What edition code reaches core through, built once for every edition hook.
+	deps := edition.Deps{Pool: pool, Sites: sitesSvc, Files: filesSvc, Documents: documentsSvc, Regimes: reg, Clock: opts.Clock}
+	var onboard onboarding.Contributor
+	if oe, ok := ed.(onboardingEdition); ok {
+		onboard = oe.OnboardingContributor(deps)
+	}
+	onboardingSvc := onboarding.NewService(pool, workersSvc, documentsSvc, reg, onboard)
+	onboardingSvc.Clock = opts.Clock
+	onboarding.Register(router, onboardingSvc, authSvc)
 	notifications.Register(router, notifications.NewService(pool), authSvc)
 
-	deps := edition.Deps{Pool: pool, Sites: sitesSvc, Files: filesSvc, Documents: documentsSvc, Regimes: reg, Clock: opts.Clock}
 	if se, ok := ed.(deadlineSubjectEdition); ok {
 		for kind, h := range se.DeadlineSubjects(deps) {
 			deadlinesSvc.Register(kind, h)
@@ -158,6 +172,12 @@ type syncEdition interface {
 // summary (M12); the edition.Edition interface stays as it was.
 type reportingEdition interface {
 	ReportsContributor(edition.Deps) reports.Contributor
+}
+
+// onboardingEdition is an edition with first-run steps of its own (ONBOARD
+// D12).
+type onboardingEdition interface {
+	OnboardingContributor(edition.Deps) onboarding.Contributor
 }
 
 // deadlineSubjectEdition is an edition with deadline subjects of its own

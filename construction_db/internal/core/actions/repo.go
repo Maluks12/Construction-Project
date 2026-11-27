@@ -52,7 +52,9 @@ const headerSQL = `
 	           WHEN $1 >= a.due_at THEN 'overdue'
 	           ELSE 'open'
 	       END AS state,
-	       a.owner_id AS owner_id, a.responsible_party AS responsible_party, a.due_on::text AS due_on, a.due_at AS due_at,
+	       a.owner_id AS owner_id,
+	       action_site_member(a.org_id, a.site_id, a.owner_id) AS owner_eligible,
+	       a.responsible_party AS responsible_party, a.due_on::text AS due_on, a.due_at AS due_at,
 	       a.pending_closeout_id AS pending_closeout_id, a.awaiting_since AS awaiting_since, v.recorded_at AS closed_at
 	FROM corrective_actions a
 	LEFT JOIN LATERAL (
@@ -69,7 +71,7 @@ func scanHeader(row pgx.Row) (*ActionHeader, error) {
 		&h.IncidentID, &h.IncidentVersion, &h.IncidentLatestVersion, &h.Review,
 		&h.Severity, &h.Title, &h.Description, &h.RaisedBy, &h.ClientRaisedAt, &h.RaisedAt, &h.DeviceID, &h.TimeZone,
 		&h.SourceAt, &h.DefaultDueOn, &h.Status, &h.State,
-		&h.OwnerID, &h.ResponsibleParty, &h.DueOn, &h.DueAt, &h.PendingCloseoutID, &h.AwaitingSince, &h.ClosedAt)
+		&h.OwnerID, &h.OwnerEligible, &h.ResponsibleParty, &h.DueOn, &h.DueAt, &h.PendingCloseoutID, &h.AwaitingSince, &h.ClosedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -205,9 +207,11 @@ func listCloseouts(ctx context.Context, db DBTX, orgID string, h *ActionHeader) 
 // they were added to for a supervisor (the scope of GET /v1/sites).
 type listFilter struct {
 	SiteID, State, Owner, Source string
-	UserID                       string
-	Lead                         bool
-	Limit                        int
+	// "true" or "false": only actions whose owner can (or can't) still act on them.
+	OwnerEligible string
+	UserID        string
+	Lead          bool
+	Limit         int
 }
 
 // listHeaders is the register: due soonest first, then oldest raised. The
@@ -221,9 +225,10 @@ func listHeaders(ctx context.Context, db DBTX, orgID string, f listFilter, now t
 		  AND ($7 = '' OR ($7 = 'finding') = (a.inspection_id IS NOT NULL))
 	) x
 	WHERE ($8 = '' OR x.state = $8)
+	  AND ($10 = '' OR x.owner_eligible = ($10 = 'true'))
 	ORDER BY x.due_at, x.raised_at, x.id
 	LIMIT $9`
-	rows, err := db.Query(ctx, q, now, orgID, f.SiteID, f.Lead, f.UserID, f.Owner, f.Source, f.State, f.Limit)
+	rows, err := db.Query(ctx, q, now, orgID, f.SiteID, f.Lead, f.UserID, f.Owner, f.Source, f.State, f.Limit, f.OwnerEligible)
 	if err != nil {
 		return nil, fmt.Errorf("list actions: %w", err)
 	}

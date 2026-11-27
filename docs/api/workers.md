@@ -148,16 +148,84 @@ found"`; 409 `"signature already linked to a worker; unlink it first"`.
 Body: `UnlinkRequest`. Owner or SHE officer. 200 with the `Link`, unlinked;
 400 `"reason must be 1-500 characters"`; 409 `"signature is not linked to a worker"`.
 
-## For ONBOARD's CSV import
+## Importing the register from a spreadsheet (ONBOARD)
 
-The import runs the same checks row by row: `workers.ValidateWorker` and
-`ValidateCompetency` (each `FieldProblem` above), then `CheckRows` for names
-repeated within the file (`same name, firm and clock number as row N`) or
-already on the register. One bad row writes nothing.
+### `PUT /v1/worker-imports/:importId?dry_run=` — add many workers, all or nothing
+
+For the dashboard's first-run set-up: an owner or SHE officer uploads the
+worker register as a CSV file. Either every row becomes a worker, or none
+does. Supervisors and other roles get 403 `"forbidden"`.
+
+- **The body is the file itself**, with `Content-Type: text/csv` or
+  `application/vnd.ms-excel` (what Windows with Excel reports for a .csv),
+  at most 1 MiB (about 10,000 rows; over it, 413 below) and 5,000 workers.
+  Any other type is 415 `"send the file as text/csv"`. Set the header
+  yourself rather than sending the browser's `File.type`, which is empty or
+  another type on some machines. A real Excel workbook (.xls, .xlsx) is
+  refused: save it as CSV.
+- **The file, as Excel saves it:**
+  - "CSV UTF-8" (with or without its byte-order mark), or plain "CSV",
+    which South African Excel saves in Windows-1252. That's decoded, so
+    names like Gërhard or Bouwerk Mé come through, and the answer's
+    `encoding` says which was read. When it says `windows-1252`, show
+    "read as Windows-1252: check the names" with the dry run's rows.
+  - CRLF or LF line ends.
+  - Comma or semicolon between cells (Excel uses a semicolon where the
+    decimal separator is a comma): whichever the header line has more of.
+    `separator` says which.
+  - Cells in double quotes may hold the separator, or `""` for a quote.
+- **The header row** names the columns, in any order and any letter case,
+  extra spaces and dots ignored:
+
+  | Column | Also accepted |
+  |---|---|
+  | `name` (required) | full name, names, worker, worker name |
+  | `firm` | company, employer, contractor, subcontractor |
+  | `clock_number` | clock no, clock num, clock, employee number, employee no, staff number, staff no |
+  | `trade` | occupation, job title |
+
+  A column with an empty header is ignored; any other column is refused
+  (400 with `column`). No ID numbers (M11).
+- **Rows.** Blank rows (Excel's trailing `;;;`) are skipped. A row's
+  number is the line it starts on, the header being row 1: the same as
+  Excel's row number unless a cell above holds a line break. Each row is
+  checked as `PUT /v1/workers/:id` checks a worker, and against the rest of
+  the file and the register (the same name, firm and clock number as another
+  row, or as a worker already on the register).
+- **Dates.** The file has none: certificates and medicals need their
+  documents, so they go in through the bulk documents (`onboarding.md`).
+  If a date column is ever added, it takes `YYYY-MM-DD` or `DD/MM/YYYY`
+  only, never `MM/DD`.
+- **`dry_run=true`** checks everything and writes nothing: 200 with the
+  rows as read and every problem. Use it to show the file before importing.
+- **The import id** is the dashboard's (a UUID v4 per file chosen). Sending
+  the same file again under it, after a lost answer, is 200 with the first
+  result; another file under it is 409.
+- Imports are online only: not in a sync push.
+
+| Status | When |
+|---|---|
+| 201 | Imported: `ImportResult`, every row with its `worker_id` |
+| 200 | A dry run (`ImportResult`, `problems` possibly not empty, no `worker_id`s), or the same file again under the same id |
+| 400 | The file has row problems: `ImportResult` with `error` `"the file has problems; nothing was imported"` and every problem in `problems`; nothing is written |
+| 400 | The whole file (`ImportFileProblem`): `"the file is empty"`, `"the file has characters that aren't text; save it from Excel as CSV UTF-8"`, `"the header needs a name column"`, `"the header has a column that isn't name, firm, clock_number or trade"` (with `column`), `"the header names a column twice"` (with `column`), `"the file isn't valid CSV: check the quotes in this row"` (with `row`), `"the file has no workers under its header"`, `"at most 5000 workers per import; split the file"` |
+| 400 | `"import id must be a UUID"`, `"dry_run must be true or false"` |
+| 403 | `"forbidden"` |
+| 409 | `"import id already used with a different file"`; `"the register changed while importing; send the file again"` (someone added one of these people at that moment; send it again to see which) |
+| 415 | `"send the file as text/csv"` (a type other than `text/csv` or `application/vnd.ms-excel`) |
+
+A row's problems (`problems`, sorted by row) are a `field` (`name`,
+`firm`, `clock_number`, `trade`, or `""` for the row as a whole) and the
+same texts as `PUT /v1/workers/:id` (above), plus:
+
+- `"same name, firm and clock number as row N"`, N the earlier row;
+- `"a worker with this name, firm and clock number is already on the register"`;
+- `"this row has more cells than the header has columns"`.
 
 ## Across the API
 
 - 400 `"text must not contain NUL characters"`: a NUL character (`\u0000`) anywhere in the JSON body (any value or key, however nested), the query string or the path, on every endpoint, checked before the token (REG4 review). Postgres text can't store one.
+- 413 `"request body too large; at most 1 MiB"`: on every endpoint, checked before the token (SYNC review).
 - **503 `"server busy, try again"`** with a `Retry-After` header (seconds):
   the request ran out of time, or waited over 5 seconds for a record another
   request was changing. Retry after that many seconds.
@@ -390,5 +458,40 @@ export interface FieldProblem {
 export interface IdentityClash {
   error: string;
   worker_id: string;
+}
+
+export type ImportEncoding = "utf-8" | "windows-1252";
+
+export interface ImportRow {
+  row: number;
+  worker_id: string | null;
+  name: string;
+  firm: string | null;
+  clock_number: string | null;
+  trade: string | null;
+}
+
+export interface RowProblem {
+  row: number;
+  field: string;
+  error: string;
+}
+
+export interface ImportResult {
+  import_id: string;
+  dry_run: boolean;
+  encoding: ImportEncoding;
+  separator: "," | ";";
+  columns: ("name" | "firm" | "clock_number" | "trade")[];
+  row_count: number;
+  rows: ImportRow[];
+  problems: RowProblem[];
+  error?: string;
+}
+
+export interface ImportFileProblem {
+  error: string;
+  column: string | null;
+  row: number | null;
 }
 ```

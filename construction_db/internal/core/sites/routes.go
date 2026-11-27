@@ -25,6 +25,6 @@ func Register(r *gin.Engine, svc *Service, authSvc *auth.Service) {
 
 	protected.GET("/:id/locations", h.ListLocations)
 	protected.POST("/:id/locations", writers, h.CreateLocation)
-	protected.PATCH("/:id/locations/:locationId", writers, h.RenameLocation)
+	protected.PATCH("/:id/locations/:locationId", writers, h.UpdateLocation)
 	protected.DELETE("/:id/locations/:locationId", writers, h.ArchiveLocation)
 }

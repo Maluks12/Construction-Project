@@ -47,7 +47,7 @@ func TestSiteWorkDeadlineRules(t *testing.T) {
 		otherSite  = "22000000-0000-0000-0000-0000000000f3"
 	)
 	must(t, tx, 1, `INSERT INTO users (id, email, full_name) VALUES ($1, 'sup-sw@rls.test', 'Supervisor SW')`, supervisor)
-	must(t, tx, 1, `INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'supervisor')`, rlsOrgA, supervisor)
+	seedMember(t, tx, rlsOrgA, supervisor, "supervisor", "active")
 	must(t, tx, 1, `INSERT INTO sites (id, org_id, regime_id, name) SELECT $1, $2, id, 'Third site' FROM regulatory_regimes LIMIT 1`, otherSite, rlsOrgA)
 
 	// Excavation from Mon 7 Dec 2026, version 1 by the owner.

@@ -94,7 +94,11 @@ func TestDeadlineRules(t *testing.T) {
 	// A supervisor in org A, for the role rules.
 	const supervisor = "21000000-0000-0000-0000-0000000000a5"
 	must(t, tx, 1, `INSERT INTO users (id, email, full_name) VALUES ($1, 'sup-a@rls.test', 'Supervisor A')`, supervisor)
-	must(t, tx, 1, `INSERT INTO org_members (org_id, user_id, role) VALUES ($1, $2, 'supervisor')`, rlsOrgA, supervisor)
+	seedMember(t, tx, rlsOrgA, supervisor, "supervisor", "active")
+	// A SHE officer who has been suspended: no longer a lead (000056).
+	const suspendedLead = "21000000-0000-0000-0000-0000000000a6"
+	must(t, tx, 1, `INSERT INTO users (id, email, full_name) VALUES ($1, 'sus-a@rls.test', 'Suspended Lead')`, suspendedLead)
+	seedMember(t, tx, rlsOrgA, suspendedLead, "she_officer", "suspended")
 
 	// incID(20): version 1 by the owner, two hours ago.
 	inc := incID(20)
@@ -184,6 +188,7 @@ func TestDeadlineRules(t *testing.T) {
 
 	t.Run("retracting reopens the duty; the satisfaction stays", func(t *testing.T) {
 		refusedBatch(t, tx, "23514", "only an owner or a SHE officer can retract", retract(satID(1), dutyID(1), supervisor))
+		refusedBatch(t, tx, "23514", "only an owner or a SHE officer can retract", retract(satID(1), dutyID(1), suspendedLead))
 		okBatch(t, tx, retract(satID(1), dutyID(1), rlsUserA))
 		var open bool
 		var kept int
@@ -230,6 +235,8 @@ func TestDeadlineRules(t *testing.T) {
 		okBatch(t, tx, duty(dutyID(7), inc, gar8b), dl(dlID(7), dutyID(7), inc, gar8b, "report", 0, "immediately", "-3 days", 3))
 		// Withdrawing an open report deadline.
 		refusedBatch(t, tx, "23514", msg, v4, closeDl(dlID(7), "withdrawn", nil, 4), stmt{checkNow, nil})
+		// Nor by a SHE officer who has been suspended (000056).
+		refusedBatch(t, tx, "23514", msg, amend(inc, 4, suspendedLead, "-3 days"), closeDl(dlID(7), "withdrawn", nil, 4), stmt{checkNow, nil})
 		// Moving one later, open or satisfied (dlID(5) is satisfied).
 		refusedBatch(t, tx, "23514", msg, later, closeDl(dlID(7), "superseded", dlID(8), 4),
 			dl(dlID(8), dutyID(7), inc, gar8b, "report", 0, "immediately", "-1 days", 4), stmt{checkNow, nil})

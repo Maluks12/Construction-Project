@@ -196,7 +196,8 @@ func (s *Service) findings(ctx context.Context, tx pgx.Tx, sc SiteContext) (Cate
 func (s *Service) actions(ctx context.Context, tx pgx.Tx, sc SiteContext) (Category, error) {
 	c := Category{Key: CatActions, Counted: true, Items: []Item{}}
 	rows, err := tx.Query(ctx, `
-		SELECT a.id::text, a.title, a.severity, a.due_on::text, action_escalation_step($3, a.due_on, a.time_zone, $4)
+		SELECT a.id::text, a.title, a.severity, a.due_on::text, action_escalation_step($3, a.due_on, a.time_zone, $4),
+		       action_site_member(a.org_id, a.site_id, a.owner_id)
 		FROM corrective_actions a
 		WHERE a.org_id = $1 AND a.site_id = $2 AND a.status = 'open' AND $3::timestamptz >= a.due_at
 		ORDER BY a.due_at, a.id`, sc.OrgID, sc.Site.ID, sc.Now, sc.Regime.Reminders.ActionEscalationDays)
@@ -207,11 +208,12 @@ func (s *Service) actions(ctx context.Context, tx pgx.Tx, sc SiteContext) (Categ
 	for rows.Next() {
 		var id, title, sev, due string
 		var step int
-		if err := rows.Scan(&id, &title, &sev, &due, &step); err != nil {
+		var active bool
+		if err := rows.Scan(&id, &title, &sev, &due, &step, &active); err != nil {
 			return c, fmt.Errorf("overdue actions: %w", err)
 		}
 		c.Items = append(c.Items, Item{SubjectType: SubjectAction, SubjectID: str(id), State: ItemOverdue, Colour: colour(Red),
-			Label: title, ActionID: str(id), Severity: str(sev), DueOn: str(due), EscalationStep: &step})
+			Label: title, ActionID: str(id), Severity: str(sev), DueOn: str(due), EscalationStep: &step, OwnerEligible: &active})
 	}
 	return c, rows.Err()
 }
@@ -220,7 +222,8 @@ func (s *Service) actions(ctx context.Context, tx pgx.Tx, sc SiteContext) (Categ
 func (s *Service) verifications(ctx context.Context, tx pgx.Tx, sc SiteContext) (Category, error) {
 	c := Category{Key: CatVerifications, Counted: true, Items: []Item{}}
 	rows, err := tx.Query(ctx, `
-		SELECT a.id::text, a.pending_closeout_id::text, a.title, a.awaiting_since
+		SELECT a.id::text, a.pending_closeout_id::text, a.title, a.awaiting_since,
+		       action_site_member(a.org_id, a.site_id, a.owner_id)
 		FROM corrective_actions a
 		WHERE a.org_id = $1 AND a.site_id = $2 AND a.status = 'awaiting_verification'
 		  AND a.awaiting_since <= $3::timestamptz - make_interval(days => $4::int)
@@ -232,11 +235,12 @@ func (s *Service) verifications(ctx context.Context, tx pgx.Tx, sc SiteContext) 
 	for rows.Next() {
 		var id, closeout, title string
 		var since time.Time
-		if err := rows.Scan(&id, &closeout, &title, &since); err != nil {
+		var active bool
+		if err := rows.Scan(&id, &closeout, &title, &since, &active); err != nil {
 			return c, fmt.Errorf("stalled verifications: %w", err)
 		}
 		c.Items = append(c.Items, Item{SubjectType: SubjectCloseout, SubjectID: str(closeout), State: ItemStalled, Colour: colour(Amber),
-			Label: title, ActionID: str(id), Since: &since})
+			Label: title, ActionID: str(id), Since: &since, OwnerEligible: &active})
 	}
 	return c, rows.Err()
 }

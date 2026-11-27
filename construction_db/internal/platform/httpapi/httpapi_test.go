@@ -64,6 +64,10 @@ func TestWriteUnexpected(t *testing.T) {
 		{"lock wait past lock_timeout", fmt.Errorf("append to chain: %w", &pgconn.PgError{Code: LockNotAvailable,
 			Message: "canceling statement due to lock timeout", Where: `while locking tuple (0,1) in relation "site_chain_heads"`}),
 			503, `{"error":"server busy, try again"}`, "2", "WARN", `while locking tuple (0,1) in relation "site_chain_heads"`},
+		{"deadlock broken by Postgres", fmt.Errorf("x: %w", &pgconn.PgError{Code: DeadlockDetected, Message: "deadlock detected",
+			Where: "while updating tuple (0,2) in relation \"organisations\""}),
+			503, `{"error":"server busy, try again"}`, "2", "WARN", `while updating tuple (0,2) in relation "organisations"`},
+		{"lost a race twice", fmt.Errorf("save documents: %w", ErrBusy), 503, `{"error":"server busy, try again"}`, "2", "WARN", ""},
 		{"another Postgres error", fmt.Errorf("x: %w", &pgconn.PgError{Code: "23505"}), 500, `{"error":"internal error"}`, "", "ERROR", ""},
 	}
 	for _, tt := range tests {

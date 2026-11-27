@@ -311,6 +311,9 @@ func (s *Service) CreateLocation(ctx context.Context, orgID, siteID string, req 
 	if name == "" {
 		return nil, ErrBlankName
 	}
+	if !positionOK(req.Position) {
+		return nil, ErrBadPosition
+	}
 
 	var location *Location
 	err := s.inTenant(ctx, orgID, "", func(tx pgx.Tx) error {
@@ -322,7 +325,7 @@ func (s *Service) CreateLocation(ctx context.Context, orgID, siteID string, req 
 			return err
 		}
 
-		location, err = CreateLocation(ctx, tx, orgID, siteID, req.ParentID, req.Kind, name)
+		location, err = CreateLocation(ctx, tx, orgID, siteID, req.ParentID, req.Kind, name, req.Position)
 		if isNotFound(err) {
 			return ErrParentNotFound
 		}
@@ -340,16 +343,28 @@ func (s *Service) CreateLocation(ctx context.Context, orgID, siteID string, req 
 	return location, nil
 }
 
-func (s *Service) RenameLocation(ctx context.Context, orgID, siteID, locationID string, req UpdateLocationRequest) (*Location, error) {
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		return nil, ErrBlankName
+func positionOK(p *int) bool { return p == nil || (*p >= 0 && *p <= MaxPosition) }
+
+func (s *Service) UpdateLocation(ctx context.Context, orgID, siteID, locationID string, req UpdateLocationRequest) (*Location, error) {
+	if req.Name == nil && !req.PositionSet {
+		return nil, ErrEmptyLocationUpdate
+	}
+	var name *string
+	if req.Name != nil {
+		trimmed := strings.TrimSpace(*req.Name)
+		if trimmed == "" {
+			return nil, ErrBlankName
+		}
+		name = &trimmed
+	}
+	if !positionOK(req.Position) {
+		return nil, ErrBadPosition
 	}
 
 	var location *Location
 	err := s.inTenant(ctx, orgID, "", func(tx pgx.Tx) error {
 		var err error
-		location, err = RenameLocation(ctx, tx, orgID, siteID, locationID, name)
+		location, err = UpdateLocation(ctx, tx, orgID, siteID, locationID, name, req.PositionSet, req.Position)
 		return err
 	})
 
@@ -362,7 +377,7 @@ func (s *Service) RenameLocation(ctx context.Context, orgID, siteID, locationID 
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("rename location: %w", err)
+		return nil, fmt.Errorf("update location: %w", err)
 	}
 
 	return location, nil

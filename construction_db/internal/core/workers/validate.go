@@ -122,7 +122,8 @@ func recordCommon(fileID string, supersedes *string, at time.Time, device *strin
 	return out
 }
 
-// RowProblem is a CSV row's problem: 0-based row, the field, the message.
+// RowProblem is a CSV row's problem: the row as the spreadsheet numbers it
+// (the header is row 1), the field, the message.
 type RowProblem struct {
 	Row int `json:"row"`
 	FieldProblem
@@ -130,18 +131,20 @@ type RowProblem struct {
 
 // CheckRows validates many workers for an all-or-nothing import, in the
 // caller's transaction: each row alone, then identity keys repeated within
-// the rows or already on the register.
-func CheckRows(ctx context.Context, tx DBTX, orgID string, rows []WorkerRequest) ([]RowProblem, error) {
+// the rows or already on the register. numbers[i] is rows[i]'s row number
+// (blank rows are skipped, so they needn't run on); the problems come
+// sorted by it.
+func CheckRows(ctx context.Context, tx DBTX, orgID string, rows []WorkerRequest, numbers []int) ([]RowProblem, error) {
 	var out []RowProblem
 	seen := map[string]int{}
 	keys := make([]string, len(rows))
 	for i, r := range rows {
 		for _, p := range ValidateWorker(r) {
-			out = append(out, RowProblem{Row: i, FieldProblem: p})
+			out = append(out, RowProblem{Row: numbers[i], FieldProblem: p})
 		}
 		keys[i] = IdentityKey(r)
 		if first, ok := seen[keys[i]]; ok {
-			out = append(out, RowProblem{Row: i, FieldProblem: FieldProblem{Field: "name", Error: "same name, firm and clock number as row " + itoa(first)}})
+			out = append(out, RowProblem{Row: numbers[i], FieldProblem: FieldProblem{Field: "name", Error: MsgSameAsRow + itoa(numbers[first])}})
 		} else {
 			seen[keys[i]] = i
 		}
@@ -152,9 +155,10 @@ func CheckRows(ctx context.Context, tx DBTX, orgID string, rows []WorkerRequest)
 	}
 	for i, k := range keys {
 		if taken[k] {
-			out = append(out, RowProblem{Row: i, FieldProblem: FieldProblem{Field: "name", Error: ErrIdentityTaken.Error()}})
+			out = append(out, RowProblem{Row: numbers[i], FieldProblem: FieldProblem{Field: "name", Error: ErrIdentityTaken.Error()}})
 		}
 	}
+	slices.SortStableFunc(out, func(a, b RowProblem) int { return a.Row - b.Row })
 	return out, nil
 }
 

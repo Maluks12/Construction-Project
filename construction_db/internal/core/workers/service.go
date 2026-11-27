@@ -335,6 +335,26 @@ func WarningsFor(ctx context.Context, tx DBTX, reg *regimes.Registry, orgID, wor
 // PutCompetency records a competency under the device's id. Supervisors
 // capture them on site too.
 func (s *Service) PutCompetency(ctx context.Context, orgID, userID, workerID, recordID string, req CompetencyRequest) (*Competency, bool, error) {
+	var (
+		c       *Competency
+		created bool
+	)
+	err := once(func() error {
+		return s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
+			var err error
+			c, created, err = s.PutCompetencyTx(ctx, tx, orgID, userID, workerID, recordID, req)
+			return err
+		})
+	})
+	if err = finish(err, "put competency"); err != nil {
+		return nil, false, err
+	}
+	return c, created, nil
+}
+
+// PutCompetencyTx is PutCompetency in the caller's transaction (ONBOARD's
+// bulk documents). Losing a race for the record's id is IsRetry.
+func (s *Service) PutCompetencyTx(ctx context.Context, tx pgx.Tx, orgID, userID, workerID, recordID string, req CompetencyRequest) (*Competency, bool, error) {
 	rid, err := uuid.Parse(recordID)
 	if err != nil {
 		return nil, false, ErrBadRecordID
@@ -343,59 +363,69 @@ func (s *Service) PutCompetency(ctx context.Context, orgID, userID, workerID, re
 	if ps := ValidateCompetency(s.reg, req, s.Clock.Now()); len(ps) > 0 {
 		return nil, false, &Problem{ps[0]}
 	}
-	var (
-		c       *Competency
-		created bool
-	)
-	err = once(func() error {
-		created = false
-		return s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
-			w, err := s.worker(ctx, tx, orgID, workerID)
-			if err != nil {
-				return err
-			}
-			if existing, err := getCompetency(ctx, tx, orgID, rid.String()); err == nil {
-				if !sameCompetency(existing, w.ID, userID, req) {
-					return ErrIDReused
-				}
-				c = existing
-				return nil
-			} else if !isNotFound(err) {
-				return err
-			}
-			if found, err := recordAnywhere(ctx, tx, orgID, rid.String()); err != nil || found {
-				return orErr(err, ErrIDReused)
-			}
-			if err := files.Attachable(ctx, tx, orgID, req.FileID, files.PurposeCompetency, nil); err != nil {
-				return err
-			}
-			if req.SupersedesID != nil {
-				prev, err := getCompetency(ctx, tx, orgID, *req.SupersedesID)
-				if err := checkTarget(err, prev, w.ID); err != nil {
-					return err
-				}
-				if prev.TypeKey != req.TypeKey || prev.RegimeCode != req.RegimeCode {
-					return ErrSupersedeTarget
-				}
-			}
-			err = insertCompetency(ctx, tx, orgID, w.ID, rid.String(), userID, req)
-			if err := recordInsertErr(err, "worker_competencies"); err != nil {
-				return err
-			}
-			created = true
-			c, err = getCompetency(ctx, tx, orgID, rid.String())
-			return err
-		})
-	})
-	if err = finish(err, "put competency"); err != nil {
+	w, err := s.worker(ctx, tx, orgID, workerID)
+	if err != nil {
+		return nil, false, err
+	}
+	c, err := getCompetency(ctx, tx, orgID, rid.String())
+	switch {
+	case err == nil:
+		if !sameCompetency(c, w.ID, userID, req) {
+			return nil, false, ErrIDReused
+		}
+		s.setState(&c.RecordHeader, c.ExpiresOn, s.Clock.Now())
+		return c, false, nil
+	case !isNotFound(err):
+		return nil, false, err
+	}
+	if found, err := recordAnywhere(ctx, tx, orgID, rid.String()); err != nil || found {
+		return nil, false, orErr(err, ErrIDReused)
+	}
+	if err := files.Attachable(ctx, tx, orgID, req.FileID, files.PurposeCompetency, nil); err != nil {
+		return nil, false, err
+	}
+	if req.SupersedesID != nil {
+		prev, err := getCompetency(ctx, tx, orgID, *req.SupersedesID)
+		if err := checkTarget(err, prev, w.ID); err != nil {
+			return nil, false, err
+		}
+		if prev.TypeKey != req.TypeKey || prev.RegimeCode != req.RegimeCode {
+			return nil, false, ErrSupersedeTarget
+		}
+	}
+	err = insertCompetency(ctx, tx, orgID, w.ID, rid.String(), userID, req)
+	if err := recordInsertErr(err, "worker_competencies"); err != nil {
+		return nil, false, err
+	}
+	if c, err = getCompetency(ctx, tx, orgID, rid.String()); err != nil {
 		return nil, false, err
 	}
 	s.setState(&c.RecordHeader, c.ExpiresOn, s.Clock.Now())
-	return c, created, nil
+	return c, true, nil
 }
 
 // PutMedical records a medical (D6): outcome and dates, and the certificate.
 func (s *Service) PutMedical(ctx context.Context, orgID, userID, workerID, recordID string, req MedicalRequest) (*Medical, bool, error) {
+	var (
+		m       *Medical
+		created bool
+	)
+	err := once(func() error {
+		return s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
+			var err error
+			m, created, err = s.PutMedicalTx(ctx, tx, orgID, userID, workerID, recordID, req)
+			return err
+		})
+	})
+	if err = finish(err, "put medical"); err != nil {
+		return nil, false, err
+	}
+	return m, created, nil
+}
+
+// PutMedicalTx is PutMedical in the caller's transaction (ONBOARD's bulk
+// documents). Losing a race for the record's id is IsRetry.
+func (s *Service) PutMedicalTx(ctx context.Context, tx pgx.Tx, orgID, userID, workerID, recordID string, req MedicalRequest) (*Medical, bool, error) {
 	rid, err := uuid.Parse(recordID)
 	if err != nil {
 		return nil, false, ErrBadRecordID
@@ -404,52 +434,53 @@ func (s *Service) PutMedical(ctx context.Context, orgID, userID, workerID, recor
 	if ps := ValidateMedical(s.reg, req, s.Clock.Now()); len(ps) > 0 {
 		return nil, false, &Problem{ps[0]}
 	}
-	var (
-		m       *Medical
-		created bool
-	)
-	err = once(func() error {
-		created = false
-		return s.inTenant(ctx, orgID, userID, func(tx pgx.Tx) error {
-			w, err := s.worker(ctx, tx, orgID, workerID)
-			if err != nil {
-				return err
-			}
-			if existing, err := getMedical(ctx, tx, orgID, rid.String()); err == nil {
-				if !sameMedical(existing, w.ID, userID, req) {
-					return ErrIDReused
-				}
-				m = existing
-				return nil
-			} else if !isNotFound(err) {
-				return err
-			}
-			if found, err := recordAnywhere(ctx, tx, orgID, rid.String()); err != nil || found {
-				return orErr(err, ErrIDReused)
-			}
-			if err := files.Attachable(ctx, tx, orgID, req.FileID, files.PurposeMedical, nil); err != nil {
-				return err
-			}
-			if req.SupersedesID != nil {
-				prev, err := getMedical(ctx, tx, orgID, *req.SupersedesID)
-				if err := checkTarget(err, prev, w.ID); err != nil {
-					return err
-				}
-			}
-			err = insertMedical(ctx, tx, orgID, w.ID, rid.String(), userID, req)
-			if err := recordInsertErr(err, "worker_medicals"); err != nil {
-				return err
-			}
-			created = true
-			m, err = getMedical(ctx, tx, orgID, rid.String())
-			return err
-		})
-	})
-	if err = finish(err, "put medical"); err != nil {
+	w, err := s.worker(ctx, tx, orgID, workerID)
+	if err != nil {
+		return nil, false, err
+	}
+	m, err := getMedical(ctx, tx, orgID, rid.String())
+	switch {
+	case err == nil:
+		if !sameMedical(m, w.ID, userID, req) {
+			return nil, false, ErrIDReused
+		}
+		s.setState(&m.RecordHeader, &m.ExpiresOn, s.Clock.Now())
+		return m, false, nil
+	case !isNotFound(err):
+		return nil, false, err
+	}
+	if found, err := recordAnywhere(ctx, tx, orgID, rid.String()); err != nil || found {
+		return nil, false, orErr(err, ErrIDReused)
+	}
+	if err := files.Attachable(ctx, tx, orgID, req.FileID, files.PurposeMedical, nil); err != nil {
+		return nil, false, err
+	}
+	if req.SupersedesID != nil {
+		prev, err := getMedical(ctx, tx, orgID, *req.SupersedesID)
+		if err := checkTarget(err, prev, w.ID); err != nil {
+			return nil, false, err
+		}
+	}
+	err = insertMedical(ctx, tx, orgID, w.ID, rid.String(), userID, req)
+	if err := recordInsertErr(err, "worker_medicals"); err != nil {
+		return nil, false, err
+	}
+	if m, err = getMedical(ctx, tx, orgID, rid.String()); err != nil {
 		return nil, false, err
 	}
 	s.setState(&m.RecordHeader, &m.ExpiresOn, s.Clock.Now())
-	return m, created, nil
+	return m, true, nil
+}
+
+// IsRetry: a ...Tx call lost a race for its record's id to a request that
+// committed meanwhile; run the transaction again and it is a repeat.
+func IsRetry(err error) bool { return errors.Is(err, errRetry) }
+
+// IsClientError reports whether err is the caller's mistake (a 4xx of this
+// package), not the server's: what a batch reports per item.
+func IsClientError(err error) bool {
+	var ch *Changed
+	return isSentinel(err) || errors.As(err, &ch) || errors.Is(err, ErrFileUsed)
 }
 
 type headed interface{ head() *RecordHeader }

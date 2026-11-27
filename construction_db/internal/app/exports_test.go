@@ -338,7 +338,7 @@ func TestExportPack(t *testing.T) {
 	wantStatus(t, do(t, r, http.MethodPut, workerPath(f.worker), f.owner, map[string]any{"name": "Sipho Renamed"}), http.StatusOK)
 	wantStatus(t, do(t, r, http.MethodPatch, "/v1/sites/"+f.siteA, f.owner, map[string]any{"name": "Renamed site"}), http.StatusOK)
 	execAsTenant(t, org, 1, `UPDATE users SET full_name = 'Renamed Owner' WHERE id = $1`, f.ownerID)
-	execAsTenant(t, org, 1, `UPDATE org_members SET role = 'she_officer' WHERE user_id = $1`, f.supervisorID)
+	changeMember(t, r, f.owner, f.supervisorID, map[string]any{"role": "she_officer"})
 	wantStatus(t, do(t, r, http.MethodPut, signInPath(f.siteA, uuid.NewString()), f.owner,
 		signInBody(uuid.NewString(), clk.Earlier(time.Minute), map[string]any{"new_worker": map[string]any{"name": "Late Arrival"}})), http.StatusCreated)
 	photoTakenAt(t, f.evidenceFixture, f.owner, f.siteA, testClock.Now())

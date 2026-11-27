@@ -31,6 +31,9 @@ func Register(r *gin.Engine, svc *Service, authSvc *auth.Service) {
 	w.POST("/:workerId/medicals/:recordId/retract", h.retract(kindMedical))
 	w.POST("/:workerId/medicals/:recordId/view", h.view(kindMedical))
 
+	// ONBOARD D9, D10: the register from a CSV, all or nothing; leads only.
+	r.PUT("/v1/worker-imports/:importId", auth.RequireAuth(authSvc), auth.RequireRole(auth.RoleOwner, auth.RoleSHEOfficer), h.Import)
+
 	att := r.Group("/v1/sites/:id/toolbox-talks/:talkId/attendance/:attendanceId", people...)
 	att.PUT("/worker", h.Link)
 	att.POST("/worker/unlink", h.Unlink)

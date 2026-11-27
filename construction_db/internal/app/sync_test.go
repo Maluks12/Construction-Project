@@ -331,9 +331,7 @@ func TestSyncCursorResets(t *testing.T) {
 		if _, _, reset := pullSite(t, f.router, f.supervisor, f.siteA, cursor, 200); reset {
 			t.Fatal("reset without a change")
 		}
-		execAsTenant(t, f.ownerMe.OrgID, 1, `UPDATE org_members SET role = 'she_officer'
-			WHERE org_id = $1 AND user_id = (SELECT user_id FROM org_members m JOIN users u ON u.id = m.user_id
-			                                 WHERE m.org_id = $1 AND u.email LIKE 'foreman@%')`, f.ownerMe.OrgID)
+		changeMember(t, f.router, f.owner, memberID(t, f, "foreman@"), map[string]any{"role": auth.RoleSHEOfficer})
 		if _, _, reset := pullSite(t, f.router, f.supervisor, f.siteA, cursor, 200); !reset {
 			t.Error("no reset after the role changed")
 		}

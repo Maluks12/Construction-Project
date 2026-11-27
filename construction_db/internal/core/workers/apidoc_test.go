@@ -15,6 +15,7 @@ func TestAPIDoc(t *testing.T) {
 		"Link": Link{}, "RegimeSummary": RegimeSummary{}, "RegimeTypes": RegimeTypes{}, "CompetencyType": regimes.CompetencyType{},
 		"AppointmentType": regimes.AppointmentType{}, "MedicalRule": regimes.MedicalRule{}, "DocumentType": regimes.DocumentType{},
 		"Reminders": regimes.Reminders{}, "FieldProblem": FieldProblem{}, "IdentityClash": IdentityClash{},
+		"ImportRow": ImportRow{}, "RowProblem": RowProblem{}, "ImportResult": ImportResult{}, "ImportFileProblem": ImportFileProblem{},
 	} {
 		t.Run(name, func(t *testing.T) { doc.CheckStruct(t, name, v, false) })
 	}
@@ -30,12 +31,17 @@ func TestAPIDoc(t *testing.T) {
 	doc.CheckUnion(t, "RecordState", States)
 	doc.CheckUnion(t, "MedicalOutcome", Outcomes)
 	doc.CheckUnion(t, "SignInWarning", Warnings)
+	doc.CheckUnion(t, "ImportEncoding", Encodings)
 
 	var texts []string
 	for _, e := range Sentinels {
 		texts = append(texts, e.Error())
 	}
 	texts = append(texts, Messages...)
+	for _, e := range ImportErrors {
+		texts = append(texts, e.Error())
+	}
+	texts = append(texts, MsgExtraCells, MsgSameAsRow+"N", ErrIdentityTaken.Error())
 	for _, s := range texts {
 		if quoted := `"` + s + `"`; !strings.Contains(doc.Text, quoted) {
 			t.Errorf("the reference doesn't quote the error %s", quoted)

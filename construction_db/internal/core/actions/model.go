@@ -157,20 +157,25 @@ type ActionHeader struct {
 	IncidentVersion       *int    `json:"incident_version"`
 	IncidentLatestVersion *int    `json:"incident_latest_version"`
 	// Whether a lead should look again because the finding was corrected.
-	Review            *string    `json:"review"`
-	Severity          string     `json:"severity"`
-	Title             string     `json:"title"`
-	Description       *string    `json:"description"`
-	RaisedBy          string     `json:"raised_by"`
-	ClientRaisedAt    time.Time  `json:"client_raised_at"`
-	RaisedAt          time.Time  `json:"raised_at"`
-	DeviceID          *string    `json:"device_id"`
-	TimeZone          string     `json:"time_zone"`
-	SourceAt          time.Time  `json:"source_at"`
-	DefaultDueOn      string     `json:"default_due_on"`
-	Status            string     `json:"status"`
-	State             string     `json:"state"`
-	OwnerID           string     `json:"owner_id"`
+	Review         *string   `json:"review"`
+	Severity       string    `json:"severity"`
+	Title          string    `json:"title"`
+	Description    *string   `json:"description"`
+	RaisedBy       string    `json:"raised_by"`
+	ClientRaisedAt time.Time `json:"client_raised_at"`
+	RaisedAt       time.Time `json:"raised_at"`
+	DeviceID       *string   `json:"device_id"`
+	TimeZone       string    `json:"time_zone"`
+	SourceAt       time.Time `json:"source_at"`
+	DefaultDueOn   string    `json:"default_due_on"`
+	Status         string    `json:"status"`
+	State          string    `json:"state"`
+	OwnerID        string    `json:"owner_id"`
+	// Whether the owner can still act on it: an active member whom
+	// action_site_member() admits on its site, the rule raise and reassign
+	// use. False once they're suspended, removed, in another role or off the
+	// site: it needs a new owner (ONBOARD review R1).
+	OwnerEligible     bool       `json:"owner_eligible"`
 	ResponsibleParty  *string    `json:"responsible_party"`
 	DueOn             string     `json:"due_on"`
 	DueAt             time.Time  `json:"due_at"`
@@ -301,10 +306,11 @@ var (
 	ErrEvidenceTooOld      = errors.New("evidence was taken before the action's source, so it can't show the fix")
 	ErrEvidenceIsSource    = errors.New("evidence is one of the source's own photos; take a photo of the fix")
 
-	ErrBadState  = errors.New("state must be open, overdue, awaiting_verification, closed, closed_late or cancelled")
-	ErrBadSource = errors.New("source must be finding or incident")
-	ErrBadOwner  = errors.New("owner must be me or a user id")
-	ErrBadLimit  = errors.New("limit must be 1-200")
+	ErrBadState         = errors.New("state must be open, overdue, awaiting_verification, closed, closed_late or cancelled")
+	ErrBadSource        = errors.New("source must be finding or incident")
+	ErrBadOwner         = errors.New("owner must be me or a user id")
+	ErrBadLimit         = errors.New("limit must be 1-200")
+	ErrBadOwnerEligible = errors.New("owner_eligible must be true or false")
 )
 
 // EvidenceError names the photos a close-out can't use.

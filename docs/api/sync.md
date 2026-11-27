@@ -109,7 +109,9 @@ An item is sent again whenever a row its GET reads changes, including rows
 of other records it shows:
 
 - an action: its events and close-outs, its source's correction, an
-  amendment of its incident;
+  amendment of its incident, its owner's membership changing (suspended,
+  removed, reinstated, another role) or the owner being added to or taken
+  off its site (`owner_eligible`, ONBOARD);
 - a finding list: an action or waiver anywhere in the inspection's
   correction chain;
 - an incident: a version, statement, deadline or satisfaction;
@@ -159,7 +161,10 @@ each item.
 - **Site archived:** it stays in `sites` with `status: "archived"` and stays
   readable; stop offering new captures there (most refuse them with 409
   `"site is archived"`).
-- **Suspended, removed, or the session ended:** 401: sign out. Keep the
+- **Suspended, removed, or the session ended:** 401: sign out. Since ONBOARD a suspension ends
+  the person's sessions at once: the next request, or the next record of a
+  push already under way (`processed` stops there), is 401, and the refresh
+  token is refused. Keep the
   queue encrypted for that person to sign back in; never show it to someone
   else signing in on the phone.
 
@@ -217,7 +222,9 @@ endpoint's path, no query) and `body`. `ref` is yours, echoed in the result.
 
 Records may go to these endpoints only (each one's own reference says what it
 answers). Everything else is online-only: auth, invites, sites, locations and
-members, `complete`, `/view`, exports, and linking signatures to workers.
+members (team management, `members.md`), `complete`, `/view`, exports, linking
+signatures to workers, and the dashboard's bulk set-up (the worker import,
+`POST /v1/files/batch`, `POST /v1/onboarding/documents`).
 
 - Evidence and files: `PUT /v1/sites/:siteId/evidence/:id`, `PUT /v1/files/:id`
 - Inspections: `PUT …/inspections/:id`, `PUT …/inspections/:id/items/:itemKey`,
